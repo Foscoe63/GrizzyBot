@@ -1,0 +1,17 @@
+# SwiftPM
+.build/
+.swiftpm/
+
+# App bundle
+GrizzyBot.app/
+*.xcodeproj/
+DerivedData/
+
+# OS / editor
+.DS_Store
+*.swp
+*~
+
+# Local agent / MCP (do not commit)
+config.json
+.omo/

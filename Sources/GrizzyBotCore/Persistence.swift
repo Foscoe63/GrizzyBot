@@ -1,0 +1,156 @@
+import CryptoKit
+import Foundation
+
+/// Per-user workspace persisted as `user-{userId}.json`.
+public struct UserWorkspace: Codable, Sendable {
+    public var bots: [Bot]
+    public var threads: [String: ThreadData]
+    public var routines: [String: [Routine]]
+    public var computers: [String: ComputerStatus]
+    public var connections: [ConnectionItem]
+    public var usage: [UsageRecord]
+    public var memory: [MemoryDocument]
+    /// Bot-home files written by the scripted runtime: `[path, content]`.
+    public var files: [[String]]
+    public var deployment: DeploymentSettings
+    public var modelProvider: String?
+    public var modelId: String?
+    public var apiKey: String?
+
+    public init(
+        bots: [Bot] = [],
+        threads: [String: ThreadData] = [:],
+        routines: [String: [Routine]] = [:],
+        computers: [String: ComputerStatus] = [:],
+        connections: [ConnectionItem] = ConnectionCatalog.defaults,
+        usage: [UsageRecord] = [],
+        memory: [MemoryDocument] = [],
+        files: [[String]] = [],
+        deployment: DeploymentSettings = DeploymentSettings(),
+        modelProvider: String? = nil,
+        modelId: String? = nil,
+        apiKey: String? = nil
+    ) {
+        self.bots = bots
+        self.threads = threads
+        self.routines = routines
+        self.computers = computers
+        self.connections = connections
+        self.usage = usage
+        self.memory = memory
+        self.files = files
+        self.deployment = deployment
+        self.modelProvider = modelProvider
+        self.modelId = modelId
+        self.apiKey = apiKey
+    }
+}
+
+/// Built-in plugin catalog (~12 OAuth-style apps).
+public enum ConnectionCatalog {
+    public static let defaults: [ConnectionItem] = [
+        ConnectionItem(slug: "gmail", name: "Gmail"),
+        ConnectionItem(slug: "slack", name: "Slack"),
+        ConnectionItem(slug: "github", name: "GitHub"),
+        ConnectionItem(slug: "notion", name: "Notion"),
+        ConnectionItem(slug: "linear", name: "Linear"),
+        ConnectionItem(slug: "google-calendar", name: "Google Calendar"),
+        ConnectionItem(slug: "hubspot", name: "HubSpot"),
+        ConnectionItem(slug: "salesforce", name: "Salesforce"),
+        ConnectionItem(slug: "jira", name: "Jira"),
+        ConnectionItem(slug: "trello", name: "Trello"),
+        ConnectionItem(slug: "asana", name: "Asana"),
+        ConnectionItem(slug: "intercom", name: "Intercom"),
+    ]
+}
+
+/// JSON file persistence under Application Support (or a test override path).
+public struct Persistence: Sendable {
+    public let root: URL
+
+    private static let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.outputFormatting = [.prettyPrinted, .sortedKeys]
+        e.dateEncodingStrategy = .iso8601
+        return e
+    }()
+
+    private static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
+    public init(root: URL? = nil) {
+        if let root {
+            self.root = root
+        } else {
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            self.root = appSupport.appendingPathComponent("GrizzyBot", isDirectory: true)
+        }
+        try? FileManager.default.createDirectory(at: self.root, withIntermediateDirectories: true)
+    }
+
+    // MARK: - Password hashing
+
+    public static func hashPassword(_ password: String) -> String {
+        let digest = SHA256.hash(data: Data(password.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    // MARK: - Users / session
+
+    public func loadUsers() -> [UserAccount] {
+        load([UserAccount].self, from: "users.json") ?? []
+    }
+
+    public func saveUsers(_ users: [UserAccount]) {
+        save(users, to: "users.json")
+    }
+
+    public func loadSession() -> Session? {
+        load(Session.self, from: "session.json")
+    }
+
+    public func saveSession(_ session: Session?) {
+        if let session {
+            save(session, to: "session.json")
+        } else {
+            let url = root.appendingPathComponent("session.json")
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    // MARK: - Workspace
+
+    public func loadWorkspace(userId: String) -> UserWorkspace {
+        load(UserWorkspace.self, from: "user-\(userId).json") ?? UserWorkspace()
+    }
+
+    public func saveWorkspace(_ workspace: UserWorkspace, userId: String) {
+        save(workspace, to: "user-\(userId).json")
+    }
+
+    // MARK: - Internals
+
+    private func load<T: Decodable>(_ type: T.Type, from name: String) -> T? {
+        let url = root.appendingPathComponent(name)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? Self.decoder.decode(T.self, from: data)
+    }
+
+    private func save<T: Encodable>(_ value: T, to name: String) {
+        let url = root.appendingPathComponent(name)
+        guard let data = try? Self.encoder.encode(value) else { return }
+        let tmp = url.appendingPathExtension("tmp")
+        do {
+            try data.write(to: tmp, options: .atomic)
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+            }
+            try FileManager.default.moveItem(at: tmp, to: url)
+        } catch {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+}

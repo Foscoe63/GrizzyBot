@@ -1,0 +1,321 @@
+import GrizzyBotCore
+import SwiftUI
+
+struct MessageView: View {
+    let message: ThreadMessage
+    let botId: String
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(message.blocks.enumerated()), id: \.offset) { _, block in
+                blockView(block)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
+    }
+
+    @ViewBuilder
+    private func blockView(_ block: MessageBlock) -> some View {
+        switch block {
+        case .meta(let text):
+            HStack(spacing: 8) {
+                Text("◷")
+                    .foregroundStyle(Theme.orange)
+                Text(text)
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+
+        case .progress(let text):
+            MarkdownText(source: text, streaming: true, textColor: Theme.textPrimary, fontSize: 15.5)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .background(Theme.bgBubble)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
+
+        case .subagent(_, let name, let task, let status, let progress, let result):
+            subagentCard(name: name, task: task, status: status, progress: progress, result: result)
+
+        case .childBot(let childId, let name, let title, let status):
+            childBotCard(botId: childId, name: name, title: title, status: status)
+
+        case .text(let text):
+            if message.role == .user {
+                Text(text)
+                    .font(.system(size: 15.5))
+                    .foregroundStyle(Theme.textUserBubble)
+                    .lineSpacing(15.5 * 0.45)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(Theme.bgCream)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .frame(maxWidth: bubbleMax(0.70), alignment: .trailing)
+            } else {
+                MarkdownText(source: text, textColor: Theme.textPrimary, fontSize: 15.5)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(Theme.bgBubble)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
+            }
+
+        case .card(let lines):
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("✓")
+                            .foregroundStyle(Theme.greenAlt)
+                        Text(line.k)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                        Text("→")
+                            .foregroundStyle(Theme.textSecondary)
+                        Text(line.v)
+                            .font(.system(size: 15))
+                            .foregroundStyle(Theme.textPrimary)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(Theme.bgBubble)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
+
+        case .ask(let text, let detail):
+            askCard(text: text, detail: detail)
+
+        case .computer(let state, let text):
+            computerCard(state: state, text: text)
+
+        case .choice, .connect:
+            EmptyView()
+        }
+    }
+
+    private func bubbleMax(_ fraction: CGFloat) -> CGFloat {
+        // Soft cap used as maxWidth preference; SwiftUI resolves against parent.
+        900 * fraction
+    }
+
+    private func subagentCard(
+        name: String,
+        task: String,
+        status: SubagentStatus,
+        progress: String?,
+        result: String?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(name)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.textBright)
+                Spacer()
+                statusPill(status)
+            }
+            Text(task)
+                .font(.system(size: 13.5))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.top, 8)
+            if let body = result ?? progress, !body.isEmpty {
+                MarkdownText(
+                    source: body,
+                    streaming: status == .running,
+                    textColor: Theme.textSub,
+                    fontSize: 14.5
+                )
+                .padding(.top, 10)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(maxWidth: min(420, 900 * 0.9), alignment: .leading)
+        .background(Theme.bgCard)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Theme.borderListRowsAlt, lineWidth: 1)
+        }
+    }
+
+    private func statusPill(_ status: SubagentStatus) -> some View {
+        let label: String
+        let color: Color
+        let bg: Color
+        switch status {
+        case .running:
+            label = "subagent"
+            color = Theme.amber
+            bg = Color(hex: "#F5A03C").opacity(0.14)
+        case .completed:
+            label = "done"
+            color = Theme.green
+            bg = Color(hex: "#30A24B").opacity(0.14)
+        case .failed:
+            label = "failed"
+            color = Theme.orange
+            bg = Color(hex: "#E65707").opacity(0.14)
+        }
+        return Text(label)
+            .font(.system(size: 13))
+            .foregroundStyle(color)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 4)
+            .background(bg)
+            .clipShape(Capsule())
+            .modifier(ConditionalPulse(active: status == .running))
+    }
+
+    private func childBotCard(
+        botId: String,
+        name: String,
+        title: String?,
+        status: ChildBotStatus
+    ) -> some View {
+        let deleted = status == .deleted
+        return Button {
+            guard !deleted else { return }
+            store.selectBot(botId)
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(name)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.textBright)
+                    Spacer()
+                    Text(deleted ? "deleted" : "bot")
+                        .font(.system(size: 13))
+                        .foregroundStyle(deleted ? Theme.orange : Theme.green)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 4)
+                        .background(
+                            (deleted ? Color(hex: "#E65707") : Color(hex: "#30A24B")).opacity(0.14)
+                        )
+                        .clipShape(Capsule())
+                }
+                Text(
+                    deleted
+                        ? "Removed this bot, including its chat, computer, and memory."
+                        : (title?.isEmpty == false ? title! : "Opened its own thread. Tap to switch.")
+                )
+                .font(.system(size: 14.5))
+                .foregroundStyle(Theme.textSub)
+                .padding(.top, 8)
+                .multilineTextAlignment(.leading)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .frame(maxWidth: min(340, 900 * 0.9), alignment: .leading)
+            .background(Theme.bgCard)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Theme.borderListRowsAlt, lineWidth: 1)
+            }
+            .opacity(deleted ? 0.6 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(deleted)
+    }
+
+    private func askCard(text: String, detail: String?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            MarkdownText(source: text, textColor: Theme.textBright, fontSize: 15.5)
+            if let detail, !detail.isEmpty {
+                Text(detail)
+                    .font(.system(size: 12.5, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineSpacing(12.5 * 0.7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(Theme.bgCode)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.top, 10)
+            }
+            HStack(spacing: 8) {
+                Button {
+                    store.answerAsk(botId: botId)
+                } label: {
+                    Text("Send it")
+                        .font(.system(size: 14.5, weight: .medium))
+                        .foregroundStyle(Theme.textCream)
+                        .padding(.horizontal, 17)
+                        .padding(.vertical, 8)
+                        .background(Theme.bgCream)
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    // rakazo: no action
+                } label: {
+                    Text("Edit first")
+                        .font(.system(size: 14.5))
+                        .foregroundStyle(Theme.textGhost)
+                        .padding(.horizontal, 17)
+                        .padding(.vertical, 8)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .stroke(Theme.borderInputsDark, lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 14)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 17)
+        .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
+        .background(Theme.bgAsk)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Theme.borderAsk, lineWidth: 1)
+        }
+    }
+
+    private func computerCard(state: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Computer")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.textBright)
+                Spacer()
+                Text(state)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.green)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 4)
+                    .background(Color(hex: "#30A24B").opacity(0.14))
+                    .clipShape(Capsule())
+            }
+            MarkdownText(source: text, textColor: Theme.textSub, fontSize: 14.5)
+                .padding(.top, 10)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(width: 340, alignment: .leading)
+        .background(Theme.bgCard)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Theme.borderListRowsAlt, lineWidth: 1)
+        }
+    }
+}
+
+private struct ConditionalPulse: ViewModifier {
+    let active: Bool
+    func body(content: Content) -> some View {
+        if active {
+            content.grizzyPulse()
+        } else {
+            content
+        }
+    }
+}
