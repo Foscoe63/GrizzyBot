@@ -11,6 +11,9 @@ public struct CatalogEntry: Codable, Sendable, Hashable, Identifiable {
     public var oauthLabel: String?
     public var subscription: Bool
     public var signIn: SignInKind?
+    public var kind: Kind
+    public var defaultBaseUrl: String?
+    public var supportsBaseUrl: Bool
 
     public enum AuthKind: String, Codable, Sendable {
         case apiKey = "api-key"
@@ -20,6 +23,11 @@ public struct CatalogEntry: Codable, Sendable, Hashable, Identifiable {
 
     public enum SignInKind: String, Codable, Sendable {
         case deviceCode = "device-code"
+    }
+
+    public enum Kind: String, Codable, Sendable {
+        case cloud
+        case local
     }
 
     public var idKey: String { "\(provider):\(id)" }
@@ -33,7 +41,10 @@ public struct CatalogEntry: Codable, Sendable, Hashable, Identifiable {
         auth: AuthKind = .apiKey,
         oauthLabel: String? = nil,
         subscription: Bool = false,
-        signIn: SignInKind? = nil
+        signIn: SignInKind? = nil,
+        kind: Kind = .cloud,
+        defaultBaseUrl: String? = nil,
+        supportsBaseUrl: Bool = false
     ) {
         self.provider = provider
         self.providerName = providerName
@@ -44,6 +55,9 @@ public struct CatalogEntry: Codable, Sendable, Hashable, Identifiable {
         self.oauthLabel = oauthLabel
         self.subscription = subscription
         self.signIn = signIn
+        self.kind = kind
+        self.defaultBaseUrl = defaultBaseUrl
+        self.supportsBaseUrl = supportsBaseUrl
     }
 }
 
@@ -195,16 +209,25 @@ public enum ModelCatalog {
             ]
         )
 
+        list.append(contentsOf: LocalProviders.catalogEntries())
         return list
     }()
 
     /// One entry per provider (first model wins), mirroring the onboarding rail.
+    /// Local providers are listed first.
     public static var providers: [CatalogEntry] {
         var seen = Set<String>()
-        return entries.filter { entry in
+        let unique = entries.filter { entry in
             if seen.contains(entry.provider) { return false }
             seen.insert(entry.provider)
             return true
+        }
+        return unique.sorted { a, b in
+            let localA = a.kind == .local ? 0 : 1
+            let localB = b.kind == .local ? 0 : 1
+            if localA != localB { return localA < localB }
+            return (a.providerName ?? a.provider)
+                .localizedCaseInsensitiveCompare(b.providerName ?? b.provider) == .orderedAscending
         }
     }
 
@@ -214,6 +237,7 @@ public enum ModelCatalog {
 
     /// The small hint shown on the right of each provider row.
     public static func hint(for entry: CatalogEntry) -> String {
+        if entry.kind == .local { return "Local / LAN" }
         if entry.signIn == .deviceCode {
             switch entry.provider {
             case "openai-codex": return "ChatGPT Plus/Pro"

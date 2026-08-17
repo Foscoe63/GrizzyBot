@@ -59,8 +59,16 @@ struct PluginsOverlayView: View {
 
                 ScrollView {
                     LazyVStack(spacing: 4) {
-                        ForEach(filtered) { item in
-                            pluginRow(item)
+                        if filtered.isEmpty {
+                            Text(search.isEmpty ? "No apps in catalog." : "No apps match that search.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 8)
+                        } else {
+                            ForEach(filtered) { item in
+                                pluginRow(item)
+                            }
                         }
                     }
                     .padding(.horizontal, 32)

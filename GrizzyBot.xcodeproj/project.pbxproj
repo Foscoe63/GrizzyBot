@@ -1,0 +1,735 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		002000712F9B648B461791FB /* AgentTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E31C4FBEF5A687BD0E8757D /* AgentTools.swift */; };
+		00D0E8CE93F22C2184C1C311 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 767DB6054B53887215A8925D /* RootView.swift */; };
+		0825B6C8DF176C162168B0CE /* GrizzyBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A422AE0345B5E77B84BA2E /* GrizzyBotApp.swift */; };
+		0895BD5E1460BE67397E9FD3 /* StoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8AF18B9C627741E5A510CC /* StoreTests.swift */; };
+		0CAD997F01B7DBA5C5F1EF93 /* OpenMausFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FDF1CBE020860BCC818C84 /* OpenMausFeatures.swift */; };
+		10C6F1583A6F593B003B67CB /* HostComputerPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BED9B320C808B307D93EB780 /* HostComputerPromptView.swift */; };
+		1B3E830AD3F520262482FFC9 /* BotHome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F28F0711AD84A51BEAE918 /* BotHome.swift */; };
+		1BDD175C76D18C304B93A79F /* McpClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC7102D998178BBA84298757 /* McpClientTests.swift */; };
+		2ACD1183A80FB2BE5F6D54E3 /* AgentToolsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9628297E2F6AB290976547 /* AgentToolsTests.swift */; };
+		31C604F87009674137794FC5 /* CronTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB44D631A1BFEC6A49332CEF /* CronTests.swift */; };
+		40471D76E6030BFEC49DB1AC /* RightPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92038B47C33FBFAFC7237354 /* RightPanelView.swift */; };
+		40E300E19AADDFA37403A433 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BA7B2A255FBC58BB87CF143 /* AuthView.swift */; };
+		48244E081B4FCD51C4EE0BA9 /* WebSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D551FCA6542392FDA475B4 /* WebSearch.swift */; };
+		4EB54A526111A5A0F522FD81 /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 916FFD0C6C6F1C1DB4E2F235 /* Store.swift */; };
+		51591A7BEF499927879EB28E /* RoutineScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2AD36303A2DBCC7BC06A480 /* RoutineScheduleView.swift */; };
+		62C4471C11DEFE6AB97827A3 /* PluginsOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A99E87B9C17655D22331DDC /* PluginsOverlayView.swift */; };
+		67786054E57D901D86FA257D /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF394BDED582E532893E9AD /* Persistence.swift */; };
+		6F49041F1F18EB74984F2A9D /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC342E09BDBE58984F59E04D /* ChatView.swift */; };
+		6FEF6EEED4274EB0912DC251 /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = A879DE77CAB82A98FA411202 /* MarkdownText.swift */; };
+		71A10283014E6CA714B92E7E /* Cron.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CF45217EF15990999EBA75 /* Cron.swift */; };
+		7B06747F29BFD784602A65CD /* BotHomeWebSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034ABF68635D68B313AA7DEA /* BotHomeWebSearchTests.swift */; };
+		7CF60431448BE1F4392DC278 /* AppSettingsOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46DAE4FA2D21D33E50DC75AC /* AppSettingsOverlayView.swift */; };
+		83E2E7CFE433835A866E0943 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E36873F55BBBA4961D4F4A4 /* OnboardingView.swift */; };
+		846AF1F6C515AECFB760417D /* ModelConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F1B5A4A25272D8DE8BEFC36 /* ModelConnectView.swift */; };
+		8ABB3A13219B3D5D73205E6D /* McpClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EAA172FAC1AB99A08E6AC55 /* McpClient.swift */; };
+		97CC4700DE1377D590B135D2 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F3B6B0B59AA23B0584273B /* Theme.swift */; };
+		9E2708F345079F8E2E71CDB9 /* LocalProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A13665DC7A54059575E9646 /* LocalProviders.swift */; };
+		AD768C48CA30733DC6389485 /* RoutinesPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE9778D00F176E80CBCAF9FD /* RoutinesPageView.swift */; };
+		B3084169C569910C1658D873 /* ScriptedRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFEF0D6BFF53DA0CBF74F153 /* ScriptedRuntime.swift */; };
+		B64BB9DAF2F3CC51CA893DEC /* ModelCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA45AF3D349EA5C61D89CA03 /* ModelCatalog.swift */; };
+		B6FE3347DCA50DBAE42A58DF /* ShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FF70036E1B1DB5F93ADFD0E /* ShellView.swift */; };
+		BAA83BD3B6F882B9D61D60EA /* MessageViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3759CA0FED3BDA9EF99C2D0 /* MessageViews.swift */; };
+		C2155112EEF20821AFBA5AF5 /* libGrizzyBotCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C3108710D4DD93C34D507A39 /* libGrizzyBotCore.a */; };
+		CCFE3A5F1F471C899C72C0C0 /* Controls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 977A76A0FDF8165D787040E5 /* Controls.swift */; };
+		D109624BFF8F2F13037AA2E0 /* libGrizzyBotCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C3108710D4DD93C34D507A39 /* libGrizzyBotCore.a */; };
+		D7F6B772596BF6184BEAAFC7 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F91A2645D5698998169C03B8 /* SidebarView.swift */; };
+		E06758F1CD11E18D1E5496C2 /* LocalProvidersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90E608627E9ED8C81E3D90D8 /* LocalProvidersTests.swift */; };
+		EC67741901A159D8D707CB5E /* BotAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08FA8FC9AEC1C43764D5736E /* BotAvatarView.swift */; };
+		EF7C483E6C5D471929194F14 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E68757C80AA3F6C31769048 /* Models.swift */; };
+		F388D25AA678456E088CDABD /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FB56E6A8F0E04C374360D2 /* WelcomeView.swift */; };
+		F5BC86FC50D5FD1EA4188973 /* ScriptedRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 080535B053570E1DAF2CA630 /* ScriptedRuntimeTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		55A3A570432C7CB3CDB42BA3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4AB0D8B019E7C200A2E73B88 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 21CD727AF02EEE29AF57908C;
+			remoteInfo = GrizzyBotCore;
+		};
+		7CC722DE997D88119142185F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4AB0D8B019E7C200A2E73B88 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 21CD727AF02EEE29AF57908C;
+			remoteInfo = GrizzyBotCore;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		034ABF68635D68B313AA7DEA /* BotHomeWebSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotHomeWebSearchTests.swift; sourceTree = "<group>"; };
+		080535B053570E1DAF2CA630 /* ScriptedRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedRuntimeTests.swift; sourceTree = "<group>"; };
+		08FA8FC9AEC1C43764D5736E /* BotAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarView.swift; sourceTree = "<group>"; };
+		0BA7B2A255FBC58BB87CF143 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		1EAA172FAC1AB99A08E6AC55 /* McpClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpClient.swift; sourceTree = "<group>"; };
+		21F3B6B0B59AA23B0584273B /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		2C8AF18B9C627741E5A510CC /* StoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreTests.swift; sourceTree = "<group>"; };
+		31F28F0711AD84A51BEAE918 /* BotHome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotHome.swift; sourceTree = "<group>"; };
+		33CF45217EF15990999EBA75 /* Cron.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cron.swift; sourceTree = "<group>"; };
+		3A13665DC7A54059575E9646 /* LocalProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProviders.swift; sourceTree = "<group>"; };
+		3C22124F7FE82A7C71958B52 /* GrizzyBotCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GrizzyBotCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3F1B5A4A25272D8DE8BEFC36 /* ModelConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelConnectView.swift; sourceTree = "<group>"; };
+		46DAE4FA2D21D33E50DC75AC /* AppSettingsOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsOverlayView.swift; sourceTree = "<group>"; };
+		4E68757C80AA3F6C31769048 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		55D551FCA6542392FDA475B4 /* WebSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearch.swift; sourceTree = "<group>"; };
+		6E36873F55BBBA4961D4F4A4 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		767DB6054B53887215A8925D /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		8A99E87B9C17655D22331DDC /* PluginsOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsOverlayView.swift; sourceTree = "<group>"; };
+		8E31C4FBEF5A687BD0E8757D /* AgentTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTools.swift; sourceTree = "<group>"; };
+		90E608627E9ED8C81E3D90D8 /* LocalProvidersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProvidersTests.swift; sourceTree = "<group>"; };
+		916FFD0C6C6F1C1DB4E2F235 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
+		92038B47C33FBFAFC7237354 /* RightPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RightPanelView.swift; sourceTree = "<group>"; };
+		977A76A0FDF8165D787040E5 /* Controls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Controls.swift; sourceTree = "<group>"; };
+		98FB56E6A8F0E04C374360D2 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		9A9628297E2F6AB290976547 /* AgentToolsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentToolsTests.swift; sourceTree = "<group>"; };
+		9FF70036E1B1DB5F93ADFD0E /* ShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellView.swift; sourceTree = "<group>"; };
+		A2AD36303A2DBCC7BC06A480 /* RoutineScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineScheduleView.swift; sourceTree = "<group>"; };
+		A879DE77CAB82A98FA411202 /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
+		A8FDF1CBE020860BCC818C84 /* OpenMausFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenMausFeatures.swift; sourceTree = "<group>"; };
+		AE9778D00F176E80CBCAF9FD /* RoutinesPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutinesPageView.swift; sourceTree = "<group>"; };
+		BC342E09BDBE58984F59E04D /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		BED9B320C808B307D93EB780 /* HostComputerPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostComputerPromptView.swift; sourceTree = "<group>"; };
+		C3108710D4DD93C34D507A39 /* libGrizzyBotCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libGrizzyBotCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		C9A422AE0345B5E77B84BA2E /* GrizzyBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrizzyBotApp.swift; sourceTree = "<group>"; };
+		CC7102D998178BBA84298757 /* McpClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpClientTests.swift; sourceTree = "<group>"; };
+		D5F5BBB7F1FC532399DE8DE2 /* GrizzyBot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GrizzyBot.entitlements; sourceTree = "<group>"; };
+		DB704FD9B2CDB9B8C40ACF21 /* GrizzyBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GrizzyBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DDF394BDED582E532893E9AD /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
+		EA45AF3D349EA5C61D89CA03 /* ModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalog.swift; sourceTree = "<group>"; };
+		EFEF0D6BFF53DA0CBF74F153 /* ScriptedRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedRuntime.swift; sourceTree = "<group>"; };
+		F3759CA0FED3BDA9EF99C2D0 /* MessageViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageViews.swift; sourceTree = "<group>"; };
+		F91A2645D5698998169C03B8 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		FB44D631A1BFEC6A49332CEF /* CronTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4BF5E042ABD7EAE89620DB3F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C2155112EEF20821AFBA5AF5 /* libGrizzyBotCore.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		61F51AF03737FC1B112009FB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D109624BFF8F2F13037AA2E0 /* libGrizzyBotCore.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1AE72DC10CE69A4D4D9DF828 /* GrizzyBotCoreTests */ = {
+			isa = PBXGroup;
+			children = (
+				9A9628297E2F6AB290976547 /* AgentToolsTests.swift */,
+				034ABF68635D68B313AA7DEA /* BotHomeWebSearchTests.swift */,
+				FB44D631A1BFEC6A49332CEF /* CronTests.swift */,
+				90E608627E9ED8C81E3D90D8 /* LocalProvidersTests.swift */,
+				CC7102D998178BBA84298757 /* McpClientTests.swift */,
+				080535B053570E1DAF2CA630 /* ScriptedRuntimeTests.swift */,
+				2C8AF18B9C627741E5A510CC /* StoreTests.swift */,
+			);
+			path = GrizzyBotCoreTests;
+			sourceTree = "<group>";
+		};
+		3714BA5BC0C678735A44D2B6 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				1AE72DC10CE69A4D4D9DF828 /* GrizzyBotCoreTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		8174D682D4D9BC1A2A1A58EE = {
+			isa = PBXGroup;
+			children = (
+				B07EC989C9AC5B4529F0474C /* Sources */,
+				3714BA5BC0C678735A44D2B6 /* Tests */,
+				98A3C543FF2ADE49F83E6E40 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		98A3C543FF2ADE49F83E6E40 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DB704FD9B2CDB9B8C40ACF21 /* GrizzyBot.app */,
+				3C22124F7FE82A7C71958B52 /* GrizzyBotCoreTests.xctest */,
+				C3108710D4DD93C34D507A39 /* libGrizzyBotCore.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B07EC989C9AC5B4529F0474C /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				E3CEFAE4CF451DD490A5D9C2 /* GrizzyBot */,
+				FB0E0E6746960B56C9F74B00 /* GrizzyBotCore */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		E3CEFAE4CF451DD490A5D9C2 /* GrizzyBot */ = {
+			isa = PBXGroup;
+			children = (
+				46DAE4FA2D21D33E50DC75AC /* AppSettingsOverlayView.swift */,
+				0BA7B2A255FBC58BB87CF143 /* AuthView.swift */,
+				08FA8FC9AEC1C43764D5736E /* BotAvatarView.swift */,
+				BC342E09BDBE58984F59E04D /* ChatView.swift */,
+				977A76A0FDF8165D787040E5 /* Controls.swift */,
+				D5F5BBB7F1FC532399DE8DE2 /* GrizzyBot.entitlements */,
+				C9A422AE0345B5E77B84BA2E /* GrizzyBotApp.swift */,
+				BED9B320C808B307D93EB780 /* HostComputerPromptView.swift */,
+				A879DE77CAB82A98FA411202 /* MarkdownText.swift */,
+				F3759CA0FED3BDA9EF99C2D0 /* MessageViews.swift */,
+				3F1B5A4A25272D8DE8BEFC36 /* ModelConnectView.swift */,
+				6E36873F55BBBA4961D4F4A4 /* OnboardingView.swift */,
+				8A99E87B9C17655D22331DDC /* PluginsOverlayView.swift */,
+				92038B47C33FBFAFC7237354 /* RightPanelView.swift */,
+				767DB6054B53887215A8925D /* RootView.swift */,
+				A2AD36303A2DBCC7BC06A480 /* RoutineScheduleView.swift */,
+				AE9778D00F176E80CBCAF9FD /* RoutinesPageView.swift */,
+				9FF70036E1B1DB5F93ADFD0E /* ShellView.swift */,
+				F91A2645D5698998169C03B8 /* SidebarView.swift */,
+				21F3B6B0B59AA23B0584273B /* Theme.swift */,
+				98FB56E6A8F0E04C374360D2 /* WelcomeView.swift */,
+			);
+			path = GrizzyBot;
+			sourceTree = "<group>";
+		};
+		FB0E0E6746960B56C9F74B00 /* GrizzyBotCore */ = {
+			isa = PBXGroup;
+			children = (
+				8E31C4FBEF5A687BD0E8757D /* AgentTools.swift */,
+				31F28F0711AD84A51BEAE918 /* BotHome.swift */,
+				33CF45217EF15990999EBA75 /* Cron.swift */,
+				3A13665DC7A54059575E9646 /* LocalProviders.swift */,
+				1EAA172FAC1AB99A08E6AC55 /* McpClient.swift */,
+				EA45AF3D349EA5C61D89CA03 /* ModelCatalog.swift */,
+				4E68757C80AA3F6C31769048 /* Models.swift */,
+				A8FDF1CBE020860BCC818C84 /* OpenMausFeatures.swift */,
+				DDF394BDED582E532893E9AD /* Persistence.swift */,
+				EFEF0D6BFF53DA0CBF74F153 /* ScriptedRuntime.swift */,
+				916FFD0C6C6F1C1DB4E2F235 /* Store.swift */,
+				55D551FCA6542392FDA475B4 /* WebSearch.swift */,
+			);
+			path = GrizzyBotCore;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		21CD727AF02EEE29AF57908C /* GrizzyBotCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A94D47C7C9585A9961B21212 /* Build configuration list for PBXNativeTarget "GrizzyBotCore" */;
+			buildPhases = (
+				8890F4C6603084B48C5996B6 /* Sources */,
+				8E69AD35105EE1B242F543F1 /* Copy Swift Objective-C Interface Header */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GrizzyBotCore;
+			packageProductDependencies = (
+			);
+			productName = GrizzyBotCore;
+			productReference = C3108710D4DD93C34D507A39 /* libGrizzyBotCore.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		4837798EE5DD22679AE0204D /* GrizzyBotCoreTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 310C4D09AF8718C2B1DF9A9D /* Build configuration list for PBXNativeTarget "GrizzyBotCoreTests" */;
+			buildPhases = (
+				B39B2A9DE1E18C7B85D6F843 /* Sources */,
+				4BF5E042ABD7EAE89620DB3F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CD6547977E3C40FEAC931A8B /* PBXTargetDependency */,
+			);
+			name = GrizzyBotCoreTests;
+			packageProductDependencies = (
+			);
+			productName = GrizzyBotCoreTests;
+			productReference = 3C22124F7FE82A7C71958B52 /* GrizzyBotCoreTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		4DED67AB21062EA52562E147 /* GrizzyBot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F39207201F2200D77074F681 /* Build configuration list for PBXNativeTarget "GrizzyBot" */;
+			buildPhases = (
+				BCC09DB40948931F6BD681AD /* Sources */,
+				61F51AF03737FC1B112009FB /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FA3FE516693094E5BEE2D403 /* PBXTargetDependency */,
+			);
+			name = GrizzyBot;
+			packageProductDependencies = (
+			);
+			productName = GrizzyBot;
+			productReference = DB704FD9B2CDB9B8C40ACF21 /* GrizzyBot.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4AB0D8B019E7C200A2E73B88 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					21CD727AF02EEE29AF57908C = {
+						ProvisioningStyle = Automatic;
+					};
+					4837798EE5DD22679AE0204D = {
+						ProvisioningStyle = Automatic;
+					};
+					4DED67AB21062EA52562E147 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 10A85EC0B8A33339379E1A65 /* Build configuration list for PBXProject "GrizzyBot" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 8174D682D4D9BC1A2A1A58EE;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 98A3C543FF2ADE49F83E6E40 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				21CD727AF02EEE29AF57908C /* GrizzyBotCore */,
+				4DED67AB21062EA52562E147 /* GrizzyBot */,
+				4837798EE5DD22679AE0204D /* GrizzyBotCoreTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		8E69AD35105EE1B242F543F1 /* Copy Swift Objective-C Interface Header */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(DERIVED_SOURCES_DIR)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			name = "Copy Swift Objective-C Interface Header";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/include/$(PRODUCT_MODULE_NAME)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8890F4C6603084B48C5996B6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				002000712F9B648B461791FB /* AgentTools.swift in Sources */,
+				1B3E830AD3F520262482FFC9 /* BotHome.swift in Sources */,
+				71A10283014E6CA714B92E7E /* Cron.swift in Sources */,
+				9E2708F345079F8E2E71CDB9 /* LocalProviders.swift in Sources */,
+				8ABB3A13219B3D5D73205E6D /* McpClient.swift in Sources */,
+				B64BB9DAF2F3CC51CA893DEC /* ModelCatalog.swift in Sources */,
+				EF7C483E6C5D471929194F14 /* Models.swift in Sources */,
+				0CAD997F01B7DBA5C5F1EF93 /* OpenMausFeatures.swift in Sources */,
+				67786054E57D901D86FA257D /* Persistence.swift in Sources */,
+				B3084169C569910C1658D873 /* ScriptedRuntime.swift in Sources */,
+				4EB54A526111A5A0F522FD81 /* Store.swift in Sources */,
+				48244E081B4FCD51C4EE0BA9 /* WebSearch.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B39B2A9DE1E18C7B85D6F843 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2ACD1183A80FB2BE5F6D54E3 /* AgentToolsTests.swift in Sources */,
+				7B06747F29BFD784602A65CD /* BotHomeWebSearchTests.swift in Sources */,
+				31C604F87009674137794FC5 /* CronTests.swift in Sources */,
+				E06758F1CD11E18D1E5496C2 /* LocalProvidersTests.swift in Sources */,
+				1BDD175C76D18C304B93A79F /* McpClientTests.swift in Sources */,
+				F5BC86FC50D5FD1EA4188973 /* ScriptedRuntimeTests.swift in Sources */,
+				0895BD5E1460BE67397E9FD3 /* StoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BCC09DB40948931F6BD681AD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7CF60431448BE1F4392DC278 /* AppSettingsOverlayView.swift in Sources */,
+				40E300E19AADDFA37403A433 /* AuthView.swift in Sources */,
+				EC67741901A159D8D707CB5E /* BotAvatarView.swift in Sources */,
+				6F49041F1F18EB74984F2A9D /* ChatView.swift in Sources */,
+				CCFE3A5F1F471C899C72C0C0 /* Controls.swift in Sources */,
+				0825B6C8DF176C162168B0CE /* GrizzyBotApp.swift in Sources */,
+				10C6F1583A6F593B003B67CB /* HostComputerPromptView.swift in Sources */,
+				6FEF6EEED4274EB0912DC251 /* MarkdownText.swift in Sources */,
+				BAA83BD3B6F882B9D61D60EA /* MessageViews.swift in Sources */,
+				846AF1F6C515AECFB760417D /* ModelConnectView.swift in Sources */,
+				83E2E7CFE433835A866E0943 /* OnboardingView.swift in Sources */,
+				62C4471C11DEFE6AB97827A3 /* PluginsOverlayView.swift in Sources */,
+				40471D76E6030BFEC49DB1AC /* RightPanelView.swift in Sources */,
+				00D0E8CE93F22C2184C1C311 /* RootView.swift in Sources */,
+				51591A7BEF499927879EB28E /* RoutineScheduleView.swift in Sources */,
+				AD768C48CA30733DC6389485 /* RoutinesPageView.swift in Sources */,
+				B6FE3347DCA50DBAE42A58DF /* ShellView.swift in Sources */,
+				D7F6B772596BF6184BEAAFC7 /* SidebarView.swift in Sources */,
+				97CC4700DE1377D590B135D2 /* Theme.swift in Sources */,
+				F388D25AA678456E088CDABD /* WelcomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		CD6547977E3C40FEAC931A8B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 21CD727AF02EEE29AF57908C /* GrizzyBotCore */;
+			targetProxy = 7CC722DE997D88119142185F /* PBXContainerItemProxy */;
+		};
+		FA3FE516693094E5BEE2D403 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 21CD727AF02EEE29AF57908C /* GrizzyBotCore */;
+			targetProxy = 55A3A570432C7CB3CDB42BA3 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		24C2C65D13879A214D0587AA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEFINES_MODULE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.grizzybot.core;
+				PRODUCT_NAME = GrizzyBotCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+			};
+			name = Debug;
+		};
+		6E783DC12F72DF33169786A4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/GrizzyBot/GrizzyBot.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				EXECUTABLE_NAME = GrizzyBot;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/GrizzyBot/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_CODE_SIGN_FLAGS = "--timestamp=none";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.grizzybot.app;
+				PRODUCT_NAME = GrizzyBot;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+			};
+			name = Release;
+		};
+		6EA20E77998A8E39BD827DC5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEFINES_MODULE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.grizzybot.core;
+				PRODUCT_NAME = GrizzyBotCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+			};
+			name = Release;
+		};
+		8C4B421B9D8CD551CB8205E8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		AE0D5267A1001E7779390E36 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		D314CED4C4BB6BCA73922D5A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.grizzybot.core.tests;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TEST_HOST = "";
+			};
+			name = Release;
+		};
+		F289E38B0EF90A2CAD566334 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/GrizzyBot/GrizzyBot.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				EXECUTABLE_NAME = GrizzyBot;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/GrizzyBot/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_CODE_SIGN_FLAGS = "--timestamp=none";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.grizzybot.app;
+				PRODUCT_NAME = GrizzyBot;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+			};
+			name = Debug;
+		};
+		FF2CEBAC29A06E238D84E8AD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.grizzybot.core.tests;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TEST_HOST = "";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		10A85EC0B8A33339379E1A65 /* Build configuration list for PBXProject "GrizzyBot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AE0D5267A1001E7779390E36 /* Debug */,
+				8C4B421B9D8CD551CB8205E8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		310C4D09AF8718C2B1DF9A9D /* Build configuration list for PBXNativeTarget "GrizzyBotCoreTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FF2CEBAC29A06E238D84E8AD /* Debug */,
+				D314CED4C4BB6BCA73922D5A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A94D47C7C9585A9961B21212 /* Build configuration list for PBXNativeTarget "GrizzyBotCore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				24C2C65D13879A214D0587AA /* Debug */,
+				6EA20E77998A8E39BD827DC5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F39207201F2200D77074F681 /* Build configuration list for PBXNativeTarget "GrizzyBot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F289E38B0EF90A2CAD566334 /* Debug */,
+				6E783DC12F72DF33169786A4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 4AB0D8B019E7C200A2E73B88 /* Project object */;
+}

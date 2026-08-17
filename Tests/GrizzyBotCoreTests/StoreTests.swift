@@ -46,6 +46,32 @@ struct StoreTests {
         _ = second
     }
 
+    @Test("deleting last bot routes to onboarding")
+    func deleteLastBot() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "last@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Only")
+        store.route = .shell
+        store.deleteBot(bot.id)
+        #expect(store.bots.isEmpty)
+        #expect(store.route == .onboarding)
+    }
+
+    @Test("open computer takes control; release closes overlay")
+    func openComputerWiring() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "ov@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Agent")
+        store.openComputerOverlay()
+        #expect(store.computerOpen)
+        #expect(store.computers[bot.id]?.controlHolder == .user)
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(store.computers[bot.id]?.state == .running)
+        store.release(botId: bot.id)
+        #expect(store.computers[bot.id]?.controlHolder == .bot)
+        #expect(!store.computerOpen)
+    }
+
     @Test("send completes run and records usage")
     func sendLoop() async {
         let store = tempStore()
@@ -131,5 +157,36 @@ struct StoreTests {
         #expect(summary.runs == 2)
         #expect(summary.inputTokens == 15)
         #expect(summary.outputTokens == 27)
+    }
+
+    @Test("clear save export restore and wipe session")
+    func sessionLifecycle() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "sess@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Agent", title: "helper")
+        store.send(botId: bot.id, text: "hello there")
+        try? await Task.sleep(for: .milliseconds(400))
+        #expect(store.activeSessionMessageCount > 0)
+
+        let export = store.exportActiveChat()
+        #expect(export?.messages.isEmpty == false)
+        #expect(store.exportActiveChatJSON() != nil)
+        #expect(store.exportActiveChatMarkdown().contains("hello there"))
+
+        let snap = store.saveWorkspaceSnapshot(name: "Before clear")
+        #expect(snap?.name == "Before clear")
+        #expect(store.listWorkspaceSnapshots().count == 1)
+
+        store.clearActiveChat()
+        #expect(store.activeSessionMessageCount == 0)
+
+        #expect(store.restoreWorkspaceSnapshot(snap!.id))
+        #expect(store.activeSessionMessageCount > 0)
+
+        store.deleteWorkspace()
+        #expect(store.bots.isEmpty)
+        #expect(store.threads.isEmpty)
+        #expect(store.route == .onboarding)
+        #expect(store.listWorkspaceSnapshots().count == 1)
     }
 }

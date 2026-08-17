@@ -35,12 +35,27 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 	<string>NSApplication</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>
 PLIST
 
 cp "$BIN" "$APP/Contents/MacOS/GrizzyBot"
 chmod +x "$APP/Contents/MacOS/GrizzyBot"
+
+# SPM statically links GrizzyBotCore — no Frameworks embed. Ad-hoc sign the bundle.
+codesign --force --sign - --timestamp=none \
+  --entitlements "$ROOT/Sources/GrizzyBot/GrizzyBot.entitlements" \
+  --options runtime \
+  "$APP/Contents/MacOS/GrizzyBot"
+codesign --force --sign - --timestamp=none \
+  --entitlements "$ROOT/Sources/GrizzyBot/GrizzyBot.entitlements" \
+  --options runtime \
+  "$APP"
 
 echo "Built $APP"
 open "$APP"

@@ -4,8 +4,11 @@
 
 # App bundle
 GrizzyBot.app/
-*.xcodeproj/
 DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
 
 # OS / editor
 .DS_Store

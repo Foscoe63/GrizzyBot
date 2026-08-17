@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ShellView: View {
     @Environment(AppStore.self) private var store
+    @State private var heartbeatTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -10,9 +11,15 @@ struct ShellView: View {
                 SidebarView()
                     .frame(width: 316)
 
-                ChatView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Theme.bgMain)
+                Group {
+                    if store.mainView == .routines {
+                        RoutinesPageView()
+                    } else {
+                        ChatView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.bgMain)
 
                 RightPanelView()
                     .frame(width: store.panel == nil ? 0 : 384)
@@ -37,6 +44,14 @@ struct ShellView: View {
                 PluginsOverlayView()
                     .zIndex(20)
             }
+            if store.modelSettingsOpen {
+                ModelSettingsOverlayView()
+                    .zIndex(25)
+            }
+            if store.appSettingsOpen {
+                AppSettingsOverlayView()
+                    .zIndex(28)
+            }
             if store.booting {
                 BootingOverlay(name: store.activeBot?.name ?? "bot")
                     .zIndex(30)
@@ -53,7 +68,79 @@ struct ShellView: View {
                 store.closeComputerOverlay()
                 return .handled
             }
+            if store.appSettingsOpen {
+                store.closeAppSettings()
+                return .handled
+            }
+            if store.modelSettingsOpen {
+                store.closeModelSettings()
+                return .handled
+            }
+            if store.pluginsOpen {
+                store.pluginsOpen = false
+                return .handled
+            }
+            if store.mainView == .routines {
+                store.showChat()
+                return .handled
+            }
             return .ignored
+        }
+        .onKeyPress(characters: CharacterSet(charactersIn: "nN"), phases: .down) { press in
+            guard press.modifiers.contains(.command) else { return .ignored }
+            store.openPanel(.create)
+            return .handled
+        }
+        .onKeyPress(characters: CharacterSet(charactersIn: "123456789"), phases: .down) { press in
+            guard press.modifiers.contains(.command),
+                  !press.modifiers.contains(.shift),
+                  let ch = press.characters.first,
+                  let n = Int(String(ch)) else { return .ignored }
+            store.selectBotByIndex(n - 1)
+            return .handled
+        }
+        .onKeyPress(characters: CharacterSet(charactersIn: "[]"), phases: .down) { press in
+            guard press.modifiers.contains(.command), press.modifiers.contains(.shift),
+                  let ch = press.characters.first else {
+                return .ignored
+            }
+            store.selectAdjacentBot(delta: ch == "[" ? -1 : 1)
+            return .handled
+        }
+        .onChange(of: store.activeBotId) { _, _ in
+            store.closeComputerOverlay()
+        }
+        .onChange(of: store.panel) { _, _ in
+            restartHeartbeat()
+        }
+        .onChange(of: store.computerOpen) { _, _ in
+            restartHeartbeat()
+        }
+        .onAppear { restartHeartbeat() }
+        .onDisappear {
+            heartbeatTask?.cancel()
+            heartbeatTask = nil
+        }
+    }
+
+    /// rakazo pings `computer.heartbeat` every 60s while panel or overlay is open and running.
+    private func restartHeartbeat() {
+        heartbeatTask?.cancel()
+        guard store.panel == .computer || store.computerOpen,
+              let botId = store.activeBotId,
+              store.computers[botId]?.state == .running else {
+            heartbeatTask = nil
+            return
+        }
+        heartbeatTask = Task { @MainActor in
+            store.heartbeat(botId: botId)
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                guard !Task.isCancelled else { return }
+                guard store.panel == .computer || store.computerOpen,
+                      store.computers[botId]?.state == .running else { return }
+                store.heartbeat(botId: botId)
+            }
         }
     }
 }

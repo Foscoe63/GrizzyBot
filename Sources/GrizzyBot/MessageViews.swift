@@ -1,3 +1,4 @@
+import AppKit
 import GrizzyBotCore
 import SwiftUI
 
@@ -6,13 +7,51 @@ struct MessageView: View {
     let botId: String
     @Environment(AppStore.self) private var store
 
+    private let reactionEmojis = ["👍", "👀", "✅", "🔥"]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(message.blocks.enumerated()), id: \.offset) { _, block in
-                blockView(block)
+        VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(message.blocks.enumerated()), id: \.offset) { _, block in
+                    blockView(block)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
+            .contextMenu {
+                Button("Copy") { copyMessage() }
+                if message.role == .bot {
+                    Menu("React") {
+                        ForEach(reactionEmojis, id: \.self) { emoji in
+                            Button(emoji) {
+                                store.toggleReaction(botId: botId, messageId: message.id, emoji: emoji)
+                            }
+                        }
+                    }
+                    Button("Regenerate") {
+                        store.regenerateLast(botId: botId)
+                    }
+                }
+            }
+
+            if !message.reactions.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(message.reactions) { reaction in
+                        Button {
+                            store.toggleReaction(botId: botId, messageId: message.id, emoji: reaction.emoji)
+                        } label: {
+                            Text("\(reaction.emoji) \(reaction.count)")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.textSecondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Theme.bgCard)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
     }
 
     @ViewBuilder
@@ -92,14 +131,187 @@ struct MessageView: View {
         case .computer(let state, let text):
             computerCard(state: state, text: text)
 
-        case .choice, .connect:
-            EmptyView()
+        case .choice(let question, let subtitle, let options):
+            choiceCard(question: question, subtitle: subtitle, options: options)
+
+        case .connect(let name, let initial, let color, let status):
+            connectCard(name: name, initial: initial, color: color, status: status)
+
+        case .approval(let tool, let detail, let status):
+            approvalCard(tool: tool, detail: detail, status: status)
         }
     }
 
     private func bubbleMax(_ fraction: CGFloat) -> CGFloat {
-        // Soft cap used as maxWidth preference; SwiftUI resolves against parent.
         900 * fraction
+    }
+
+    private func copyMessage() {
+        let text = message.blocks.compactMap { block -> String? in
+            switch block {
+            case .text(let t): return t
+            case .ask(let t, _): return t
+            case .progress(let t): return t
+            case .computer(_, let t): return t
+            case .choice(let q, _, _): return q
+            case .approval(let tool, let detail, _): return "\(tool)\n\(detail)"
+            default: return nil
+            }
+        }.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func choiceCard(question: String, subtitle: String?, options: [ChoiceOption]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(question)
+                .font(.system(size: 15.5, weight: .medium))
+                .foregroundStyle(Theme.textBright)
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            VStack(spacing: 8) {
+                ForEach(options, id: \.id) { option in
+                    Button {
+                        store.answerChoice(botId: botId, messageId: message.id, option: option)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text(option.letter)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.textCream)
+                                .frame(width: 24, height: 24)
+                                .background(Theme.bgCream.opacity(0.2))
+                                .clipShape(Circle())
+                            Text(option.label)
+                                .font(.system(size: 14.5))
+                                .foregroundStyle(Theme.textBright)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Theme.bgCard)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Theme.borderListRowsAlt, lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
+        .background(Theme.bgAsk)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Theme.borderAsk, lineWidth: 1)
+        }
+    }
+
+    private func approvalCard(tool: String, detail: String, status: ApprovalStatus) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Approval needed")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.textBright)
+                Spacer()
+                Text(statusLabel(status))
+                    .font(.system(size: 12))
+                    .foregroundStyle(statusColor(status))
+            }
+            Text(tool)
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(Theme.orange)
+            Text(detail)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.bgCode)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            if status == .pending {
+                HStack(spacing: 8) {
+                    approvalButton("Allow", decision: .allow)
+                    approvalButton("Always allow", decision: .alwaysAllow)
+                    approvalButton("Deny", decision: .deny, danger: true)
+                }
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
+        .background(Theme.bgAsk)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Theme.borderAsk, lineWidth: 1)
+        }
+    }
+
+    private func approvalButton(_ title: String, decision: ApprovalDecision, danger: Bool = false) -> some View {
+        Button {
+            store.answerApproval(botId: botId, messageId: message.id, decision: decision)
+        } label: {
+            Text(title)
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundStyle(danger ? Theme.orange : Theme.textCream)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(danger ? Theme.bgDeleteConfirm : Theme.bgCream)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay {
+                    if danger {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Theme.borderDelete, lineWidth: 1)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func statusLabel(_ status: ApprovalStatus) -> String {
+        switch status {
+        case .pending: return "pending"
+        case .allowed: return "allowed"
+        case .denied: return "denied"
+        case .alwaysAllowed: return "always"
+        }
+    }
+
+    private func statusColor(_ status: ApprovalStatus) -> Color {
+        switch status {
+        case .pending: return Theme.amber
+        case .allowed, .alwaysAllowed: return Theme.green
+        case .denied: return Theme.orange
+        }
+    }
+
+    private func connectCard(name: String, initial: String, color: String, status: ConnectStatus) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(Color(hex: color)).frame(width: 36, height: 36)
+                Text(initial)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.system(size: 14.5, weight: .medium))
+                    .foregroundStyle(Theme.textBright)
+                Text(status == .connected ? "Connected" : "Connect to continue")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .frame(maxWidth: bubbleMax(0.6), alignment: .leading)
+        .background(Theme.bgCard)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func subagentCard(
@@ -152,7 +364,7 @@ struct MessageView: View {
             color = Theme.amber
             bg = Color(hex: "#F5A03C").opacity(0.14)
         case .completed:
-            label = "done"
+            label = "completed"
             color = Theme.green
             bg = Color(hex: "#30A24B").opacity(0.14)
         case .failed:
@@ -239,7 +451,7 @@ struct MessageView: View {
             }
             HStack(spacing: 8) {
                 Button {
-                    store.answerAsk(botId: botId)
+                    store.answerAsk(botId: botId, answer: "approved")
                 } label: {
                     Text("Send it")
                         .font(.system(size: 14.5, weight: .medium))

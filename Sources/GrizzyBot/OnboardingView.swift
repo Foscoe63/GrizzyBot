@@ -9,14 +9,6 @@ struct OnboardingView: View {
     }
 
     @State private var step: Step = .model
-    @State private var search = ""
-    @State private var selectedProvider = ModelCatalog.defaultProvider
-    @State private var selectedModelId = ModelCatalog.defaultModelId
-    @State private var apiKey = ""
-    @State private var modelError: String?
-    @State private var signingIn = false
-    @State private var userCode: String?
-    @State private var waitingSignIn = false
 
     @State private var botName = ""
     @State private var botTitle = ""
@@ -80,242 +72,12 @@ struct OnboardingView: View {
 
     // MARK: - Model
 
-    private var filteredProviders: [CatalogEntry] {
-        let q = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let providers = ModelCatalog.providers
-        guard !q.isEmpty else { return providers }
-        return providers.filter { entry in
-            let hay = [
-                entry.provider,
-                entry.providerName ?? "",
-                entry.label,
-                entry.id,
-                entry.billing,
-                entry.oauthLabel ?? "",
-            ].joined(separator: " ").lowercased()
-            return hay.contains(q)
-        }
-    }
-
-    private var selectedEntry: CatalogEntry? {
-        ModelCatalog.models(forProvider: selectedProvider).first(where: { $0.id == selectedModelId })
-            ?? ModelCatalog.models(forProvider: selectedProvider).first
-    }
-
     private var modelStep: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Connect a model")
-                .font(.system(size: 32, weight: .medium))
-                .foregroundStyle(Theme.textBrightAlt)
-
-            Text("GrizzyBot does not pay for model usage. Paste an API key, sign in with ChatGPT, Copilot, or SuperGrok, or skip if this deployment already has a key.")
-                .font(.system(size: 14.5))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.top, 10)
-
-            TextField("Search providers and models", text: $search)
-                .font(.system(size: 15))
-                .foregroundStyle(Theme.textBright)
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(Theme.borderInputsDark, lineWidth: 1)
-                }
-                .padding(.top, 32)
-
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(Array(filteredProviders.enumerated()), id: \.element.provider) { index, entry in
-                        Button {
-                            selectedProvider = entry.provider
-                            if let first = ModelCatalog.models(forProvider: entry.provider).first {
-                                selectedModelId = first.id
-                            }
-                            userCode = nil
-                            waitingSignIn = false
-                            modelError = nil
-                        } label: {
-                            HStack {
-                                Text(entry.providerName ?? entry.provider)
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(Theme.textBright)
-                                Spacer()
-                                Text(ModelCatalog.hint(for: entry))
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Theme.textSecondary)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(
-                                selectedProvider == entry.provider
-                                    ? Theme.bgSelectedRow
-                                    : Color.clear
-                            )
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        if index < filteredProviders.count - 1 {
-                            Divider().background(Theme.borderListRows)
-                        }
-                    }
-                }
-            }
-            .frame(maxHeight: 192)
-            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .stroke(Theme.borderInputsDark, lineWidth: 1)
-            }
-            .padding(.top, 12)
-
-            Text("Model")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.top, 16)
-
-            GrizzySelect(
-                options: ModelCatalog.models(forProvider: selectedProvider).map(\.id),
-                selection: $selectedModelId,
-                style: .field,
-                label: { id in
-                    ModelCatalog.models(forProvider: selectedProvider).first(where: { $0.id == id })?.label ?? id
-                }
-            )
-            .padding(.top, 8)
-
-            if let entry = selectedEntry {
-                Text(entry.billing)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.top, 8)
-
-                if entry.signIn == .deviceCode {
-                    Button {
-                        startDeviceCode(for: entry)
-                    } label: {
-                        Text(signingIn ? "Starting…" : ModelCatalog.signInLabel(for: entry))
-                            .font(.system(size: 14))
-                            .foregroundStyle(Theme.textCream)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 10)
-                            .background(Theme.bgCream)
-                            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(signingIn || waitingSignIn)
-                    .padding(.top, 14)
-
-                    if let userCode, waitingSignIn {
-                        let uri = ModelCatalog.verificationURI(forProvider: entry.provider)
-                            .replacingOccurrences(of: "https://", with: "")
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Enter this code at \(uri)")
-                                .font(.system(size: 14))
-                                .foregroundStyle(Theme.textBright)
-                                .underline()
-                            Text(userCode)
-                                .font(.system(size: 22, design: .monospaced))
-                                .tracking(0.2 * 22 * 0.1)
-                                .foregroundStyle(Theme.textBrightAlt)
-                            Text("Waiting for sign-in…")
-                                .font(.system(size: 13))
-                                .foregroundStyle(Theme.textSecondary)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                .stroke(Theme.borderInputsDark, lineWidth: 1)
-                        }
-                        .padding(.top, 12)
-                    }
-                }
-
-                if entry.auth == .oauth {
-                    Text("This provider cannot paste a key here. Skip if this deployment already has credentials.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.textSecondary)
-                        .padding(.top, 12)
-                } else {
-                    GrizzyField(
-                        label: entry.signIn == .deviceCode ? "Or paste an API key" : "API key",
-                        placeholder: "sk-…",
-                        text: $apiKey,
-                        style: .dark,
-                        secure: true
-                    )
-                    .padding(.top, 12)
-                }
-            }
-
-            if let modelError {
-                Text(modelError)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.orange)
-                    .padding(.top, 10)
-            }
-
-            HStack(spacing: 12) {
-                Button {
-                    continueModel()
-                } label: {
-                    Text("Continue")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Theme.textCream)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(Theme.bgCream)
-                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    step = .bot
-                } label: {
-                    Text("Skip for now")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Theme.textSecondary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.top, 24)
-        }
-    }
-
-    private func startDeviceCode(for entry: CatalogEntry) {
-        signingIn = true
-        modelError = nil
-        userCode = ModelCatalog.makeUserCode()
-        signingIn = false
-        waitingSignIn = true
-        Task {
-            try? await Task.sleep(for: .seconds(4))
-            await MainActor.run {
-                waitingSignIn = false
-                store.saveModelSelection(
-                    provider: entry.provider,
-                    modelId: selectedModelId,
-                    apiKey: apiKey.isEmpty ? nil : apiKey
-                )
-                step = .bot
-            }
-        }
-    }
-
-    private func continueModel() {
-        guard let entry = selectedEntry else { return }
-        if entry.auth != .oauth, entry.auth != .both, apiKey.trimmingCharacters(in: .whitespaces).isEmpty,
-           entry.signIn != .deviceCode {
-            // Allow continue with empty key (deployment may already have one); no hard error.
-        }
-        store.saveModelSelection(
-            provider: selectedProvider,
-            modelId: selectedModelId,
-            apiKey: apiKey.isEmpty ? nil : apiKey
+        ModelConnectView(
+            onContinue: { step = .bot },
+            onSkip: { step = .bot },
+            showSkip: true
         )
-        step = .bot
     }
 
     // MARK: - Bot
@@ -326,11 +88,12 @@ struct OnboardingView: View {
                 .font(.system(size: 32, weight: .medium))
                 .foregroundStyle(Theme.textBrightAlt)
 
-            GrizzyField(placeholder: "Name this bot", text: $botName)
+            GrizzyField(label: "Name", placeholder: "Name this bot", text: $botName)
                 .padding(.top, 32)
-            GrizzyField(placeholder: "Describe what this bot does", text: $botTitle)
+            GrizzyField(label: "Title", placeholder: "Describe what this bot does", text: $botTitle)
                 .padding(.top, 12)
             GrizzyField(
+                label: "Description",
                 placeholder: "What this bot is for",
                 text: $botDescription,
                 axis: .vertical,

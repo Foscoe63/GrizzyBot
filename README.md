@@ -11,8 +11,24 @@ UI and settings mirror the sibling `rakazo` project. Branding is **GrizzyBot**.
 
 ## Build
 
+Swift Package Manager:
+
 ```bash
 swift build
+```
+
+Xcode project (generated from `project.yml` via [XcodeGen](https://github.com/yonaskolb/XcodeGen)):
+
+```bash
+open GrizzyBot.xcodeproj
+# regenerate after editing project.yml:
+xcodegen generate
+```
+
+Or from the CLI:
+
+```bash
+xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot -destination 'platform=macOS' build
 ```
 
 ## Test
@@ -39,7 +55,8 @@ swift run GrizzyBot
 ## Features
 
 - **Welcome / auth / onboarding** — sign up, connect a model (or skip), create your first bot, answer setup questions
-- **Sidebar of bots** — search, status, previews, plugins entry, weekly usage, log out
+- **Local / LAN models** — Ollama, LM Studio, vMLX, oMLX with configurable base URL, LAN discovery, and live model fetch
+- **Sidebar of bots** — search, status, previews, plugins entry, weekly usage, model settings, log out
 - **Chat** — markdown bubbles, cards, asks, subagents, child bots, routines meta, working… pulse, stop
 - **Computer panel** — boot overlay, take control / release, full-window desktop placeholder, this-Mac vs Docker host prompt
 - **Routines** — schedule picker (cron presets), run now

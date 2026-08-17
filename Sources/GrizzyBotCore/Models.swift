@@ -28,6 +28,22 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var status: String
     public var updatedAt: Date
     public var createdAt: Date
+    // OpenMausBot-inspired roster / settings fields
+    public var pinned: Bool
+    public var hidden: Bool
+    public var unread: Bool
+    public var autoApprove: Bool
+    public var speakReplies: Bool
+    public var notifications: Bool
+    public var chiefOfStaff: Bool
+    public var computerMode: ComputerMode
+    public var modelProvider: String?
+    public var modelId: String?
+    public var tasks: [BotTask]
+    public var activeTaskId: String?
+    public var alwaysAllowTools: [String]
+    /// Tools this bot is allowed to use. Missing on decode → all tools enabled.
+    public var enabledTools: [String]
 
     public init(
         id: String,
@@ -42,7 +58,21 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         preview: String = "",
         status: String = "idle",
         updatedAt: Date = .now,
-        createdAt: Date = .now
+        createdAt: Date = .now,
+        pinned: Bool = false,
+        hidden: Bool = false,
+        unread: Bool = false,
+        autoApprove: Bool = false,
+        speakReplies: Bool = false,
+        notifications: Bool = true,
+        chiefOfStaff: Bool = false,
+        computerMode: ComputerMode = .auto,
+        modelProvider: String? = nil,
+        modelId: String? = nil,
+        tasks: [BotTask] = [],
+        activeTaskId: String? = nil,
+        alwaysAllowTools: [String] = [],
+        enabledTools: [String] = AgentToolCatalog.allIds
     ) {
         self.id = id
         self.name = name
@@ -57,6 +87,59 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.status = status
         self.updatedAt = updatedAt
         self.createdAt = createdAt
+        self.pinned = pinned
+        self.hidden = hidden
+        self.unread = unread
+        self.autoApprove = autoApprove
+        self.speakReplies = speakReplies
+        self.notifications = notifications
+        self.chiefOfStaff = chiefOfStaff
+        self.computerMode = computerMode
+        self.modelProvider = modelProvider
+        self.modelId = modelId
+        self.tasks = tasks
+        self.activeTaskId = activeTaskId
+        self.alwaysAllowTools = alwaysAllowTools
+        self.enabledTools = enabledTools
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, title, description, instructions, color, notifyOnFinish, parentBotId
+        case threadId, preview, status, updatedAt, createdAt
+        case pinned, hidden, unread, autoApprove, speakReplies, notifications, chiefOfStaff
+        case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
+        case enabledTools
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        description = try c.decodeIfPresent(String.self, forKey: .description) ?? ""
+        instructions = try c.decodeIfPresent(String.self, forKey: .instructions) ?? ""
+        color = try c.decode(String.self, forKey: .color)
+        notifyOnFinish = try c.decodeIfPresent(Bool.self, forKey: .notifyOnFinish) ?? true
+        parentBotId = try c.decodeIfPresent(String.self, forKey: .parentBotId)
+        threadId = try c.decode(String.self, forKey: .threadId)
+        preview = try c.decodeIfPresent(String.self, forKey: .preview) ?? ""
+        status = try c.decodeIfPresent(String.self, forKey: .status) ?? "idle"
+        updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? .now
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? .now
+        pinned = try c.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+        hidden = try c.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
+        unread = try c.decodeIfPresent(Bool.self, forKey: .unread) ?? false
+        autoApprove = try c.decodeIfPresent(Bool.self, forKey: .autoApprove) ?? false
+        speakReplies = try c.decodeIfPresent(Bool.self, forKey: .speakReplies) ?? false
+        notifications = try c.decodeIfPresent(Bool.self, forKey: .notifications) ?? true
+        chiefOfStaff = try c.decodeIfPresent(Bool.self, forKey: .chiefOfStaff) ?? false
+        computerMode = try c.decodeIfPresent(ComputerMode.self, forKey: .computerMode) ?? .auto
+        modelProvider = try c.decodeIfPresent(String.self, forKey: .modelProvider)
+        modelId = try c.decodeIfPresent(String.self, forKey: .modelId)
+        tasks = try c.decodeIfPresent([BotTask].self, forKey: .tasks) ?? []
+        activeTaskId = try c.decodeIfPresent(String.self, forKey: .activeTaskId)
+        alwaysAllowTools = try c.decodeIfPresent([String].self, forKey: .alwaysAllowTools) ?? []
+        enabledTools = try c.decodeIfPresent([String].self, forKey: .enabledTools) ?? AgentToolCatalog.allIds
     }
 }
 
@@ -118,6 +201,14 @@ public enum MessageBlock: Codable, Sendable, Hashable {
         result: String?
     )
     case childBot(botId: String, name: String, title: String?, status: ChildBotStatus)
+    case approval(tool: String, detail: String, status: ApprovalStatus)
+}
+
+public enum ApprovalStatus: String, Codable, Sendable {
+    case pending
+    case allowed
+    case denied
+    case alwaysAllowed = "always_allowed"
 }
 
 // MARK: - Thread message (rakazo `ThreadMessageSchema`)
@@ -136,6 +227,7 @@ public struct ThreadMessage: Codable, Sendable, Hashable, Identifiable {
     public var blocks: [MessageBlock]
     public var runId: String?
     public var createdAt: Date
+    public var reactions: [MessageReaction]
 
     public init(
         id: String,
@@ -144,7 +236,8 @@ public struct ThreadMessage: Codable, Sendable, Hashable, Identifiable {
         role: MessageRole,
         blocks: [MessageBlock],
         runId: String? = nil,
-        createdAt: Date = .now
+        createdAt: Date = .now,
+        reactions: [MessageReaction] = []
     ) {
         self.id = id
         self.threadId = threadId
@@ -153,6 +246,23 @@ public struct ThreadMessage: Codable, Sendable, Hashable, Identifiable {
         self.blocks = blocks
         self.runId = runId
         self.createdAt = createdAt
+        self.reactions = reactions
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, threadId, seq, role, blocks, runId, createdAt, reactions
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        threadId = try c.decode(String.self, forKey: .threadId)
+        seq = try c.decode(Int.self, forKey: .seq)
+        role = try c.decode(MessageRole.self, forKey: .role)
+        blocks = try c.decode([MessageBlock].self, forKey: .blocks)
+        runId = try c.decodeIfPresent(String.self, forKey: .runId)
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? .now
+        reactions = try c.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
     }
 
     /// First plain-text content, used for the sidebar preview.
@@ -251,19 +361,22 @@ public struct ComputerStatus: Codable, Sendable, Hashable {
     public var state: ComputerState
     public var controlHolder: ControlHolder
     public var screenAvailable: Bool
+    public var lastHeartbeatAt: Date?
 
     public init(
         botId: String,
         kind: SandboxKind = .docker,
         state: ComputerState = .stopped,
         controlHolder: ControlHolder = .none,
-        screenAvailable: Bool = false
+        screenAvailable: Bool = false,
+        lastHeartbeatAt: Date? = nil
     ) {
         self.botId = botId
         self.kind = kind
         self.state = state
         self.controlHolder = controlHolder
         self.screenAvailable = screenAvailable
+        self.lastHeartbeatAt = lastHeartbeatAt
     }
 }
 
@@ -455,6 +568,71 @@ public struct ExportManifest: Codable, Sendable {
         self.routines = routines
         self.files = files
         self.history = history
+    }
+}
+
+/// Chat-only export (current thread), distinct from a full bot manifest.
+public struct ChatSessionExport: Codable, Sendable {
+    public var version: Int
+    public var kind: String
+    public var exportedAt: Date
+    public var threadId: String
+    public var title: String
+    public var botId: String?
+    public var groupId: String?
+    public var messages: [ThreadMessage]
+
+    public init(
+        version: Int = 1,
+        kind: String = "chat",
+        exportedAt: Date = .now,
+        threadId: String,
+        title: String,
+        botId: String? = nil,
+        groupId: String? = nil,
+        messages: [ThreadMessage]
+    ) {
+        self.version = version
+        self.kind = kind
+        self.exportedAt = exportedAt
+        self.threadId = threadId
+        self.title = title
+        self.botId = botId
+        self.groupId = groupId
+        self.messages = messages
+    }
+}
+
+/// Named workspace snapshot stored under Application Support.
+public struct WorkspaceSnapshotMeta: Codable, Sendable, Hashable, Identifiable {
+    public var id: String
+    public var name: String
+    public var savedAt: Date
+    public var botCount: Int
+    public var messageCount: Int
+
+    public init(
+        id: String = Ids.new(),
+        name: String,
+        savedAt: Date = .now,
+        botCount: Int = 0,
+        messageCount: Int = 0
+    ) {
+        self.id = id
+        self.name = name
+        self.savedAt = savedAt
+        self.botCount = botCount
+        self.messageCount = messageCount
+    }
+}
+
+public struct WorkspaceSnapshot: Codable, Sendable {
+    public var meta: WorkspaceSnapshotMeta
+    public var workspace: UserWorkspace
+
+    public init(meta: WorkspaceSnapshotMeta, workspace: UserWorkspace) {
+        self.meta = meta
+        self.workspace = workspace
     }
 }
 

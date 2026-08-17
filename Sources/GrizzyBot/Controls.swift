@@ -1,4 +1,6 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import AppKit
 
 // MARK: - GrizzyButton
 
@@ -257,5 +259,30 @@ extension View {
 struct TrafficLightSpacer: View {
     var body: some View {
         Color.clear.frame(width: 72, height: 12)
+    }
+}
+
+@MainActor
+enum SessionFilePanel {
+    static func save(data: Data, filename: String, utType: UTType) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = filename
+        panel.allowedContentTypes = [utType]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    static func saveText(_ text: String, filename: String) {
+        save(data: Data(text.utf8), filename: filename, utType: .plainText)
+    }
+
+    static func openJSON() -> Data? {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        return try? Data(contentsOf: url)
     }
 }
