@@ -13,6 +13,26 @@
             "request": "attach",
             "name": "Attach to Running App (SweetPad)",
             "description": "Use this if the app is already running to avoid rebuild"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:GrizzyBot}",
+            "name": "Debug GrizzyBot",
+            "target": "GrizzyBot",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug GrizzyBot"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:GrizzyBot}",
+            "name": "Release GrizzyBot",
+            "target": "GrizzyBot",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release GrizzyBot"
         }
     ]
 }

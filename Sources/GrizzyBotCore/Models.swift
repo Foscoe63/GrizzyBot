@@ -44,6 +44,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var alwaysAllowTools: [String]
     /// Tools this bot is allowed to use. Missing on decode → all tools enabled.
     public var enabledTools: [String]
+    /// Skills this bot may load. Missing on decode → all bundled skills.
+    public var enabledSkills: [String]
 
     public init(
         id: String,
@@ -72,7 +74,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         tasks: [BotTask] = [],
         activeTaskId: String? = nil,
         alwaysAllowTools: [String] = [],
-        enabledTools: [String] = AgentToolCatalog.allIds
+        enabledTools: [String] = AgentToolCatalog.allIds,
+        enabledSkills: [String] = BundledSkills.ids
     ) {
         self.id = id
         self.name = name
@@ -101,6 +104,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.activeTaskId = activeTaskId
         self.alwaysAllowTools = alwaysAllowTools
         self.enabledTools = enabledTools
+        self.enabledSkills = enabledSkills
     }
 
     enum CodingKeys: String, CodingKey {
@@ -108,7 +112,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case threadId, preview, status, updatedAt, createdAt
         case pinned, hidden, unread, autoApprove, speakReplies, notifications, chiefOfStaff
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
-        case enabledTools
+        case enabledTools, enabledSkills
     }
 
     public init(from decoder: Decoder) throws {
@@ -140,6 +144,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         activeTaskId = try c.decodeIfPresent(String.self, forKey: .activeTaskId)
         alwaysAllowTools = try c.decodeIfPresent([String].self, forKey: .alwaysAllowTools) ?? []
         enabledTools = try c.decodeIfPresent([String].self, forKey: .enabledTools) ?? AgentToolCatalog.allIds
+        enabledSkills = try c.decodeIfPresent([String].self, forKey: .enabledSkills) ?? BundledSkills.ids
     }
 }
 
@@ -430,15 +435,59 @@ public struct ConnectionItem: Codable, Sendable, Hashable, Identifiable {
     public var logo: String?
     public var connected: Bool
     public var noAuth: Bool
+    public var accountLabel: String?
+    public var tokenHint: String?
+    public var blurb: String
+    public var domain: String?
+    public var viaComposio: Bool
 
     public var id: String { slug }
 
-    public init(slug: String, name: String, logo: String? = nil, connected: Bool = false, noAuth: Bool = false) {
+    public var faviconURL: URL? {
+        guard let domain, !domain.isEmpty else { return nil }
+        return URL(string: "https://www.google.com/s2/favicons?domain=\(domain)&sz=64")
+    }
+
+    public init(
+        slug: String,
+        name: String,
+        logo: String? = nil,
+        connected: Bool = false,
+        noAuth: Bool = false,
+        accountLabel: String? = nil,
+        tokenHint: String? = nil,
+        blurb: String = "",
+        domain: String? = nil,
+        viaComposio: Bool = false
+    ) {
         self.slug = slug
         self.name = name
         self.logo = logo
         self.connected = connected
         self.noAuth = noAuth
+        self.accountLabel = accountLabel
+        self.tokenHint = tokenHint
+        self.blurb = blurb
+        self.domain = domain
+        self.viaComposio = viaComposio
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case slug, name, logo, connected, noAuth, accountLabel, tokenHint, blurb, domain, viaComposio
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        slug = try c.decode(String.self, forKey: .slug)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? slug
+        logo = try c.decodeIfPresent(String.self, forKey: .logo)
+        connected = try c.decodeIfPresent(Bool.self, forKey: .connected) ?? false
+        noAuth = try c.decodeIfPresent(Bool.self, forKey: .noAuth) ?? false
+        accountLabel = try c.decodeIfPresent(String.self, forKey: .accountLabel)
+        tokenHint = try c.decodeIfPresent(String.self, forKey: .tokenHint)
+        blurb = try c.decodeIfPresent(String.self, forKey: .blurb) ?? ""
+        domain = try c.decodeIfPresent(String.self, forKey: .domain)
+        viaComposio = try c.decodeIfPresent(Bool.self, forKey: .viaComposio) ?? false
     }
 }
 
@@ -695,15 +744,55 @@ public struct ThreadData: Codable, Sendable {
     public var cursor: Int
     public var messages: [ThreadMessage]
     public var run: Run?
+    /// Full OpenAI-style transcript (tool calls + results) for the next agent turn.
+    public var llmMessages: [ChatMessage]
+    public var pendingTool: PendingAgentTool?
 
-    public init(threadId: String, cursor: Int = -1, messages: [ThreadMessage] = [], run: Run? = nil) {
+    public init(
+        threadId: String,
+        cursor: Int = -1,
+        messages: [ThreadMessage] = [],
+        run: Run? = nil,
+        llmMessages: [ChatMessage] = [],
+        pendingTool: PendingAgentTool? = nil
+    ) {
         self.threadId = threadId
         self.cursor = cursor
         self.messages = messages
         self.run = run
+        self.llmMessages = llmMessages
+        self.pendingTool = pendingTool
     }
 
     public var nextSeq: Int { cursor + 1 }
+
+    enum CodingKeys: String, CodingKey {
+        case threadId, cursor, messages, run, llmMessages, pendingTool
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        threadId = try c.decode(String.self, forKey: .threadId)
+        cursor = try c.decodeIfPresent(Int.self, forKey: .cursor) ?? -1
+        messages = try c.decodeIfPresent([ThreadMessage].self, forKey: .messages) ?? []
+        run = try c.decodeIfPresent(Run.self, forKey: .run)
+        llmMessages = try c.decodeIfPresent([ChatMessage].self, forKey: .llmMessages) ?? []
+        pendingTool = try c.decodeIfPresent(PendingAgentTool.self, forKey: .pendingTool)
+    }
+}
+
+public struct PendingAgentTool: Codable, Sendable, Equatable {
+    public var name: String
+    public var arguments: String
+    public var tool: String
+    public var detail: String
+
+    public init(name: String, arguments: String, tool: String, detail: String) {
+        self.name = name
+        self.arguments = arguments
+        self.tool = tool
+        self.detail = detail
+    }
 }
 
 // MARK: - ID helper

@@ -18,3 +18,9 @@ xcuserdata/
 # Local agent / MCP (do not commit)
 config.json
 .omo/
+
+# Sparkle EdDSA private key (never commit)
+Scripts/sparkle_eddsa_private.key
+
+# Developer ID team for notarization / iCloud Release entitlements
+Configs/Team.xcconfig

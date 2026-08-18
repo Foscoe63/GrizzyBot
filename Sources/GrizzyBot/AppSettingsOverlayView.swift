@@ -1,3 +1,4 @@
+import AppKit
 import GrizzyBotCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -11,6 +12,7 @@ struct AppSettingsOverlayView: View {
     @State private var composioApi = ""
     @State private var boxToken = ""
     @State private var ttsKey = ""
+    @State private var sentryDSN = ""
     @State private var ttsVoice = "Rachel"
     @State private var computerMode: ComputerMode = .auto
     @State private var mcpName = ""
@@ -20,6 +22,7 @@ struct AppSettingsOverlayView: View {
     @State private var mcpEnv = ""
     @State private var mcpUrl = ""
     @State private var mcpHeaders = ""
+    @State private var editingMcpId: String?
     @State private var snapshotName = ""
     @State private var confirmWipeWorkspace = false
     @State private var sessionNotice: String?
@@ -42,7 +45,10 @@ struct AppSettingsOverlayView: View {
                     .stroke(Theme.borderListRowsAlt, lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.55), radius: 28, y: 12)
+            .accessibilityIdentifier(OverlayA11y.settings)
+            .accessibilityElement(children: .contain)
         }
+        .accessibilityIdentifier(OverlayA11y.settings)
         .onAppear(perform: load)
         .alert("Delete this workspace?", isPresented: $confirmWipeWorkspace) {
             Button("Cancel", role: .cancel) {}
@@ -143,8 +149,56 @@ struct AppSettingsOverlayView: View {
                         .onChange(of: profileEmail) { _, _ in persistProfile() }
 
                         settingsCard(
+                            title: "Background",
+                            subtitle: "Routines keep firing while GrizzyBot is open. Launch at login needs approval in System Settings → Login Items (release builds)."
+                        ) {
+                            Toggle("Show menu bar extra", isOn: Binding(
+                                get: { store.appConfig.showMenuBar },
+                                set: { value in
+                                    var config = store.appConfig
+                                    config.showMenuBar = value
+                                    store.saveAppConfig(config)
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            Toggle("Launch at login", isOn: Binding(
+                                get: { store.appConfig.launchAtLogin },
+                                set: { value in
+                                    var config = store.appConfig
+                                    config.launchAtLogin = value
+                                    store.saveAppConfig(config)
+                                    LoginItemController.setEnabled(value)
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            .padding(.top, 8)
+                        }
+
+                        settingsCard(
+                            title: "Updates",
+                            subtitle: "Sparkle checks GitHub for a signed GrizzyBot DMG. Check for Updates works in Debug; an empty feed means you are already on the latest published build."
+                        ) {
+                            UpdatesSettingsView()
+                        }
+
+                        settingsCard(
+                            title: "Shared memory",
+                            subtitle: "Every bot reads this. Agents can also remember with scope=shared."
+                        ) {
+                            GrizzyField(
+                                placeholder: "Standing facts for the whole workspace",
+                                text: Binding(
+                                    get: { store.sharedMemory },
+                                    set: { store.setSharedMemory($0) }
+                                ),
+                                axis: .vertical,
+                                lineLimit: 4...10
+                            )
+                        }
+
+                        settingsCard(
                             title: "Session",
-                            subtitle: "Save a restore point, export the whole workspace, or wipe it. Chat-level clear/export lives in the Session menu on the chat header."
+                            subtitle: "Save a restore point, export the whole workspace, or wipe it. Backup uses the iCloud container when this build is team-signed, otherwise iCloud Drive’s GrizzyBot Backups folder, then Documents."
                         ) {
                             GrizzyField(label: "Snapshot name", placeholder: "Before experiments", text: $snapshotName)
                             HStack(spacing: 12) {
@@ -160,6 +214,26 @@ struct AppSettingsOverlayView: View {
                                         filename: store.workspaceExportFilename(),
                                         utType: .json
                                     )
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.textSidebarIcon)
+                                Button("Backup to iCloud") {
+                                    if let url = store.writeWorkspaceBackup() {
+                                        sessionNotice = "Saved \(url.lastPathComponent)"
+                                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                                    } else {
+                                        sessionNotice = "Could not write backup"
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.textSidebarIcon)
+                                Button("Restore backup…") {
+                                    guard let data = SessionFilePanel.openJSON() else { return }
+                                    sessionNotice = store.importWorkspaceJSON(data)
+                                        ? "Restored workspace backup"
+                                        : "Not a GrizzyBot workspace backup"
                                 }
                                 .buttonStyle(.plain)
                                 .font(.system(size: 12.5))
@@ -218,21 +292,46 @@ struct AppSettingsOverlayView: View {
                     case .connections:
                         settingsCard(
                             title: "Keys",
-                            subtitle: "Shared by all bots. Stored locally; leave blank to keep an existing key."
+                            subtitle: "Composio Connect turns Plugins into real browser OAuth (Gmail, Slack, GitHub, Box, …). Without Connect, paste an API token per app. Keys stay on this Mac. Clear removes a stored key."
                         ) {
                             secretRow(
                                 title: "Composio Connect",
-                                configured: store.appConfig.composioConfigured,
-                                text: $composioConnect
+                                configured: !(store.appConfig.composioConnectKey ?? "").isEmpty,
+                                text: $composioConnect,
+                                onClear: { store.clearSecret(.composioConnect) }
                             )
-                            secretRow(title: "Composio API", configured: store.appConfig.composioApiKey != nil, text: $composioApi)
+                            secretRow(
+                                title: "Composio API",
+                                configured: store.appConfig.composioApiKey != nil,
+                                text: $composioApi,
+                                onClear: { store.clearSecret(.composioApi) }
+                            )
                                 .padding(.top, 12)
-                            secretRow(title: "Box", configured: store.appConfig.boxConfigured, text: $boxToken)
+                            secretRow(
+                                title: "Box.com",
+                                configured: store.appConfig.boxConfigured,
+                                text: $boxToken,
+                                onClear: { store.clearSecret(.box) }
+                            )
                                 .padding(.top, 12)
+                            Text("Box.com is an optional developer token for the Box plugin when you are not using Composio Connect. It is not the Composio Connect key.")
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.textSecondary)
+                                .padding(.top, 8)
                             GrizzyButton(title: "Save keys", variant: .cream, size: .sm) {
                                 persistKeys()
                             }
                             .padding(.top, 14)
+                        }
+
+                        settingsCard(
+                            title: "Subscription sign-in",
+                            subtitle: "ChatGPT Plus/Pro, Copilot, and SuperGrok. Opens the model Connect sheet — no API key required."
+                        ) {
+                            GrizzyButton(title: "Open model sign-in", variant: .cream, size: .sm) {
+                                store.closeAppSettings()
+                                store.openModelSettings()
+                            }
                         }
 
                     case .computer:
@@ -241,7 +340,7 @@ struct AppSettingsOverlayView: View {
                             subtitle: "Used when a bot’s computer mode is Auto."
                         ) {
                             GrizzySelect(options: ComputerMode.allCases, selection: $computerMode)
-                            Text("Local VM and This Mac modes stay on-device. Cloud desktop is a scripted stub in GrizzyBot.")
+                            Text("This Mac drives the real desktop (Accessibility + Screen Recording). The in-app browser keeps cookies per bot. Cloud desktop is a stub.")
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(Theme.textSecondary)
                                 .padding(.top, 10)
@@ -255,9 +354,14 @@ struct AppSettingsOverlayView: View {
                     case .voice:
                         settingsCard(
                             title: "Text to speech",
-                            subtitle: "Optional ElevenLabs-style key. Speak replies uses this when configured."
+                            subtitle: "With an ElevenLabs key, Speak replies uses ElevenLabs. Without a key, GrizzyBot uses on-device macOS voices. Voice can be a name (Rachel, Adam) or an ElevenLabs voice id."
                         ) {
-                            secretRow(title: "TTS API key", configured: store.appConfig.ttsConfigured, text: $ttsKey)
+                            secretRow(
+                                title: "ElevenLabs API key",
+                                configured: store.appConfig.ttsConfigured,
+                                text: $ttsKey,
+                                onClear: { store.clearSecret(.tts) }
+                            )
                             GrizzyField(label: "Voice", placeholder: "Rachel", text: $ttsVoice)
                                 .padding(.top, 12)
                             GrizzyButton(title: "Save voice", variant: .cream, size: .sm) {
@@ -268,7 +372,7 @@ struct AppSettingsOverlayView: View {
 
                     case .tools:
                         settingsCard(
-                            title: "Add an MCP server",
+                            title: editingMcpId == nil ? "Add an MCP server" : "Edit MCP server",
                             subtitle: "Cursor-style MCP config. Stdio runs a local command; Streamable HTTP posts to an MCP endpoint; HTTP+SSE is the legacy remote transport. Bots call these for real when the tool is enabled."
                         ) {
                             GrizzyField(label: "Name", placeholder: "filesystem", text: $mcpName)
@@ -320,18 +424,32 @@ struct AppSettingsOverlayView: View {
                                 .padding(.top, 8)
                             }
 
-                            GrizzyButton(title: "Add MCP server", variant: .cream, size: .sm) {
-                                addMcpServer()
+                            HStack(spacing: 10) {
+                                GrizzyButton(
+                                    title: editingMcpId == nil ? "Add MCP server" : "Save changes",
+                                    variant: .cream,
+                                    size: .sm,
+                                    disabled: !canAddMcp
+                                ) {
+                                    saveMcpServer()
+                                }
+
+                                if editingMcpId != nil {
+                                    Button("Cancel") {
+                                        clearMcpForm()
+                                    }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 12.5))
+                                    .foregroundStyle(Theme.textSecondary)
+                                }
                             }
                             .padding(.top, 12)
-                            .disabled(!canAddMcp)
-                            .opacity(canAddMcp ? 1 : 0.45)
                         }
 
                         if !store.mcpServers.isEmpty {
                             settingsCard(
                                 title: "MCP servers",
-                                subtitle: "Delete removes the server from every bot’s tool list."
+                                subtitle: "Edit loads the server into the form above. Delete removes it from every bot’s tool list."
                             ) {
                                 ForEach(store.mcpServers) { server in
                                     HStack(alignment: .top, spacing: 10) {
@@ -347,6 +465,11 @@ struct AppSettingsOverlayView: View {
                                                     .padding(.vertical, 2)
                                                     .background(Theme.orange.opacity(0.12))
                                                     .clipShape(Capsule())
+                                                if editingMcpId == server.id {
+                                                    Text("editing")
+                                                        .font(.system(size: 10, weight: .medium))
+                                                        .foregroundStyle(Theme.textGhost)
+                                                }
                                             }
                                             Text(server.summaryLine)
                                                 .font(.system(size: 12))
@@ -354,7 +477,14 @@ struct AppSettingsOverlayView: View {
                                                 .lineLimit(2)
                                         }
                                         Spacer()
+                                        Button("Edit") {
+                                            beginEdit(server)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .font(.system(size: 12.5))
+                                        .foregroundStyle(Theme.textGhost)
                                         Button("Delete") {
+                                            if editingMcpId == server.id { clearMcpForm() }
                                             store.deleteMcpServer(server.id)
                                         }
                                         .buttonStyle(.plain)
@@ -390,6 +520,71 @@ struct AppSettingsOverlayView: View {
                             ForEach(store.knownToolDefinitions) { tool in
                                 defaultToolRow(tool)
                             }
+                        }
+
+                    case .diagnostics:
+                        settingsCard(
+                            title: "Crash reporting",
+                            subtitle: "Sentry receives crashes when a DSN is saved. last-crash.txt is always written locally under Diagnostics."
+                        ) {
+                            secretRow(
+                                title: "Sentry DSN",
+                                configured: store.appConfig.sentryConfigured,
+                                text: $sentryDSN,
+                                onClear: {
+                                    store.clearSecret(.sentry)
+                                    CrashReporting.install(dsn: nil)
+                                }
+                            )
+                            GrizzyButton(title: "Save Sentry DSN", variant: .cream, size: .sm) {
+                                store.applySecret(.sentry, input: sentryDSN)
+                                CrashReporting.startSentry(dsn: store.appConfig.sentryDSN)
+                                sentryDSN = ""
+                                sessionNotice = store.appConfig.sentryConfigured
+                                    ? "Sentry is on"
+                                    : "Sentry DSN cleared — local crash file only"
+                            }
+                            .padding(.top, 12)
+                        }
+
+                        settingsCard(
+                            title: "Last run log",
+                            subtitle: "Tool calls, MCP stderr, and agent errors from this session. Copy this when a run fails."
+                        ) {
+                            Text(store.lastRunLogText())
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundStyle(Theme.textSecondary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            HStack(spacing: 12) {
+                                GrizzyButton(title: "Copy last run log", variant: .cream, size: .sm) {
+                                    let pasteboard = NSPasteboard.general
+                                    pasteboard.clearContents()
+                                    pasteboard.setString(store.lastRunLogText(), forType: .string)
+                                    sessionNotice = "Copied run log"
+                                }
+                                Button("Copy last crash") {
+                                    if let text = CrashReporting.latestCrashText() {
+                                        let pasteboard = NSPasteboard.general
+                                        pasteboard.clearContents()
+                                        pasteboard.setString(text, forType: .string)
+                                        sessionNotice = "Copied crash log"
+                                    } else {
+                                        sessionNotice = "No crash log yet"
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.textSidebarIcon)
+                            }
+                            .padding(.top, 10)
+                            Button("Open diagnostics folder") {
+                                NSWorkspace.shared.open(store.diagnosticsDirectory())
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.textSidebarIcon)
+                            .padding(.top, 8)
                         }
                     }
                 }
@@ -436,7 +631,12 @@ struct AppSettingsOverlayView: View {
         }
     }
 
-    private func secretRow(title: String, configured: Bool, text: Binding<String>) -> some View {
+    private func secretRow(
+        title: String,
+        configured: Bool,
+        text: Binding<String>,
+        onClear: (() -> Void)? = nil
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(title)
@@ -447,6 +647,12 @@ struct AppSettingsOverlayView: View {
                     Text("configured")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.green)
+                    if let onClear {
+                        Button("Clear") { onClear() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.orange)
+                    }
                 }
             }
             GrizzyField(placeholder: configured ? "•••••••• (leave blank to keep)" : "Paste key", text: text, secure: true)
@@ -460,6 +666,7 @@ struct AppSettingsOverlayView: View {
         case .computer: return "▣"
         case .voice: return "♪"
         case .tools: return "⚒"
+        case .diagnostics: return "☰"
         }
     }
 
@@ -506,22 +713,19 @@ struct AppSettingsOverlayView: View {
         .buttonStyle(.plain)
     }
 
-    private func addMcpServer() {
-        let args = mcpArgs
-            .split(whereSeparator: \.isWhitespace)
-            .map(String.init)
-            .filter { !$0.isEmpty }
-        let env = Self.parseEnvLines(mcpEnv)
-        let headers = Self.parseHeaderLines(mcpHeaders)
-        guard store.addMcpServer(
-            name: mcpName,
-            transport: mcpTransport,
-            command: mcpCommand,
-            args: args,
-            env: env,
-            url: mcpUrl,
-            headers: headers
-        ) != nil else { return }
+    private func beginEdit(_ server: McpServer) {
+        editingMcpId = server.id
+        mcpName = server.name
+        mcpTransport = server.transport
+        mcpCommand = server.command
+        mcpArgs = McpConfigText.argsLine(server.args)
+        mcpEnv = McpConfigText.envLines(server.env)
+        mcpUrl = server.url
+        mcpHeaders = McpConfigText.headerLines(server.headers)
+    }
+
+    private func clearMcpForm() {
+        editingMcpId = nil
         mcpName = ""
         mcpCommand = ""
         mcpArgs = ""
@@ -531,30 +735,34 @@ struct AppSettingsOverlayView: View {
         mcpTransport = .stdio
     }
 
-    private static func parseEnvLines(_ text: String) -> [String: String] {
-        var result: [String: String] = [:]
-        for line in text.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, let eq = trimmed.firstIndex(of: "=") else { continue }
-            let key = String(trimmed[..<eq]).trimmingCharacters(in: .whitespaces)
-            let value = String(trimmed[trimmed.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
-            guard !key.isEmpty else { continue }
-            result[key] = value
+    private func saveMcpServer() {
+        let args = McpConfigText.parseArgs(mcpArgs)
+        let env = McpConfigText.parseEnv(mcpEnv)
+        let headers = McpConfigText.parseHeaders(mcpHeaders)
+        if let id = editingMcpId, var existing = store.mcpServers.first(where: { $0.id == id }) {
+            let trimmed = mcpName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            existing.name = trimmed
+            existing.transport = mcpTransport
+            existing.command = mcpCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+            existing.args = args
+            existing.env = env
+            existing.url = mcpUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+            existing.headers = headers
+            store.updateMcpServer(existing)
+            clearMcpForm()
+            return
         }
-        return result
-    }
-
-    private static func parseHeaderLines(_ text: String) -> [String: String] {
-        var result: [String: String] = [:]
-        for line in text.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, let colon = trimmed.firstIndex(of: ":") else { continue }
-            let key = String(trimmed[..<colon]).trimmingCharacters(in: .whitespaces)
-            let value = String(trimmed[trimmed.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
-            guard !key.isEmpty else { continue }
-            result[key] = value
-        }
-        return result
+        guard store.addMcpServer(
+            name: mcpName,
+            transport: mcpTransport,
+            command: mcpCommand,
+            args: args,
+            env: env,
+            url: mcpUrl,
+            headers: headers
+        ) != nil else { return }
+        clearMcpForm()
     }
 
     private func load() {
@@ -567,6 +775,7 @@ struct AppSettingsOverlayView: View {
         composioApi = ""
         boxToken = ""
         ttsKey = ""
+        sentryDSN = ""
     }
 
     private func persistProfile() {
@@ -577,19 +786,17 @@ struct AppSettingsOverlayView: View {
     }
 
     private func persistKeys() {
-        var config = store.appConfig
-        if !composioConnect.isEmpty { config.composioConnectKey = composioConnect }
-        if !composioApi.isEmpty { config.composioApiKey = composioApi }
-        if !boxToken.isEmpty { config.boxToken = boxToken }
-        store.saveAppConfig(config)
+        store.applySecret(.composioConnect, input: composioConnect)
+        store.applySecret(.composioApi, input: composioApi)
+        store.applySecret(.box, input: boxToken)
         composioConnect = ""
         composioApi = ""
         boxToken = ""
     }
 
     private func persistVoice() {
+        store.applySecret(.tts, input: ttsKey)
         var config = store.appConfig
-        if !ttsKey.isEmpty { config.ttsKey = ttsKey }
         config.ttsVoice = ttsVoice.trimmingCharacters(in: .whitespacesAndNewlines)
         store.saveAppConfig(config)
         ttsKey = ""

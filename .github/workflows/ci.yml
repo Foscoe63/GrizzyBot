@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift tests
+        run: swift test
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build app
+        run: xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot -destination 'platform=macOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
+      - name: Overlay snapshots and UI tests
+        run: xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot -destination 'platform=macOS' -configuration Debug test

@@ -29,6 +29,63 @@ struct BotHomeTests {
         #expect(!home.exists(botId: botId, path: "notes/renamed.txt"))
     }
 
+    @Test("shell runs inside the bot home")
+    func shellInHome() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grizzy-home-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let home = BotHomeStore(root: root)
+        let botId = "bot-1"
+        try home.write(botId: botId, path: "notes/a.txt", content: "hi\n")
+        let result = try await home.runShell(botId: botId, command: "pwd && cat notes/a.txt")
+        #expect(result.exitCode == 0)
+        #expect(result.stdout.contains("hi"))
+        #expect(result.stdout.contains(botId) || result.combined.contains("hi"))
+    }
+
+    @Test("seatbelt denies writes outside the bot home")
+    func shellWriteContainment() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grizzy-home-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let home = BotHomeStore(root: root)
+        let botId = "bot-1"
+        try home.write(botId: botId, path: "notes/a.txt", content: "hi\n")
+        let result = try await home.runShell(
+            botId: botId,
+            command: "echo inside > notes/ok.txt"
+        )
+        #expect(result.exitCode == 0, "\(result.combined)")
+        #expect(home.exists(botId: botId, path: "notes/ok.txt"), "\(result.combined)")
+        let blocked = try await home.runShell(
+            botId: botId,
+            command: "echo leaked > /etc/grizzy-sandbox-probe.txt"
+        )
+        #expect(blocked.exitCode != 0)
+        _ = result
+    }
+
+    @Test("reads and lists absolute host paths the user named")
+    func hostReadAndList() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grizzy-home-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let home = BotHomeStore(root: root)
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("host-skills-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let skill = folder.appendingPathComponent("SKILL.md")
+        try "# orchestration\n".write(to: skill, atomically: true, encoding: .utf8)
+
+        let content = try home.readFlexible(botId: "bot-1", path: skill.path)
+        #expect(content.contains("orchestration"))
+        let listed = try home.listFlexible(botId: "bot-1", directory: folder.path)
+        #expect(listed.contains(where: { $0.path.hasSuffix("SKILL.md") }))
+        #expect(throws: BotHomeError.hostDenied) {
+            _ = try home.readFlexible(botId: "bot-1", path: "/tmp/grizzy-deny/.ssh/id_rsa")
+        }
+    }
+
     @Test("rejects path escape")
     func pathEscape() {
         let root = FileManager.default.temporaryDirectory
@@ -54,5 +111,66 @@ struct WebSearchTests {
         #expect(results[0].title == "Example Title")
         #expect(results[0].url == "https://example.com/page")
         #expect(results[0].snippet.contains("short snippet"))
+    }
+
+    @Test("parses lite and result-link markup when result__a is missing")
+    func parseAlternateHTML() {
+        let html = """
+        <a class="result-link" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdocs.composio.dev%2Ftoolkits%2Fbox">Box toolkit</a>
+        <a rel="nofollow" href="https://developer.box.com/guides/authentication/">Box auth guide</a>
+        """
+        let results = WebSearch.parseHTMLResults(html, limit: 5)
+        #expect(results.contains(where: { $0.url.contains("docs.composio.dev") }))
+        #expect(results.contains(where: { $0.url.contains("developer.box.com") }))
+    }
+
+    @Test("detects duckduckgo bot-block pages")
+    func blockedHTML() {
+        let html = """
+        <html><body>Unfortunately, bots are not allowed. If this persists, DuckDuckGo may be blocking this.</body></html>
+        """
+        #expect(WebSearch.isBlockedPage(html))
+        #expect(!WebSearch.isBlockedPage("<a class=\"result__a\" href=\"https://example.com\">Ok</a>"))
+    }
+
+    @Test("parses Wikipedia OpenSearch JSON")
+    func wikipediaOpenSearch() throws {
+        let json = """
+        ["Composio",["Composio"],["Composio is an integration platform."],["https://en.wikipedia.org/wiki/Composio"]]
+        """.data(using: .utf8)!
+        let results = try WebSearch.parseWikipediaOpenSearch(json, limit: 5)
+        #expect(results.count == 1)
+        #expect(results[0].title == "Composio")
+        #expect(results[0].url.contains("wikipedia.org"))
+        #expect(results[0].snippet.contains("integration"))
+    }
+
+    @Test("fetch errors include the HTTP status")
+    func fetchStatusMessage() {
+        let message = WebSearch.fetchFailureMessage(status: 403, bodyPreview: "Forbidden")
+        #expect(message.contains("403"))
+        #expect(message.contains("Forbidden"))
+    }
+}
+
+@Suite("OpenAI stream parse")
+struct StreamParseTests {
+    final class DeltaBox: @unchecked Sendable {
+        var pieces: [String] = []
+    }
+    @Test("emits deltas and joins tool arguments")
+    func sse() throws {
+        let sse = """
+        data: {"choices":[{"delta":{"content":"Hel"}}]}
+        data: {"choices":[{"delta":{"content":"lo"}}]}
+        data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2}}
+        data: [DONE]
+        """.data(using: .utf8)!
+        let box = DeltaBox()
+        let response = try OpenAIChatClient.parseOpenAIStream(sse) { box.pieces.append($0) }
+        #expect(box.pieces == ["Hel", "lo"])
+        #expect(response.text == "Hello")
+        #expect(response.inputTokens == 3)
+        #expect(response.outputTokens == 2)
     }
 }

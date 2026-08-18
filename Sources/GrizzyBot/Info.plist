@@ -15,19 +15,37 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>1.1</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>2</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>NSAccessibilityUsageDescription</key>
+	<string>GrizzyBot uses Accessibility so a bot can see and control this Mac when computer mode is This Mac.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>GrizzyBot agents can open URLs and control this Mac when a bot’s computer mode is This Mac.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>GrizzyBot uses the microphone so you can dictate messages to a bot.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>GrizzyBot captures the screen so a bot can see this Mac when computer mode is This Mac.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>GrizzyBot uses on-device speech recognition to turn dictation into chat text.</string>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/Foscoe63/GrizzyBot/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>FnNhiAPohUZfHb8up9IGyhBc7BgOqZ4X+P+SHDe/9v0=</string>
+	<key>SentryDSN</key>
+	<string>$(SENTRY_DSN)</string>
 </dict>
 </plist>

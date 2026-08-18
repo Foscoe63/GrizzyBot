@@ -13,6 +13,7 @@ struct RightPanelView: View {
     @State private var settingsName = ""
     @State private var settingsTitle = ""
     @State private var settingsDescription = ""
+    @State private var settingsInstructions = ""
     @State private var confirmDelete = false
     @State private var deleting = false
     @State private var settingsError: String?
@@ -63,11 +64,24 @@ struct RightPanelView: View {
 
             ZStack {
                 Theme.bgScreen
-                screenLabel
-                    .font(.system(size: 13.5))
-                    .foregroundStyle(Theme.textMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(16)
+                if store.computerOpen {
+                    screenLabel
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Theme.textMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(16)
+                } else if let bot, let data = AppComputerRuntime.shared.cachedJPEG(for: bot.id),
+                          let image = NSImage(data: data) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    screenLabel
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Theme.textMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(16)
+                }
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture { store.openComputerOverlay() }
@@ -246,6 +260,42 @@ struct RightPanelView: View {
 
             GrizzyField(label: "Name", placeholder: "Name this bot", text: $createName)
                 .padding(.top, 24)
+
+            Text("Start from")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.top, 16)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(BotTemplates.all) { template in
+                    Button {
+                        createName = template.name
+                        createTitle = template.title
+                        createDescription = template.blurb
+                        _ = store.createBot(from: template, name: template.name)
+                        createName = ""
+                        createTitle = ""
+                        createDescription = ""
+                        store.openPanel(nil)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(template.name)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Theme.textBright)
+                            Text(template.blurb)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Theme.bgCard)
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
             GrizzyField(label: "Title", placeholder: "Describe what this bot does", text: $createTitle)
                 .padding(.top, 12)
             GrizzyField(
@@ -310,6 +360,31 @@ struct RightPanelView: View {
                     lineLimit: 4...8
                 )
                 .padding(.top, 12)
+                GrizzyField(
+                    label: "Instructions",
+                    placeholder: "What this bot should always do",
+                    text: $settingsInstructions,
+                    axis: .vertical,
+                    lineLimit: 4...8
+                )
+                .padding(.top, 12)
+
+                Text("Model")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+                GrizzySelect(
+                    options: modelChoices(for: bot),
+                    selection: Binding(
+                        get: { BotModelChoice.current(bot: bot) },
+                        set: { store.setBotModel(bot.id, choice: $0) }
+                    )
+                )
+                .padding(.top, 8)
+                Text("Workspace default uses the model from Connect. Pick a catalog model to override it for this bot only.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 6)
 
                 Text("Color")
                     .font(.system(size: 13))
@@ -389,7 +464,7 @@ struct RightPanelView: View {
                             name: settingsName,
                             title: settingsTitle,
                             description: settingsDescription,
-                            instructions: settingsDescription
+                            instructions: settingsInstructions
                         )
                     } label: {
                         Text("Save")
@@ -503,7 +578,7 @@ struct RightPanelView: View {
             }
             .padding(.top, 18)
 
-            Text("Choose which tools this bot may use.")
+            Text("Choose which tools this bot may use. Disabled tools never appear to the model — the chat header also shows when Shell or Computer are off.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.textMuted)
 
@@ -526,11 +601,21 @@ struct RightPanelView: View {
         }
     }
 
+    private func modelChoices(for bot: Bot) -> [BotModelChoice] {
+        var options = BotModelChoice.choices(workspaceModel: store.modelId)
+        let current = BotModelChoice.current(bot: bot)
+        if !options.contains(current) {
+            options.insert(current, at: 1)
+        }
+        return options
+    }
+
     private func syncSettings() {
         guard let bot, settingsLoadedFor != bot.id else { return }
         settingsName = bot.name
         settingsTitle = bot.title
         settingsDescription = bot.description
+        settingsInstructions = bot.instructions.isEmpty ? bot.description : bot.instructions
         settingsLoadedFor = bot.id
         confirmDelete = false
         settingsError = nil

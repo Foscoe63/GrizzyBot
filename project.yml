@@ -7,12 +7,22 @@ options:
   groupSortPosition: top
   xcodeVersion: "16.0"
 
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.7.0
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: 9.24.0
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "15.0"
     CLANG_ENABLE_MODULES: YES
     ENABLE_TESTABILITY: YES
+    MARKETING_VERSION: "1.1"
+    CURRENT_PROJECT_VERSION: "2"
 
 targets:
   GrizzyBotCore:
@@ -40,18 +50,35 @@ targets:
       - path: Sources/GrizzyBot
         excludes:
           - Info.plist
+          - Resources
     dependencies:
       - target: GrizzyBotCore
+      - package: Sparkle
+        product: Sparkle
+      - package: Sentry
+        product: Sentry
     info:
       path: Sources/GrizzyBot/Info.plist
       properties:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         LSApplicationCategoryType: public.app-category.productivity
+        CFBundleShortVersionString: "1.1"
+        CFBundleVersion: "2"
         NSHighResolutionCapable: true
         NSPrincipalClass: NSApplication
-    entitlements:
-      path: Sources/GrizzyBot/GrizzyBot.entitlements
+        NSMicrophoneUsageDescription: GrizzyBot uses the microphone so you can dictate messages to a bot.
+        NSSpeechRecognitionUsageDescription: GrizzyBot uses on-device speech recognition to turn dictation into chat text.
+        NSAppleEventsUsageDescription: GrizzyBot agents can open URLs and control this Mac when a bot’s computer mode is This Mac.
+        NSScreenCaptureUsageDescription: GrizzyBot captures the screen so a bot can see this Mac when computer mode is This Mac.
+        NSAccessibilityUsageDescription: GrizzyBot uses Accessibility so a bot can see and control this Mac when computer mode is This Mac.
+        SUFeedURL: https://raw.githubusercontent.com/Foscoe63/GrizzyBot/main/appcast.xml
+        SUPublicEDKey: FnNhiAPohUZfHb8up9IGyhBc7BgOqZ4X+P+SHDe/9v0=
+        SUEnableInstallerLauncherService: true
+        SentryDSN: "$(SENTRY_DSN)"
+    configFiles:
+      Debug: Configs/Debug.xcconfig
+      Release: Configs/Release.xcconfig
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.grizzybot.app
@@ -66,11 +93,22 @@ targets:
           - "@executable_path/../Frameworks"
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_IDENTITY: "-"
-        OTHER_CODE_SIGN_FLAGS: "--timestamp=none"
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGN_ENTITLEMENTS: Sources/GrizzyBot/GrizzyBot.entitlements
+          OTHER_CODE_SIGN_FLAGS: "--timestamp=none"
+        Release:
+          CODE_SIGN_IDENTITY: "$(GRIZZYBOT_CODE_SIGN_IDENTITY)"
+          CODE_SIGN_ENTITLEMENTS: "$(GRIZZYBOT_CODE_SIGN_ENTITLEMENTS)"
+          OTHER_CODE_SIGN_FLAGS: "$(GRIZZYBOT_OTHER_CODE_SIGN_FLAGS)"
+          DEVELOPMENT_TEAM: "$(GRIZZYBOT_DEVELOPMENT_TEAM)"
+          CODE_SIGN_STYLE: "$(GRIZZYBOT_CODE_SIGN_STYLE)"
     scheme:
       testTargets:
         - GrizzyBotCoreTests
+        - GrizzyBotAppTests
+        - GrizzyBotUITests
       gatherCoverageData: false
 
   GrizzyBotCoreTests:
@@ -87,6 +125,39 @@ targets:
         SWIFT_STRICT_CONCURRENCY: complete
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Automatic
-        # Host-less unit tests (Swift Testing).
         BUNDLE_LOADER: ""
         TEST_HOST: ""
+
+  GrizzyBotAppTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/GrizzyBotAppTests
+    dependencies:
+      - target: GrizzyBot
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.grizzybot.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_STRICT_CONCURRENCY: complete
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Automatic
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GrizzyBot.app/Contents/MacOS/GrizzyBot"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+
+  GrizzyBotUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: Tests/GrizzyBotUITests
+    dependencies:
+      - target: GrizzyBot
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.grizzybot.app.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Automatic
+        TEST_TARGET_NAME: GrizzyBot
+        MACOSX_DEPLOYMENT_TARGET: "15.0"

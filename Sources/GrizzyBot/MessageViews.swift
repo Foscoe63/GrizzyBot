@@ -8,28 +8,65 @@ struct MessageView: View {
     @Environment(AppStore.self) private var store
 
     private let reactionEmojis = ["👍", "👀", "✅", "🔥"]
+    @State private var copied = false
+    @State private var editing = false
+    @State private var editText = ""
 
     var body: some View {
         VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(message.blocks.enumerated()), id: \.offset) { _, block in
-                    blockView(block)
+            HStack(alignment: .bottom, spacing: 8) {
+                if message.role == .user {
+                    Spacer(minLength: 48)
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
-            .contextMenu {
-                Button("Copy") { copyMessage() }
-                if message.role == .bot {
-                    Menu("React") {
-                        ForEach(reactionEmojis, id: \.self) { emoji in
-                            Button(emoji) {
-                                store.toggleReaction(botId: botId, messageId: message.id, emoji: emoji)
-                            }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(message.blocks.enumerated()), id: \.offset) { _, block in
+                        blockView(block)
+                    }
+                }
+                .contextMenu {
+                    Button("Copy") { copyMessage() }
+                    if message.role == .user {
+                        Button("Edit & resend") {
+                            editText = message.firstText
+                            editing = true
+                        }
+                        Button("Branch from here") {
+                            _ = store.branchFromMessage(botId: botId, messageId: message.id)
+                        }
+                        Button("Regenerate") {
+                            store.regenerateFrom(botId: botId, messageId: message.id)
                         }
                     }
-                    Button("Regenerate") {
-                        store.regenerateLast(botId: botId)
+                    if message.role == .bot {
+                        Menu("React") {
+                            ForEach(reactionEmojis, id: \.self) { emoji in
+                                Button(emoji) {
+                                    store.toggleReaction(botId: botId, messageId: message.id, emoji: emoji)
+                                }
+                            }
+                        }
+                        Button("Regenerate") {
+                            store.regenerateFrom(botId: botId, messageId: message.id)
+                        }
+                        Button("Branch from here") {
+                            _ = store.branchFromMessage(botId: botId, messageId: message.id)
+                        }
+                        Button("Speak") {
+                            ReplySpeaker.speak(
+                                message.firstText,
+                                voiceName: store.appConfig.ttsVoice,
+                                apiKey: store.appConfig.ttsKey
+                            )
+                        }
                     }
+                }
+
+                if canCopy {
+                    copyButton
+                }
+                if message.role != .user {
+                    Spacer(minLength: 48)
                 }
             }
 
@@ -69,7 +106,8 @@ struct MessageView: View {
             .padding(.vertical, 4)
 
         case .progress(let text):
-            MarkdownText(source: text, streaming: true, textColor: Theme.textPrimary, fontSize: 15.5)
+            let visible = StreamText.visible(text)
+            MarkdownText(source: visible.isEmpty ? "thinking…" : visible, streaming: true, textColor: Theme.textPrimary, fontSize: 15.5)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 12)
                 .background(Theme.bgBubble)
@@ -84,22 +122,60 @@ struct MessageView: View {
 
         case .text(let text):
             if message.role == .user {
-                Text(text)
-                    .font(.system(size: 15.5))
-                    .foregroundStyle(Theme.textUserBubble)
-                    .lineSpacing(15.5 * 0.45)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
-                    .background(Theme.bgCream)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                if editing {
+                    VStack(alignment: .trailing, spacing: 8) {
+                        TextField("Edit message", text: $editText, axis: .vertical)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 15.5))
+                            .foregroundStyle(Theme.textUserBubble)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 12)
+                            .background(Theme.bgCream)
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        HStack {
+                            Button("Cancel") { editing = false }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.textSecondary)
+                            Button("Save & run") {
+                                store.editUserMessage(botId: botId, messageId: message.id, text: editText)
+                                editing = false
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.textCream)
+                        }
+                    }
                     .frame(maxWidth: bubbleMax(0.70), alignment: .trailing)
+                } else {
+                    Text(text)
+                        .font(.system(size: 15.5))
+                        .foregroundStyle(Theme.textUserBubble)
+                        .lineSpacing(15.5 * 0.45)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .background(Theme.bgCream)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .frame(maxWidth: bubbleMax(0.70), alignment: .trailing)
+                }
             } else {
-                MarkdownText(source: text, textColor: Theme.textPrimary, fontSize: 15.5)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
-                    .background(Theme.bgBubble)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
+                HStack(alignment: .bottom, spacing: 8) {
+                    MarkdownText(source: text, textColor: Theme.textPrimary, fontSize: 15.5)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .background(Theme.bgBubble)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    Button {
+                        ReplySpeaker.speak(text, voiceName: store.appConfig.ttsVoice, apiKey: store.appConfig.ttsKey)
+                    } label: {
+                        Text("♪")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.textLetter)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Speak this reply")
+                }
+                .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
             }
 
         case .card(let lines):
@@ -146,20 +222,49 @@ struct MessageView: View {
         900 * fraction
     }
 
-    private func copyMessage() {
-        let text = message.blocks.compactMap { block -> String? in
+    private var copyableText: String {
+        message.blocks.compactMap { block -> String? in
             switch block {
             case .text(let t): return t
             case .ask(let t, _): return t
-            case .progress(let t): return t
+            case .progress(let t): return StreamText.visible(t)
             case .computer(_, let t): return t
             case .choice(let q, _, _): return q
             case .approval(let tool, let detail, _): return "\(tool)\n\(detail)"
             default: return nil
             }
         }.joined(separator: "\n")
+    }
+
+    private var canCopy: Bool {
+        !copyableText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var copyButton: some View {
+        Button {
+            copyMessage()
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(copied ? Theme.green : Theme.textLetter)
+                .frame(width: 22, height: 22)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .help(copied ? "Copied" : "Copy")
+        .accessibilityLabel("Copy")
+    }
+
+    private func copyMessage() {
+        let text = copyableText
+        guard !text.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        copied = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.2))
+            copied = false
+        }
     }
 
     private func choiceCard(question: String, subtitle: String?, options: [ChoiceOption]) -> some View {

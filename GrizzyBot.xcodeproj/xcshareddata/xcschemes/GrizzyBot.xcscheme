@@ -50,6 +50,28 @@
                ReferencedContainer = "container:GrizzyBot.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "3C13EA0D1B0B9BA760B455FC"
+               BuildableName = "GrizzyBotAppTests.xctest"
+               BlueprintName = "GrizzyBotAppTests"
+               ReferencedContainer = "container:GrizzyBot.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "82E8038B0139887959C006C5"
+               BuildableName = "GrizzyBotUITests.xctest"
+               BlueprintName = "GrizzyBotUITests"
+               ReferencedContainer = "container:GrizzyBot.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

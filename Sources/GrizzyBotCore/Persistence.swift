@@ -22,6 +22,8 @@ public struct UserWorkspace: Codable, Sendable {
     public var appConfig: AppConfig
     public var customTools: [CustomAgentTool]
     public var mcpServers: [McpServer]
+    public var oauthJSON: String?
+    public var connectionSecrets: [String: String]
 
     public init(
         bots: [Bot] = [],
@@ -41,7 +43,9 @@ public struct UserWorkspace: Codable, Sendable {
         groups: [GroupRoom] = [],
         appConfig: AppConfig = AppConfig(),
         customTools: [CustomAgentTool] = [],
-        mcpServers: [McpServer] = []
+        mcpServers: [McpServer] = [],
+        oauthJSON: String? = nil,
+        connectionSecrets: [String: String] = [:]
     ) {
         self.bots = bots
         self.threads = threads
@@ -61,12 +65,14 @@ public struct UserWorkspace: Codable, Sendable {
         self.appConfig = appConfig
         self.customTools = customTools
         self.mcpServers = mcpServers
+        self.oauthJSON = oauthJSON
+        self.connectionSecrets = connectionSecrets
     }
 
     enum CodingKeys: String, CodingKey {
         case bots, threads, routines, computers, connections, usage, memory, files
         case deployment, modelProvider, modelId, apiKey, modelBaseUrl, fetchedModels
-        case groups, appConfig, customTools, mcpServers
+        case groups, appConfig, customTools, mcpServers, oauthJSON, connectionSecrets
     }
 
     public init(from decoder: Decoder) throws {
@@ -89,24 +95,42 @@ public struct UserWorkspace: Codable, Sendable {
         appConfig = try c.decodeIfPresent(AppConfig.self, forKey: .appConfig) ?? AppConfig()
         customTools = try c.decodeIfPresent([CustomAgentTool].self, forKey: .customTools) ?? []
         mcpServers = try c.decodeIfPresent([McpServer].self, forKey: .mcpServers) ?? []
+        oauthJSON = try c.decodeIfPresent(String.self, forKey: .oauthJSON)
+        connectionSecrets = try c.decodeIfPresent([String: String].self, forKey: .connectionSecrets) ?? [:]
     }
 }
 
-/// Built-in plugin catalog (~12 OAuth-style apps).
+/// Built-in plugin catalog. Connect uses Composio OAuth when a Connect key is set.
 public enum ConnectionCatalog {
     public static let defaults: [ConnectionItem] = [
-        ConnectionItem(slug: "gmail", name: "Gmail"),
-        ConnectionItem(slug: "slack", name: "Slack"),
-        ConnectionItem(slug: "github", name: "GitHub"),
-        ConnectionItem(slug: "notion", name: "Notion"),
-        ConnectionItem(slug: "linear", name: "Linear"),
-        ConnectionItem(slug: "google-calendar", name: "Google Calendar"),
-        ConnectionItem(slug: "hubspot", name: "HubSpot"),
-        ConnectionItem(slug: "salesforce", name: "Salesforce"),
-        ConnectionItem(slug: "jira", name: "Jira"),
-        ConnectionItem(slug: "trello", name: "Trello"),
-        ConnectionItem(slug: "asana", name: "Asana"),
-        ConnectionItem(slug: "intercom", name: "Intercom"),
+        ConnectionItem(slug: "gmail", name: "Gmail", blurb: "Read and send email", domain: "gmail.com"),
+        ConnectionItem(slug: "slack", name: "Slack", blurb: "Post updates and read channels", domain: "slack.com"),
+        ConnectionItem(slug: "github", name: "GitHub", blurb: "Issues, pull requests, and code", domain: "github.com"),
+        ConnectionItem(slug: "notion", name: "Notion", blurb: "Pages and databases", domain: "notion.so"),
+        ConnectionItem(slug: "linear", name: "Linear", blurb: "Issues and project tracking", domain: "linear.app"),
+        ConnectionItem(slug: "google-calendar", name: "Google Calendar", blurb: "Read and create events", domain: "calendar.google.com"),
+        ConnectionItem(slug: "google-sheets", name: "Google Sheets", blurb: "Read and update spreadsheets", domain: "sheets.google.com"),
+        ConnectionItem(slug: "google-docs", name: "Google Docs", blurb: "Read and write documents", domain: "docs.google.com"),
+        ConnectionItem(slug: "google-drive", name: "Google Drive", blurb: "Browse and manage files", domain: "drive.google.com"),
+        ConnectionItem(slug: "hubspot", name: "HubSpot", blurb: "CRM search and updates", domain: "hubspot.com"),
+        ConnectionItem(slug: "salesforce", name: "Salesforce", blurb: "CRM records and reports", domain: "salesforce.com"),
+        ConnectionItem(slug: "jira", name: "Jira", blurb: "Issues and sprints", domain: "atlassian.com"),
+        ConnectionItem(slug: "trello", name: "Trello", blurb: "Boards and cards", domain: "trello.com"),
+        ConnectionItem(slug: "asana", name: "Asana", blurb: "Tasks and projects", domain: "asana.com"),
+        ConnectionItem(slug: "intercom", name: "Intercom", blurb: "Inbox and conversations", domain: "intercom.com"),
+        ConnectionItem(slug: "discord", name: "Discord", blurb: "Messages and channels", domain: "discord.com"),
+        ConnectionItem(slug: "x", name: "X (Twitter)", blurb: "Post and read on X", domain: "x.com"),
+        ConnectionItem(slug: "stripe", name: "Stripe", blurb: "Payments and customers", domain: "stripe.com"),
+        ConnectionItem(slug: "dropbox", name: "Dropbox", blurb: "Files and folders", domain: "dropbox.com"),
+        ConnectionItem(
+            slug: "box",
+            name: "Box",
+            tokenHint: "Box developer token",
+            blurb: "Files and folders on Box.com",
+            domain: "box.com"
+        ),
+        ConnectionItem(slug: "figma", name: "Figma", blurb: "Files and comments", domain: "figma.com"),
+        ConnectionItem(slug: "airtable", name: "Airtable", blurb: "Bases and records", domain: "airtable.com"),
     ]
 }
 
@@ -179,6 +203,16 @@ public struct Persistence: Sendable {
 
     public func encodeJSON<T: Encodable>(_ value: T) throws -> Data {
         try Self.encoder.encode(value)
+    }
+
+    public func decodeJSON<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        try Self.decoder.decode(type, from: data)
+    }
+
+    public var diagnosticsDirectory: URL {
+        let dir = root.appendingPathComponent("Diagnostics", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
     }
 
     // MARK: - Workspace snapshots

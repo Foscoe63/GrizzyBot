@@ -76,4 +76,21 @@ struct AgentToolsTests {
         bot.setAllTools(enabled: true)
         #expect(bot.allToolsEnabled)
     }
+
+    @Test("MCP env and header text round-trips")
+    func mcpConfigText() {
+        let env = McpConfigText.parseEnv(" API_KEY=abc \nEMPTY=\n# skip\nPATH=/usr/bin")
+        #expect(env["API_KEY"] == "abc")
+        #expect(env["EMPTY"] == "")
+        #expect(env["PATH"] == "/usr/bin")
+        #expect(env["# skip"] == nil)
+        #expect(McpConfigText.envLines(["B": "2", "A": "1"]) == "A=1\nB=2")
+
+        let headers = McpConfigText.parseHeaders("Authorization: Bearer x\nX-Foo: bar")
+        #expect(headers["Authorization"] == "Bearer x")
+        #expect(headers["X-Foo"] == "bar")
+        #expect(McpConfigText.headerLines(["Z": "9", "A": "1"]) == "A: 1\nZ: 9")
+        #expect(McpConfigText.parseArgs(" -y  @pkg  /tmp ") == ["-y", "@pkg", "/tmp"])
+        #expect(McpConfigText.argsLine(["-y", "@pkg"]) == "-y @pkg")
+    }
 }

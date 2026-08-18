@@ -26,6 +26,7 @@ struct ModelConnectView: View {
     @State private var signingIn = false
     @State private var userCode: String?
     @State private var waitingSignIn = false
+    @State private var deviceURI: String?
 
     private var isLocal: Bool { LocalProviders.isLocal(selectedProvider) }
 
@@ -89,6 +90,9 @@ struct ModelConnectView: View {
                 .font(.system(size: 14.5))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.top, 10)
+
+            subscriptionSignIn
+                .padding(.top, 24)
 
             TextField("Search providers and models", text: $search)
                 .font(.system(size: 15))
@@ -186,6 +190,44 @@ struct ModelConnectView: View {
     }
 
     // MARK: - Sections
+
+    private var subscriptionSignIn: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Sign in with a subscription")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.textBright)
+            Text("ChatGPT Plus/Pro, GitHub Copilot, and SuperGrok use a browser code — you do not need to paste an API key.")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textSecondary)
+            HStack(spacing: 8) {
+                ForEach(ModelCatalog.deviceCodeProviders) { entry in
+                    Button {
+                        selectedProvider = entry.provider
+                        selectedModelId = entry.id
+                        startDeviceCode(for: entry)
+                    } label: {
+                        Text(ModelCatalog.signInLabel(for: entry))
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(Theme.textCream)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Theme.bgCream)
+                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(signingIn || waitingSignIn)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.bgCard)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Theme.orange.opacity(0.35), lineWidth: 1)
+        }
+    }
 
     private var providerRail: some View {
         ScrollView {
@@ -397,7 +439,7 @@ struct ModelConnectView: View {
         .padding(.top, 14)
 
                     if let userCode, waitingSignIn {
-                        let uri = ModelCatalog.verificationURI(forProvider: entry.provider)
+                        let uri = deviceURI ?? ModelCatalog.verificationURI(forProvider: entry.provider)
                         let display = uri.replacingOccurrences(of: "https://", with: "")
                         VStack(alignment: .leading, spacing: 10) {
                             Button {
@@ -534,21 +576,45 @@ struct ModelConnectView: View {
     private func startDeviceCode(for entry: CatalogEntry) {
         signingIn = true
         modelError = nil
-        userCode = ModelCatalog.makeUserCode()
-        signingIn = false
-        waitingSignIn = true
-        let uri = ModelCatalog.verificationURI(forProvider: entry.provider)
-        if let url = URL(string: uri) {
-            NSWorkspace.shared.open(url)
-        }
         Task {
-            try? await Task.sleep(for: .seconds(4))
-            await MainActor.run {
-                waitingSignIn = false
-                persistSelection()
-                onContinue?()
+            do {
+                let session = try await DeviceCodeAuth.begin(provider: entry.provider)
+                await MainActor.run {
+                    userCode = session.userCode
+                    deviceURI = session.verificationURI
+                    signingIn = false
+                    waitingSignIn = true
+                    if let url = URL(string: session.verificationURI) {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                try await pollDevice(session, modelId: selectedModelId.isEmpty ? entry.id : selectedModelId)
+            } catch {
+                await MainActor.run {
+                    signingIn = false
+                    waitingSignIn = false
+                    modelError = error.localizedDescription
+                }
             }
         }
+    }
+
+    private func pollDevice(_ session: DeviceCodeSession, modelId: String) async throws {
+        while Date() < session.expiresAt {
+            try await Task.sleep(for: .seconds(max(session.interval, 3)))
+            do {
+                let cred = try await DeviceCodeAuth.poll(session)
+                await MainActor.run {
+                    waitingSignIn = false
+                    store.saveOAuthCredential(cred, provider: session.provider, modelId: modelId)
+                    onContinue?()
+                }
+                return
+            } catch DeviceCodeError.pending {
+                continue
+            }
+        }
+        throw DeviceCodeError.expired
     }
 
     private func continueModel() {
@@ -620,11 +686,14 @@ struct ModelSettingsOverlayView: View {
             .frame(width: 640, height: 720)
             .background(Theme.bgPluginsCard)
             .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .accessibilityIdentifier(OverlayA11y.model)
             .overlay {
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .stroke(Theme.borderListRowsAlt, lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.55), radius: 40, y: 20)
         }
+        .accessibilityIdentifier(OverlayA11y.model)
+        .accessibilityElement(children: .contain)
     }
 }

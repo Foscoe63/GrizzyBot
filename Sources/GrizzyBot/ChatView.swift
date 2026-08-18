@@ -1,5 +1,6 @@
 import GrizzyBotCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @Environment(AppStore.self) private var store
@@ -11,6 +12,11 @@ struct ChatView: View {
     @State private var confirmDeleteChat = false
     @State private var snapshotName = ""
     @State private var sessionNotice: String?
+    @State private var pendingFiles: [URL] = []
+    @State private var dictation = DictationSession()
+    @State private var searchQuery = ""
+    @State private var searchThisThread = false
+    @State private var pasteOverride = false
 
     private var bot: Bot? { store.activeBot }
     private var group: GroupRoom? {
@@ -21,6 +27,9 @@ struct ChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            if store.chatSearchOpen {
+                chatSearchBar
+            }
             if let group {
                 groupMessages(group)
                 groupInputBar(group)
@@ -33,6 +42,9 @@ struct ChatView: View {
                             .foregroundStyle(Theme.textSecondary)
                     }
             } else {
+                if let banner = bot.flatMap({ BotCapabilitySummary.of($0).banner }) {
+                    capabilityBanner(banner)
+                }
                 messages
                 inputBar
             }
@@ -40,9 +52,17 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: store.activeBotId) { _, _ in
             draft = ""
+            pendingFiles = []
         }
         .onChange(of: store.activeGroupId) { _, _ in
             draft = ""
+            pendingFiles = []
+        }
+        .onChange(of: store.pendingComposerText) { _, text in
+            if let text {
+                draft = text
+                store.pendingComposerText = nil
+            }
         }
     }
 
@@ -83,6 +103,26 @@ struct ChatView: View {
                 taskPicker(bot)
             }
             Spacer()
+            if group == nil, let bot, store.canUndoSend(botId: bot.id) {
+                Button("Undo send") {
+                    if let text = store.undoSend(botId: bot.id) {
+                        draft = text
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textSecondary)
+            }
+            Button {
+                store.chatSearchOpen.toggle()
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13))
+                    .foregroundStyle(store.chatSearchOpen ? Theme.orange : Theme.textSecondary)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .help("Search chats")
             sessionMenu
             if group == nil {
                 Button {
@@ -134,6 +174,13 @@ struct ChatView: View {
                     sessionNotice = "Not a chat export"
                 }
             }
+            Button("Undo send") {
+                if let bot, let text = store.undoSend(botId: bot.id) {
+                    draft = text
+                    sessionNotice = "Send undone"
+                }
+            }
+            .disabled(bot.map { !store.canUndoSend(botId: $0.id) } ?? true)
             Divider()
             Button("Clear chat…", role: .destructive) {
                 confirmClearChat = true
@@ -237,6 +284,84 @@ struct ChatView: View {
         }
     }
 
+    private func capabilityBanner(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(Theme.orange)
+            Text(text)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button("Tools") {
+                store.openPanel(.settings)
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 12.5))
+            .foregroundStyle(Theme.textSidebarIcon)
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 10)
+        .background(Theme.orange.opacity(0.08))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.borderMainHdr).frame(height: 1)
+        }
+    }
+
+    private var chatSearchBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                TextField("Search chats", text: $searchQuery)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textBright)
+                Toggle("This thread", isOn: $searchThisThread)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textSecondary)
+                Button("Done") {
+                    store.closeChatSearch()
+                    searchQuery = ""
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textSecondary)
+            }
+            let hits = store.searchChats(query: searchQuery, currentThreadOnly: searchThisThread)
+            if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 {
+                if hits.isEmpty {
+                    Text("No matches")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textMuted)
+                } else {
+                    ForEach(hits.prefix(12)) { hit in
+                        Button {
+                            store.jumpToSearchHit(hit)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(hit.botName)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Theme.textLetter)
+                                Text(hit.snippet)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.textBright)
+                                    .lineLimit(2)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 10)
+        .background(Theme.bgCard)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.borderMainHdr).frame(height: 1)
+        }
+    }
+
     private var messages: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -245,6 +370,12 @@ struct ChatView: View {
                         ForEach(store.messages(for: bot.id)) { message in
                             MessageView(message: message, botId: bot.id)
                                 .id(message.id)
+                                .overlay {
+                                    if store.highlightMessageId == message.id {
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(Theme.orange, lineWidth: 1)
+                                    }
+                                }
                         }
                         if store.isRunActive(botId: bot.id) {
                             Text("working…")
@@ -265,14 +396,23 @@ struct ChatView: View {
             }
             .grizzyScroll()
             .onChange(of: bot.map { store.messages(for: $0.id).count } ?? 0) { _, _ in
-                if let last = bot.flatMap({ store.messages(for: $0.id).last }) {
-                    withAnimation {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
+                scrollToLatest(proxy: proxy)
+            }
+            .onChange(of: store.highlightMessageId) { _, id in
+                if let id {
+                    withAnimation { proxy.scrollTo(id, anchor: .center) }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func scrollToLatest(proxy: ScrollViewProxy) {
+        if let last = bot.flatMap({ store.messages(for: $0.id).last }) {
+            withAnimation {
+                proxy.scrollTo(last.id, anchor: .bottom)
+            }
+        }
     }
 
     private func groupMessages(_ group: GroupRoom) -> some View {
@@ -306,61 +446,164 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var pasteWarning: String? {
+        let local = LocalProviders.isLocal(bot?.modelProvider ?? store.modelProvider ?? "")
+        if pasteOverride { return nil }
+        return PasteGuard.warning(for: draft, localModel: local)
+    }
+
     private var inputBar: some View {
-        HStack(spacing: 14) {
-            Text("+")
-                .font(.system(size: 18))
-                .foregroundStyle(Theme.textLetter)
-                .frame(width: 34, height: 34)
-                .overlay {
-                    Circle().stroke(Theme.borderInputsDark, lineWidth: 1)
+        VStack(alignment: .leading, spacing: 8) {
+            if let pasteWarning {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(pasteWarning)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Send anyway") {
+                        pasteOverride = true
+                        send()
+                    }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textSidebarIcon)
                 }
-
-            TextField(
-                bot.map { "Message \($0.name)" } ?? "Message",
-                text: $draft
-            )
-            .font(.system(size: 15.5))
-            .foregroundStyle(Theme.textInput)
-            .textFieldStyle(.plain)
-            .onSubmit { send() }
-
-            Button {
-                if let bot, store.isRunActive(botId: bot.id) {
-                    store.stopRun(botId: bot.id)
-                } else {
-                    send()
-                }
-            } label: {
-                Text(bot.map { store.isRunActive(botId: $0.id) } == true ? "■" : "↑")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Theme.textCream)
-                    .frame(width: 36, height: 36)
-                    .background(Theme.bgCream)
-                    .clipShape(Circle())
+                .padding(.horizontal, 28)
             }
-            .buttonStyle(.plain)
+            if !pendingFiles.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(pendingFiles, id: \.path) { url in
+                        HStack(spacing: 6) {
+                            Text(url.lastPathComponent)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.textGhost)
+                                .lineLimit(1)
+                            Button {
+                                pendingFiles.removeAll { $0 == url }
+                            } label: {
+                                Text("✕")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Theme.bgCard)
+                        .clipShape(Capsule())
+                    }
+                }
+                .padding(.horizontal, 28)
+            }
+            if dictation.isListening, !dictation.transcript.isEmpty {
+                Text(dictation.transcript)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.orange)
+                    .padding(.horizontal, 28)
+            }
+            if let error = dictation.error {
+                Text(error)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.redError)
+                    .padding(.horizontal, 28)
+            }
+            HStack(spacing: 14) {
+                Button {
+                    if let urls = SessionFilePanel.openFiles() {
+                        pendingFiles.append(contentsOf: urls)
+                    }
+                } label: {
+                    Text("+")
+                        .font(.system(size: 18))
+                        .foregroundStyle(Theme.textLetter)
+                        .frame(width: 34, height: 34)
+                        .overlay {
+                            Circle().stroke(Theme.borderInputsDark, lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .help("Attach files")
+
+                PromptComposer(
+                    text: $draft,
+                    placeholder: bot.map { "Message \($0.name)" } ?? "Message",
+                    onSend: send
+                )
+                .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 110, alignment: .leading)
+
+                Button {
+                    if dictation.isListening {
+                        let spoken = dictation.stop()
+                        if !spoken.isEmpty {
+                            draft = draft.isEmpty ? spoken : draft + " " + spoken
+                        }
+                    } else {
+                        dictation.start()
+                    }
+                } label: {
+                    Text(dictation.isListening ? "●" : "🎤")
+                        .font(.system(size: 13))
+                        .foregroundStyle(dictation.isListening ? Theme.orange : Theme.textLetter)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help(dictation.isListening ? "Stop dictation" : "Dictate")
+
+                Button {
+                    if let bot, store.isRunActive(botId: bot.id) {
+                        store.stopRun(botId: bot.id)
+                    } else {
+                        send()
+                    }
+                } label: {
+                    Text(bot.map { store.isRunActive(botId: $0.id) } == true ? "■" : "↑")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.textCream)
+                        .frame(width: 36, height: 36)
+                        .background(Theme.bgCream)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.vertical, 9)
+            .padding(.leading, 12)
+            .padding(.trailing, 10)
+            .background(Theme.bgInputBar)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule().stroke(Theme.borderSearch, lineWidth: 1)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, pendingFiles.isEmpty ? 12 : 0)
+            .padding(.bottom, 24)
         }
-        .padding(.vertical, 9)
-        .padding(.leading, 12)
-        .padding(.trailing, 10)
-        .background(Theme.bgInputBar)
-        .clipShape(Capsule())
-        .overlay {
-            Capsule().stroke(Theme.borderSearch, lineWidth: 1)
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            Task {
+                var urls: [URL] = []
+                for provider in providers {
+                    if let url = try? await provider.loadItem(forTypeIdentifier: "public.file-url") as? URL {
+                        urls.append(url)
+                    } else if let data = try? await provider.loadItem(forTypeIdentifier: "public.file-url") as? Data,
+                              let url = URL(dataRepresentation: data, relativeTo: nil) {
+                        urls.append(url)
+                    }
+                }
+                await MainActor.run {
+                    pendingFiles.append(contentsOf: urls)
+                }
+            }
+            return true
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 12)
-        .padding(.bottom, 24)
     }
 
     private func groupInputBar(_ group: GroupRoom) -> some View {
         HStack(spacing: 14) {
-            TextField("Message \(group.name)", text: $draft)
-                .font(.system(size: 15.5))
-                .foregroundStyle(Theme.textInput)
-                .textFieldStyle(.plain)
-                .onSubmit { sendGroup(group) }
+            PromptComposer(
+                text: $draft,
+                placeholder: "Message \(group.name)",
+                onSend: { sendGroup(group) }
+            )
+            .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 110, alignment: .leading)
 
             Button {
                 sendGroup(group)
@@ -389,13 +632,31 @@ struct ChatView: View {
 
     private func send() {
         guard let bot else { return }
-        let text = draft
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let files = pendingFiles
+        if text.isEmpty && files.isEmpty && !dictation.isListening { return }
+        let local = LocalProviders.isLocal(bot.modelProvider ?? store.modelProvider ?? "")
+        if !pasteOverride, PasteGuard.warning(for: text, localModel: local) != nil {
+            return
+        }
         draft = ""
-        store.send(botId: bot.id, text: text)
+        pendingFiles = []
+        pasteOverride = false
+        if dictation.isListening {
+            let spoken = dictation.stop()
+            store.send(
+                botId: bot.id,
+                text: spoken.isEmpty ? text : (text.isEmpty ? spoken : text + " " + spoken),
+                attaching: files
+            )
+            return
+        }
+        store.send(botId: bot.id, text: text, attaching: files)
     }
 
     private func sendGroup(_ group: GroupRoom) {
-        let text = draft
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
         draft = ""
         store.sendGroupMessage(groupId: group.id, text: text)
     }

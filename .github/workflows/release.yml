@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: HTML release notes for the Sparkle appcast item
+        required: false
+        default: "<p>GrizzyBot update</p>"
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: brew install xcodegen create-dmg
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Require Developer ID secrets
+        env:
+          TEAM: ${{ secrets.GRIZZYBOT_DEVELOPMENT_TEAM }}
+          CERT: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 }}
+          SPARKLE: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$TEAM" || -z "$CERT" || -z "$SPARKLE" ]]; then
+            echo "Set repo secrets GRIZZYBOT_DEVELOPMENT_TEAM, DEVELOPER_ID_APPLICATION_P12, SPARKLE_PRIVATE_KEY, and NOTARY_KEYCHAIN_PROFILE (or APPLE_ID + APP_SPECIFIC_PASSWORD) to publish a signed DMG."
+            exit 1
+          fi
+      - name: Build Release
+        env:
+          GRIZZYBOT_DEVELOPMENT_TEAM: ${{ secrets.GRIZZYBOT_DEVELOPMENT_TEAM }}
+        run: |
+          cat > Configs/Team.xcconfig <<EOF
+          GRIZZYBOT_DEVELOPMENT_TEAM = ${GRIZZYBOT_DEVELOPMENT_TEAM}
+          GRIZZYBOT_CODE_SIGN_IDENTITY = Developer ID Application
+          GRIZZYBOT_CODE_SIGN_STYLE = Manual
+          GRIZZYBOT_OTHER_CODE_SIGN_FLAGS = --timestamp
+          GRIZZYBOT_CODE_SIGN_ENTITLEMENTS = Sources/GrizzyBot/GrizzyBot.Release.entitlements
+          EOF
+          xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot -configuration Release -destination 'platform=macOS' build
+      - name: Package DMG
+        run: |
+          APP="$(find ~/Library/Developer/Xcode/DerivedData -path '*/Build/Products/Release/GrizzyBot.app' | head -1)"
+          test -d "$APP"
+          create-dmg --volname GrizzyBot --app-drop-link 480 170 "$PWD/GrizzyBot.dmg" "$APP"
+      - name: Sign Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          NOTES_HTML: ${{ github.event.inputs.notes || '<p>GrizzyBot update</p>' }}
+        run: |
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > Scripts/sparkle_eddsa_private.key
+          chmod +x Scripts/publish-update.sh
+          ./Scripts/publish-update.sh "$PWD/GrizzyBot.dmg"
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/GrizzyBot/Info.plist)"
+          gh release create "v${VERSION}" GrizzyBot.dmg --title "v${VERSION}" --notes "Signed GrizzyBot ${VERSION}" || \
+            gh release upload "v${VERSION}" GrizzyBot.dmg --clobber
+          git config user.name "github-actions"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "chore: appcast for v${VERSION}" || true
+          git push || true

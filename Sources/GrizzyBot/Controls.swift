@@ -1,6 +1,7 @@
+import AppKit
+import GrizzyBotCore
 import SwiftUI
 import UniformTypeIdentifiers
-import AppKit
 
 // MARK: - GrizzyButton
 
@@ -262,6 +263,147 @@ struct TrafficLightSpacer: View {
     }
 }
 
+/// Chat composer: Return sends, Shift-Return inserts a newline.
+struct PromptComposer: NSViewRepresentable {
+    @Binding var text: String
+    var placeholder: String
+    var onSend: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text, onSend: onSend)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.borderType = .noBorder
+        scroll.scrollerStyle = .overlay
+        scroll.focusRingType = .none
+
+        let textView = PromptTextView()
+        textView.delegate = context.coordinator
+        textView.onSend = { [weak coordinator = context.coordinator] in
+            coordinator?.onSend()
+        }
+        textView.isRichText = false
+        textView.font = NSFont.systemFont(ofSize: 15.5)
+        textView.textColor = NSColor(Theme.textInput)
+        textView.insertionPointColor = NSColor(Theme.textInput)
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.allowsUndo = true
+        textView.focusRingType = .none
+        textView.textContainerInset = NSSize(width: 0, height: 2)
+        textView.minSize = NSSize(width: 0, height: 22)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.containerSize = NSSize(width: scroll.contentSize.width, height: .greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.string = text
+        context.coordinator.placeholder = placeholder
+        context.coordinator.updatePlaceholder(in: textView)
+
+        scroll.documentView = textView
+        context.coordinator.textView = textView
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        context.coordinator.text = $text
+        context.coordinator.onSend = onSend
+        context.coordinator.placeholder = placeholder
+        guard let textView = context.coordinator.textView else { return }
+        textView.onSend = { [weak coordinator = context.coordinator] in
+            coordinator?.onSend()
+        }
+        if textView.string != text {
+            let selected = textView.selectedRange()
+            textView.string = text
+            let max = (text as NSString).length
+            textView.setSelectedRange(NSRange(location: min(selected.location, max), length: 0))
+        }
+        context.coordinator.updatePlaceholder(in: textView)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var text: Binding<String>
+        var onSend: () -> Void
+        var placeholder: String = ""
+        weak var textView: PromptTextView?
+        private var placeholderView: NSTextField?
+
+        init(text: Binding<String>, onSend: @escaping () -> Void) {
+            self.text = text
+            self.onSend = onSend
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text.wrappedValue = textView.string
+            updatePlaceholder(in: textView)
+        }
+
+        func updatePlaceholder(in textView: NSTextView) {
+            if placeholderView == nil {
+                let label = NSTextField(labelWithString: placeholder)
+                label.font = NSFont.systemFont(ofSize: 15.5)
+                label.textColor = NSColor(Theme.textLetter)
+                label.backgroundColor = .clear
+                label.isBezeled = false
+                label.isEditable = false
+                label.isSelectable = false
+                label.drawsBackground = false
+                label.translatesAutoresizingMaskIntoConstraints = false
+                textView.addSubview(label)
+                NSLayoutConstraint.activate([
+                    label.leadingAnchor.constraint(equalTo: textView.leadingAnchor),
+                    label.topAnchor.constraint(equalTo: textView.topAnchor, constant: 2),
+                ])
+                placeholderView = label
+            }
+            placeholderView?.stringValue = placeholder
+            placeholderView?.isHidden = !textView.string.isEmpty
+        }
+    }
+}
+
+final class PromptTextView: NSTextView {
+    var onSend: (() -> Void)?
+
+    override func insertNewline(_ sender: Any?) {
+        if hasMarkedText() {
+            super.insertNewline(sender)
+            return
+        }
+        if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
+            super.insertNewline(sender)
+            return
+        }
+        if ComposerKeys.shouldSend(shiftHeld: false, text: string) {
+            onSend?()
+        }
+    }
+
+    override var intrinsicContentSize: NSSize {
+        guard let container = textContainer, let layout = layoutManager else {
+            return NSSize(width: NSView.noIntrinsicMetric, height: 22)
+        }
+        layout.ensureLayout(for: container)
+        let used = layout.usedRect(for: container)
+        let height = min(max(used.height + textContainerInset.height * 2, 22), 110)
+        return NSSize(width: NSView.noIntrinsicMetric, height: height)
+    }
+}
+
 @MainActor
 enum SessionFilePanel {
     static func save(data: Data, filename: String, utType: UTType) {
@@ -284,5 +426,14 @@ enum SessionFilePanel {
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         return try? Data(contentsOf: url)
+    }
+
+    static func openFiles() -> [URL]? {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK else { return nil }
+        return panel.urls
     }
 }

@@ -163,6 +163,26 @@ public enum McpClient {
         }
     }
 
+    /// Connect, initialize, and call a named tool with explicit arguments.
+    public static func call(
+        server: McpServer,
+        toolName: String,
+        arguments: [String: JSONValue] = [:],
+        timeout: TimeInterval = 45
+    ) async throws -> McpCallResult {
+        let session = try await openSession(server: server, timeout: timeout)
+        do {
+            _ = try await initialize(session: session)
+            let anyArgs = arguments.mapValues(\.any)
+            let (text, isError) = try await toolsCall(session: session, name: toolName, arguments: anyArgs)
+            await session.close()
+            return McpCallResult(toolName: toolName, text: text, isError: isError)
+        } catch {
+            await session.close()
+            throw error
+        }
+    }
+
     /// List tools only (useful for diagnostics).
     public static func listTools(server: McpServer, timeout: TimeInterval = 30) async throws -> [McpToolInfo] {
         let session = try await openSession(server: server, timeout: timeout)
@@ -357,6 +377,160 @@ public enum McpClient {
         }
         return events
     }
+
+    /// Directories a GUI-launched Mac app usually lacks on PATH (Homebrew, nvm, bun, …).
+    public static func stdioPATH(
+        existing: String,
+        home: String,
+        exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> String {
+        var extras = [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "\(home)/.local/bin",
+            "\(home)/.bun/bin",
+            "\(home)/.volta/bin",
+            "\(home)/.cargo/bin",
+            "\(home)/.asdf/shims",
+            "\(home)/.fnm/aliases/default/bin",
+            "\(home)/.local/share/fnm/aliases/default/bin",
+        ]
+        let nvmVersions = "\(home)/.nvm/versions/node"
+        if exists(nvmVersions),
+           let names = try? FileManager.default.contentsOfDirectory(atPath: nvmVersions) {
+            for name in names.sorted().reversed() {
+                extras.append("\(nvmVersions)/\(name)/bin")
+            }
+        }
+        var parts = existing.split(separator: ":").map(String.init).filter { !$0.isEmpty }
+        for dir in extras.reversed() where exists(dir) && !parts.contains(dir) {
+            parts.insert(dir, at: 0)
+        }
+        return parts.joined(separator: ":")
+    }
+
+    public static func stdioEnvironment(
+        userEnv: [String: String],
+        processEnv: [String: String] = ProcessInfo.processInfo.environment,
+        home: String = NSHomeDirectory()
+    ) -> [String: String] {
+        var env = processEnv
+        let resolvedHome = userEnv["HOME"] ?? env["HOME"] ?? home
+        env["HOME"] = resolvedHome
+        if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
+        let basePath = userEnv["PATH"] ?? env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        env["PATH"] = stdioPATH(existing: basePath, home: resolvedHome)
+        for (key, value) in userEnv where key != "PATH" {
+            env[key] = value
+        }
+        if let userPath = userEnv["PATH"] {
+            env["PATH"] = stdioPATH(existing: userPath, home: resolvedHome)
+        }
+        return env
+    }
+
+    public static func extractStdioMessages(from buffer: inout Data) -> [Data] {
+        var messages: [Data] = []
+        while let message = popStdioMessage(from: &buffer) {
+            if !message.isEmpty {
+                messages.append(message)
+            }
+        }
+        return messages
+    }
+
+    private static func popStdioMessage(from buffer: inout Data) -> Data? {
+        guard !buffer.isEmpty else { return nil }
+        let crlf = Data("\r\n\r\n".utf8)
+        if let headerEnd = buffer.range(of: crlf) {
+            let headerData = buffer.subdata(in: buffer.startIndex..<headerEnd.lowerBound)
+            let header = String(data: headerData, encoding: .utf8) ?? ""
+            if let length = contentLength(in: header) {
+                let start = headerEnd.upperBound
+                let endOffset = buffer.distance(from: buffer.startIndex, to: start) + length
+                guard buffer.count >= endOffset else { return nil }
+                let end = buffer.index(buffer.startIndex, offsetBy: endOffset)
+                let body = buffer.subdata(in: start..<end)
+                buffer.removeSubrange(buffer.startIndex..<end)
+                return body
+            }
+        }
+        guard let newline = buffer.range(of: Data([0x0A])) else { return nil }
+        let line = buffer.subdata(in: buffer.startIndex..<newline.lowerBound)
+        buffer.removeSubrange(buffer.startIndex...newline.lowerBound)
+        if line.isEmpty { return Data() }
+        let trimmed = String(data: line, encoding: .utf8)?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\r")) ?? ""
+        if trimmed.lowercased().hasPrefix("content-length:") {
+            return Data()
+        }
+        return line
+    }
+
+    private static func contentLength(in header: String) -> Int? {
+        for raw in header.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: CharacterSet(charactersIn: "\r"))
+            let lower = line.lowercased()
+            guard lower.hasPrefix("content-length:") else { continue }
+            let value = line.dropFirst("Content-Length:".count).trimmingCharacters(in: .whitespaces)
+            return Int(value)
+        }
+        return nil
+    }
+
+    static func jsonRPCId(_ object: [String: Any]) -> Int? {
+        if let i = object["id"] as? Int { return i }
+        if let n = object["id"] as? NSNumber { return n.intValue }
+        if let d = object["id"] as? Double { return Int(d) }
+        return nil
+    }
+
+    public static func formatToolList(_ tools: [McpToolInfo]) -> String {
+        if tools.isEmpty { return "No tools." }
+        return tools.map { tool in
+            var line = "• \(tool.name)"
+            if !tool.description.isEmpty {
+                line += " — \(tool.description)"
+            }
+            let schema = tool.inputSchema.mapValues(\.value)
+            let properties = (schema["properties"] as? [String: Any]) ?? [:]
+            if !properties.isEmpty {
+                let keys = properties.keys.sorted().joined(separator: ", ")
+                line += "\n  args: \(keys)"
+                if let required = schema["required"] as? [String], !required.isEmpty {
+                    line += " (required: \(required.joined(separator: ", ")))"
+                }
+            }
+            return line
+        }.joined(separator: "\n")
+    }
+}
+
+/// Flatten `mcp_call` arguments so path/content work whether nested or top-level.
+public enum McpCallArguments {
+    private static let reserved: Set<String> = ["server", "tool", "name"]
+
+    public static func resolve(_ args: [String: JSONValue]) -> [String: JSONValue] {
+        var call = args["arguments"]?.objectValue() ?? [:]
+        for (key, value) in args where !reserved.contains(key) && key != "arguments" {
+            if call[key] == nil {
+                call[key] = value
+            }
+        }
+        if call.isEmpty {
+            for key in ["prompt", "query", "text"] {
+                if case .string(let text) = args[key] {
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        call["prompt"] = .string(trimmed)
+                        break
+                    }
+                }
+            }
+        }
+        return call
+    }
 }
 
 // MARK: - Stdio session
@@ -365,11 +539,16 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
     private let process: Process
     private let stdin: FileHandle
     private let stdout: FileHandle
+    private let stderr: FileHandle
     private let queue = DispatchQueue(label: "grizzybot.mcp.stdio")
     private var nextId = 1
     private var buffer = Data()
+    private var stderrBytes = Data()
     private var pending: [Int: CheckedContinuation<SendableJSON, Error>] = [:]
     private var closed = false
+    private var didFail = false
+    private var lastError: Error?
+    private var exitStatus: Int?
     private let timeout: TimeInterval
 
     static func open(server: McpServer, timeout: TimeInterval) async throws -> McpStdioSession {
@@ -378,6 +557,7 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
             throw McpError.invalidConfiguration("Stdio MCP server needs a command")
         }
 
+        let env = McpClient.stdioEnvironment(userEnv: server.env)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: command.hasPrefix("/") ? command : "/usr/bin/env")
         if command.hasPrefix("/") {
@@ -385,10 +565,10 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
         } else {
             process.arguments = [command] + server.args
         }
-
-        var env = ProcessInfo.processInfo.environment
-        for (k, v) in server.env { env[k] = v }
         process.environment = env
+        if let home = env["HOME"] {
+            process.currentDirectoryURL = URL(fileURLWithPath: home)
+        }
 
         let inPipe = Pipe()
         let outPipe = Pipe()
@@ -407,59 +587,104 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
             process: process,
             stdin: inPipe.fileHandleForWriting,
             stdout: outPipe.fileHandleForReading,
+            stderr: errPipe.fileHandleForReading,
             timeout: timeout
         )
         session.startReading()
         return session
     }
 
-    private init(process: Process, stdin: FileHandle, stdout: FileHandle, timeout: TimeInterval) {
+    private init(
+        process: Process,
+        stdin: FileHandle,
+        stdout: FileHandle,
+        stderr: FileHandle,
+        timeout: TimeInterval
+    ) {
         self.process = process
         self.stdin = stdin
         self.stdout = stdout
+        self.stderr = stderr
         self.timeout = timeout
     }
 
     private func startReading() {
+        stderr.readabilityHandler = { [weak self] handle in
+            let chunk = handle.availableData
+            guard !chunk.isEmpty, let self else { return }
+            self.queue.async { self.stderrBytes.append(chunk) }
+        }
         stdout.readabilityHandler = { [weak self] handle in
             let chunk = handle.availableData
             guard let self else { return }
             if chunk.isEmpty {
-                self.queue.async { self.failAll(McpError.transport("MCP server closed stdout")) }
+                handle.readabilityHandler = nil
+                self.queue.asyncAfter(deadline: .now() + 0.08) {
+                    self.failRemaining()
+                }
                 return
             }
             self.queue.async { self.ingest(chunk) }
         }
+        process.terminationHandler = { [weak self] proc in
+            guard let session = self else { return }
+            let status = Int(proc.terminationStatus)
+            session.queue.async {
+                session.exitStatus = status
+                session.drainStderr()
+                session.failRemaining()
+            }
+        }
+    }
+
+    private func drainStderr() {
+        stderr.readabilityHandler = nil
+        let rest = stderr.availableData
+        if !rest.isEmpty { stderrBytes.append(rest) }
     }
 
     private func ingest(_ chunk: Data) {
         buffer.append(chunk)
-        while let range = buffer.range(of: Data([0x0A])) {
-            let line = buffer.subdata(in: buffer.startIndex..<range.lowerBound)
-            buffer.removeSubrange(buffer.startIndex...range.lowerBound)
-            guard !line.isEmpty else { continue }
-            handleLine(line)
+        for message in McpClient.extractStdioMessages(from: &buffer) {
+            handleLine(message)
         }
     }
 
     private func handleLine(_ line: Data) {
         do {
             let obj = try McpClient.decodeJSONObject(line)
-            if let id = obj["id"] as? Int {
-                if let error = obj["error"] as? [String: Any] {
-                    let code = error["code"] as? Int ?? -1
-                    let message = error["message"] as? String ?? "unknown"
-                    pending.removeValue(forKey: id)?.resume(throwing: McpError.remote(code: code, message: message))
-                } else if let result = obj["result"] {
-                    pending.removeValue(forKey: id)?.resume(returning: SendableJSON(result))
-                } else {
-                    pending.removeValue(forKey: id)?.resume(returning: SendableJSON([String: Any]()))
-                }
+            guard let id = McpClient.jsonRPCId(obj) else { return }
+            if let error = obj["error"] as? [String: Any] {
+                let code = error["code"] as? Int ?? -1
+                let message = error["message"] as? String ?? "unknown"
+                pending.removeValue(forKey: id)?.resume(throwing: McpError.remote(code: code, message: message))
+            } else if let result = obj["result"] {
+                pending.removeValue(forKey: id)?.resume(returning: SendableJSON(result))
+            } else {
+                pending.removeValue(forKey: id)?.resume(returning: SendableJSON([String: Any]()))
             }
-            // Notifications / server requests ignored for now.
         } catch {
             // Skip malformed / log lines.
         }
+    }
+
+    private func failRemaining() {
+        guard !didFail else { return }
+        let err = String(data: stderrBytes, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let message: String
+        if let status = exitStatus {
+            message = err.isEmpty
+                ? "MCP server exited (\(status))"
+                : "MCP server exited (\(status)): \(String(err.suffix(800)))"
+        } else if !err.isEmpty {
+            message = "MCP server closed stdout: \(String(err.suffix(800)))"
+        } else if pending.isEmpty {
+            return
+        } else {
+            message = "MCP server closed stdout"
+        }
+        failAll(McpError.transport(message))
     }
 
     func sendRequest(method: String, params: [String: Any]?) async throws -> Any {
@@ -476,6 +701,10 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
             group.addTask {
                 try await withCheckedThrowingContinuation { (cont: CheckedContinuation<SendableJSON, Error>) in
                     self.queue.async {
+                        if self.didFail {
+                            cont.resume(throwing: self.lastError ?? McpError.cancelled)
+                            return
+                        }
                         if self.closed {
                             cont.resume(throwing: McpError.cancelled)
                             return
@@ -484,8 +713,17 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
                         do {
                             try self.stdin.write(contentsOf: data)
                         } catch {
-                            self.pending.removeValue(forKey: id)
-                            cont.resume(throwing: McpError.transport(error.localizedDescription))
+                            self.queue.asyncAfter(deadline: .now() + 0.12) {
+                                guard !self.didFail else { return }
+                                self.pending.removeValue(forKey: id)
+                                let err = String(data: self.stderrBytes, encoding: .utf8)?
+                                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                                if !err.isEmpty {
+                                    cont.resume(throwing: McpError.transport(err))
+                                } else {
+                                    cont.resume(throwing: McpError.transport(error.localizedDescription))
+                                }
+                            }
                         }
                     }
                 }
@@ -515,6 +753,7 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
             failAll(McpError.cancelled)
         }
         stdout.readabilityHandler = nil
+        stderr.readabilityHandler = nil
         try? stdin.close()
         if process.isRunning {
             process.terminate()
@@ -522,6 +761,9 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
     }
 
     private func failAll(_ error: Error) {
+        guard !didFail else { return }
+        didFail = true
+        lastError = error
         let waiting = pending
         pending.removeAll()
         for (_, cont) in waiting {

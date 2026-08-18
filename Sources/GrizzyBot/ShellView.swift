@@ -44,6 +44,10 @@ struct ShellView: View {
                 PluginsOverlayView()
                     .zIndex(20)
             }
+            if store.skillsOpen {
+                SkillsOverlayView()
+                    .zIndex(21)
+            }
             if store.modelSettingsOpen {
                 ModelSettingsOverlayView()
                     .zIndex(25)
@@ -80,11 +84,20 @@ struct ShellView: View {
                 store.pluginsOpen = false
                 return .handled
             }
+            if store.skillsOpen {
+                store.skillsOpen = false
+                return .handled
+            }
             if store.mainView == .routines {
                 store.showChat()
                 return .handled
             }
             return .ignored
+        }
+        .onKeyPress(characters: CharacterSet(charactersIn: "fF"), phases: .down) { press in
+            guard press.modifiers.contains(.command) else { return .ignored }
+            store.openChatSearch()
+            return .handled
         }
         .onKeyPress(characters: CharacterSet(charactersIn: "nN"), phases: .down) { press in
             guard press.modifiers.contains(.command) else { return .ignored }
@@ -240,7 +253,19 @@ private struct ComputerFullWindowOverlay: View {
 
             ZStack {
                 Theme.bgScreen
-                bodyContent
+                if let bot, computer?.state == .running || computer?.kind == .desktop {
+                    ComputerDesktopView(
+                        botId: bot.id,
+                        userHasControl: computer?.controlHolder == .user
+                    )
+                    .allowsHitTesting(computer?.controlHolder == .user)
+                    if computer?.controlHolder != .user {
+                        Color.black.opacity(0.12)
+                            .allowsHitTesting(true)
+                    }
+                } else {
+                    bodyContent
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

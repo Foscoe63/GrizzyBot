@@ -1,0 +1,7 @@
+// Copy to Team.xcconfig (gitignored) for Developer ID + notarization + iCloud.
+// Find the team id in Xcode → Settings → Accounts → Team.
+GRIZZYBOT_DEVELOPMENT_TEAM = YOURTEAMID
+GRIZZYBOT_CODE_SIGN_IDENTITY = Developer ID Application
+GRIZZYBOT_CODE_SIGN_STYLE = Manual
+GRIZZYBOT_OTHER_CODE_SIGN_FLAGS = --timestamp
+GRIZZYBOT_CODE_SIGN_ENTITLEMENTS = Sources/GrizzyBot/GrizzyBot.Release.entitlements

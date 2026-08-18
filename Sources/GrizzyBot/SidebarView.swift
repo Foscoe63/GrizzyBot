@@ -9,6 +9,7 @@ struct SidebarView: View {
     @State private var showUsage = false
     @State private var hoverPlus = false
     @State private var hoverPlugins = false
+    @State private var hoverSkills = false
     @State private var showNewMenu = false
     @State private var showCreateRoom = false
     @State private var roomName = ""
@@ -129,6 +130,10 @@ struct SidebarView: View {
                 .padding(.bottom, 2)
 
             pluginsButton
+                .padding(.horizontal, 12)
+                .padding(.bottom, 2)
+
+            skillsButton
                 .padding(.horizontal, 12)
                 .padding(.bottom, 4)
 
@@ -327,7 +332,7 @@ struct SidebarView: View {
 
     private var pluginsButton: some View {
         Button {
-            store.pluginsOpen = true
+            store.openPlugins()
         } label: {
             HStack(spacing: 10) {
                 ZStack {
@@ -351,6 +356,34 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .onHover { hoverPlugins = $0 }
+    }
+
+    private var skillsButton: some View {
+        Button {
+            store.skillsOpen = true
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: "#17171A"))
+                        .frame(width: 30, height: 30)
+                    Text("✦")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textLetter)
+                }
+                Text("Skills")
+                    .font(.system(size: 14.5))
+                    .foregroundStyle(Theme.textGhost)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(hoverSkills ? Color(hex: "#131315") : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hoverSkills = $0 }
     }
 
     private var userRow: some View {

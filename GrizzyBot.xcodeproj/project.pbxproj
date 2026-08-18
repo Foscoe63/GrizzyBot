@@ -9,54 +9,99 @@
 /* Begin PBXBuildFile section */
 		002000712F9B648B461791FB /* AgentTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E31C4FBEF5A687BD0E8757D /* AgentTools.swift */; };
 		00D0E8CE93F22C2184C1C311 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 767DB6054B53887215A8925D /* RootView.swift */; };
+		02A75930E7E89FB469CF109F /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87DBE8B0F52E051C297FA2B /* JSONValue.swift */; };
 		0825B6C8DF176C162168B0CE /* GrizzyBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A422AE0345B5E77B84BA2E /* GrizzyBotApp.swift */; };
 		0895BD5E1460BE67397E9FD3 /* StoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8AF18B9C627741E5A510CC /* StoreTests.swift */; };
 		0CAD997F01B7DBA5C5F1EF93 /* OpenMausFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FDF1CBE020860BCC818C84 /* OpenMausFeatures.swift */; };
+		0F48845F0162CEF6CF41517A /* WindowChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7CA677539969350DA5AACF6 /* WindowChrome.swift */; };
+		0FE8776E8D339A119A07AC89 /* AgentEvalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C6F47239DF8119B30729893 /* AgentEvalTests.swift */; };
 		10C6F1583A6F593B003B67CB /* HostComputerPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BED9B320C808B307D93EB780 /* HostComputerPromptView.swift */; };
+		133A54CE8053E79FE17E8669 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A8C39A00FDBD11E12B8B3518 /* Sentry */; };
+		19E4F803C82D8ECB96EEA58F /* CrashReporting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54109B48A948CCE11C2134C9 /* CrashReporting.swift */; };
 		1B3E830AD3F520262482FFC9 /* BotHome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F28F0711AD84A51BEAE918 /* BotHome.swift */; };
 		1BDD175C76D18C304B93A79F /* McpClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC7102D998178BBA84298757 /* McpClientTests.swift */; };
+		24D6710085EB943440D0877F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 866AEEBA7A19C592C6896E1A /* Assets.xcassets */; };
 		2ACD1183A80FB2BE5F6D54E3 /* AgentToolsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9628297E2F6AB290976547 /* AgentToolsTests.swift */; };
+		2E70295D31A7021C554C7F0D /* ComputerRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C12DFABEB292FC633AB5790 /* ComputerRuntime.swift */; };
 		31C604F87009674137794FC5 /* CronTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB44D631A1BFEC6A49332CEF /* CronTests.swift */; };
+		3B91AC90C681D794785E8CDD /* DeviceCodeAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18AF36B17110508186941B07 /* DeviceCodeAuth.swift */; };
 		40471D76E6030BFEC49DB1AC /* RightPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92038B47C33FBFAFC7237354 /* RightPanelView.swift */; };
 		40E300E19AADDFA37403A433 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BA7B2A255FBC58BB87CF143 /* AuthView.swift */; };
+		410D6CCD6F6BB2B03866B78D /* ComposioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25D0DA2A29296B6CA8B4DAFC /* ComposioTests.swift */; };
 		48244E081B4FCD51C4EE0BA9 /* WebSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D551FCA6542392FDA475B4 /* WebSearch.swift */; };
+		497108EB35AA26CB04983ABD /* SpeechSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 107F8E16F2EC4C7CAAB5AB1D /* SpeechSupport.swift */; };
 		4EB54A526111A5A0F522FD81 /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 916FFD0C6C6F1C1DB4E2F235 /* Store.swift */; };
 		51591A7BEF499927879EB28E /* RoutineScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2AD36303A2DBCC7BC06A480 /* RoutineScheduleView.swift */; };
+		5BFC52F247353EAFEF8E18FD /* DestinationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06D4C278B4E67B463CF61827 /* DestinationStore.swift */; };
+		5C6BD280104FE75CFECFEB30 /* SkillsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26AE1BDDBA0904EDDDF50C8F /* SkillsTests.swift */; };
 		62C4471C11DEFE6AB97827A3 /* PluginsOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A99E87B9C17655D22331DDC /* PluginsOverlayView.swift */; };
 		67786054E57D901D86FA257D /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF394BDED582E532893E9AD /* Persistence.swift */; };
 		6F49041F1F18EB74984F2A9D /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC342E09BDBE58984F59E04D /* ChatView.swift */; };
 		6FEF6EEED4274EB0912DC251 /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = A879DE77CAB82A98FA411202 /* MarkdownText.swift */; };
 		71A10283014E6CA714B92E7E /* Cron.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CF45217EF15990999EBA75 /* Cron.swift */; };
+		7653A0FB5E882BC9CB7E2F79 /* OverlaySnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2CC9EE8BD0597819A0089C /* OverlaySnapshotTests.swift */; };
+		7A0B1C08071FF7138CCFB226 /* OverlayUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39799E47CE1EEBF60A81AFDA /* OverlayUITests.swift */; };
 		7B06747F29BFD784602A65CD /* BotHomeWebSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034ABF68635D68B313AA7DEA /* BotHomeWebSearchTests.swift */; };
 		7CF60431448BE1F4392DC278 /* AppSettingsOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46DAE4FA2D21D33E50DC75AC /* AppSettingsOverlayView.swift */; };
+		7EED246F2CB22EF04A3149C0 /* BotTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB794C6AE198441526123B6F /* BotTemplates.swift */; };
+		83679BCB66DF620E2156104F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = DBAD0CA6B7D046880B870F2A /* Sparkle */; };
 		83E2E7CFE433835A866E0943 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E36873F55BBBA4961D4F4A4 /* OnboardingView.swift */; };
 		846AF1F6C515AECFB760417D /* ModelConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F1B5A4A25272D8DE8BEFC36 /* ModelConnectView.swift */; };
 		8ABB3A13219B3D5D73205E6D /* McpClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EAA172FAC1AB99A08E6AC55 /* McpClient.swift */; };
+		90FE300FCFE71BB659CBFBBF /* ProductSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9073EF84B672BC0253421319 /* ProductSurface.swift */; };
 		97CC4700DE1377D590B135D2 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F3B6B0B59AA23B0584273B /* Theme.swift */; };
 		9E2708F345079F8E2E71CDB9 /* LocalProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A13665DC7A54059575E9646 /* LocalProviders.swift */; };
+		A084036EA9D1A3FE50831272 /* ProductSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 046251ABA24371B25741F1D9 /* ProductSurfaceTests.swift */; };
+		A3DA8AD84F7220ABFE72688A /* SkillsOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02646B4AC3D01508A64AAE45 /* SkillsOverlayView.swift */; };
+		A87D9D20E3EA567B5A64D60F /* LLMClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0BAC0485B69EE9D834F1421 /* LLMClient.swift */; };
 		AD768C48CA30733DC6389485 /* RoutinesPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE9778D00F176E80CBCAF9FD /* RoutinesPageView.swift */; };
 		B3084169C569910C1658D873 /* ScriptedRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFEF0D6BFF53DA0CBF74F153 /* ScriptedRuntime.swift */; };
+		B5F54CF7C94AF3A43DA1DCF2 /* MemoryIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FC2BCBCCEAF080C3034CD88 /* MemoryIndex.swift */; };
 		B64BB9DAF2F3CC51CA893DEC /* ModelCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA45AF3D349EA5C61D89CA03 /* ModelCatalog.swift */; };
 		B6FE3347DCA50DBAE42A58DF /* ShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FF70036E1B1DB5F93ADFD0E /* ShellView.swift */; };
 		BAA83BD3B6F882B9D61D60EA /* MessageViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3759CA0FED3BDA9EF99C2D0 /* MessageViews.swift */; };
+		BF59AC18191EBCC9DD739712 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AD1552B3178B76EEDCDDA8 /* MenuBarView.swift */; };
 		C2155112EEF20821AFBA5AF5 /* libGrizzyBotCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C3108710D4DD93C34D507A39 /* libGrizzyBotCore.a */; };
+		C79FBAA26A36188958F604FD /* UpdaterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E65E5FD8AC324D29470EBA6 /* UpdaterManager.swift */; };
+		C9CC3636E4ABB5D3ED534B3F /* AgentLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952F78D26F1214CD06838DD4 /* AgentLoopTests.swift */; };
 		CCFE3A5F1F471C899C72C0C0 /* Controls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 977A76A0FDF8165D787040E5 /* Controls.swift */; };
+		CF093FECE761E921602DD6EA /* AgentLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 895CB54DF308C252E7F0408F /* AgentLoop.swift */; };
+		CF3028E5FD59D3C6C55959DC /* PluginClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A71407064CF2D0B90D2773 /* PluginClient.swift */; };
+		D0F6D007526E6E538FF5439F /* ComputerDesktopView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DAE95AF568C793F1B0F4A1 /* ComputerDesktopView.swift */; };
 		D109624BFF8F2F13037AA2E0 /* libGrizzyBotCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C3108710D4DD93C34D507A39 /* libGrizzyBotCore.a */; };
+		D1F6638E7866D8C5F78D1D6F /* Skills.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD69F88EDAEFE3272168C64F /* Skills.swift */; };
 		D7F6B772596BF6184BEAAFC7 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F91A2645D5698998169C03B8 /* SidebarView.swift */; };
+		E00627B414708FA9623A3199 /* LoginItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31AAC2F56EC52FC99A5DC171 /* LoginItem.swift */; };
 		E06758F1CD11E18D1E5496C2 /* LocalProvidersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90E608627E9ED8C81E3D90D8 /* LocalProvidersTests.swift */; };
 		EC67741901A159D8D707CB5E /* BotAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08FA8FC9AEC1C43764D5736E /* BotAvatarView.swift */; };
 		EF7C483E6C5D471929194F14 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E68757C80AA3F6C31769048 /* Models.swift */; };
+		F1803C0235BB9E89B8F3F096 /* UITestLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46EF092B52E8901BD0301058 /* UITestLaunch.swift */; };
 		F388D25AA678456E088CDABD /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FB56E6A8F0E04C374360D2 /* WelcomeView.swift */; };
+		F4F4AD149A04743B443534DF /* ComposioClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2607B85B157D19695C87F956 /* ComposioClient.swift */; };
 		F5BC86FC50D5FD1EA4188973 /* ScriptedRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 080535B053570E1DAF2CA630 /* ScriptedRuntimeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		4C2C412FB0F50BCBFB25E409 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4AB0D8B019E7C200A2E73B88 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4DED67AB21062EA52562E147;
+			remoteInfo = GrizzyBot;
+		};
 		55A3A570432C7CB3CDB42BA3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 4AB0D8B019E7C200A2E73B88 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 21CD727AF02EEE29AF57908C;
 			remoteInfo = GrizzyBotCore;
+		};
+		715EA2DFCEA37ADA9272A6CD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4AB0D8B019E7C200A2E73B88 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4DED67AB21062EA52562E147;
+			remoteInfo = GrizzyBot;
 		};
 		7CC722DE997D88119142185F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -68,47 +113,81 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		02646B4AC3D01508A64AAE45 /* SkillsOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsOverlayView.swift; sourceTree = "<group>"; };
 		034ABF68635D68B313AA7DEA /* BotHomeWebSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotHomeWebSearchTests.swift; sourceTree = "<group>"; };
+		046251ABA24371B25741F1D9 /* ProductSurfaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductSurfaceTests.swift; sourceTree = "<group>"; };
+		06D4C278B4E67B463CF61827 /* DestinationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationStore.swift; sourceTree = "<group>"; };
 		080535B053570E1DAF2CA630 /* ScriptedRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedRuntimeTests.swift; sourceTree = "<group>"; };
 		08FA8FC9AEC1C43764D5736E /* BotAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarView.swift; sourceTree = "<group>"; };
 		0BA7B2A255FBC58BB87CF143 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		0C12DFABEB292FC633AB5790 /* ComputerRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerRuntime.swift; sourceTree = "<group>"; };
+		107F8E16F2EC4C7CAAB5AB1D /* SpeechSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechSupport.swift; sourceTree = "<group>"; };
+		18AF36B17110508186941B07 /* DeviceCodeAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCodeAuth.swift; sourceTree = "<group>"; };
 		1EAA172FAC1AB99A08E6AC55 /* McpClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpClient.swift; sourceTree = "<group>"; };
+		1F4223D6DD17A3FD2298EB17 /* GrizzyBotAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GrizzyBotAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		21F3B6B0B59AA23B0584273B /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		25D0DA2A29296B6CA8B4DAFC /* ComposioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposioTests.swift; sourceTree = "<group>"; };
+		2607B85B157D19695C87F956 /* ComposioClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposioClient.swift; sourceTree = "<group>"; };
+		26AE1BDDBA0904EDDDF50C8F /* SkillsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsTests.swift; sourceTree = "<group>"; };
 		2C8AF18B9C627741E5A510CC /* StoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreTests.swift; sourceTree = "<group>"; };
+		31AAC2F56EC52FC99A5DC171 /* LoginItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItem.swift; sourceTree = "<group>"; };
 		31F28F0711AD84A51BEAE918 /* BotHome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotHome.swift; sourceTree = "<group>"; };
 		33CF45217EF15990999EBA75 /* Cron.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cron.swift; sourceTree = "<group>"; };
+		39799E47CE1EEBF60A81AFDA /* OverlayUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayUITests.swift; sourceTree = "<group>"; };
+		399CF9C4F90564BD9E964847 /* GrizzyBot.Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GrizzyBot.Release.entitlements; sourceTree = "<group>"; };
 		3A13665DC7A54059575E9646 /* LocalProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProviders.swift; sourceTree = "<group>"; };
 		3C22124F7FE82A7C71958B52 /* GrizzyBotCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GrizzyBotCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3F1B5A4A25272D8DE8BEFC36 /* ModelConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelConnectView.swift; sourceTree = "<group>"; };
 		46DAE4FA2D21D33E50DC75AC /* AppSettingsOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsOverlayView.swift; sourceTree = "<group>"; };
+		46EF092B52E8901BD0301058 /* UITestLaunch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestLaunch.swift; sourceTree = "<group>"; };
+		4E65E5FD8AC324D29470EBA6 /* UpdaterManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterManager.swift; sourceTree = "<group>"; };
 		4E68757C80AA3F6C31769048 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		4F132427FF5F0E4A90DB18F7 /* GrizzyBotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GrizzyBotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		54109B48A948CCE11C2134C9 /* CrashReporting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporting.swift; sourceTree = "<group>"; };
 		55D551FCA6542392FDA475B4 /* WebSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearch.swift; sourceTree = "<group>"; };
+		5FC2BCBCCEAF080C3034CD88 /* MemoryIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryIndex.swift; sourceTree = "<group>"; };
 		6E36873F55BBBA4961D4F4A4 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		767DB6054B53887215A8925D /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		866AEEBA7A19C592C6896E1A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		895CB54DF308C252E7F0408F /* AgentLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLoop.swift; sourceTree = "<group>"; };
 		8A99E87B9C17655D22331DDC /* PluginsOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsOverlayView.swift; sourceTree = "<group>"; };
+		8E2CC9EE8BD0597819A0089C /* OverlaySnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlaySnapshotTests.swift; sourceTree = "<group>"; };
 		8E31C4FBEF5A687BD0E8757D /* AgentTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTools.swift; sourceTree = "<group>"; };
+		9073EF84B672BC0253421319 /* ProductSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductSurface.swift; sourceTree = "<group>"; };
 		90E608627E9ED8C81E3D90D8 /* LocalProvidersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProvidersTests.swift; sourceTree = "<group>"; };
 		916FFD0C6C6F1C1DB4E2F235 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		92038B47C33FBFAFC7237354 /* RightPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RightPanelView.swift; sourceTree = "<group>"; };
+		92A71407064CF2D0B90D2773 /* PluginClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginClient.swift; sourceTree = "<group>"; };
+		952F78D26F1214CD06838DD4 /* AgentLoopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLoopTests.swift; sourceTree = "<group>"; };
 		977A76A0FDF8165D787040E5 /* Controls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Controls.swift; sourceTree = "<group>"; };
 		98FB56E6A8F0E04C374360D2 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		9A9628297E2F6AB290976547 /* AgentToolsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentToolsTests.swift; sourceTree = "<group>"; };
+		9C6F47239DF8119B30729893 /* AgentEvalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEvalTests.swift; sourceTree = "<group>"; };
 		9FF70036E1B1DB5F93ADFD0E /* ShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellView.swift; sourceTree = "<group>"; };
 		A2AD36303A2DBCC7BC06A480 /* RoutineScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineScheduleView.swift; sourceTree = "<group>"; };
 		A879DE77CAB82A98FA411202 /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
 		A8FDF1CBE020860BCC818C84 /* OpenMausFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenMausFeatures.swift; sourceTree = "<group>"; };
+		AB794C6AE198441526123B6F /* BotTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotTemplates.swift; sourceTree = "<group>"; };
 		AE9778D00F176E80CBCAF9FD /* RoutinesPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutinesPageView.swift; sourceTree = "<group>"; };
+		B52990D4F2C40525BBC85828 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		BC342E09BDBE58984F59E04D /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		BED9B320C808B307D93EB780 /* HostComputerPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostComputerPromptView.swift; sourceTree = "<group>"; };
 		C3108710D4DD93C34D507A39 /* libGrizzyBotCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libGrizzyBotCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		C9A422AE0345B5E77B84BA2E /* GrizzyBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrizzyBotApp.swift; sourceTree = "<group>"; };
 		CC7102D998178BBA84298757 /* McpClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpClientTests.swift; sourceTree = "<group>"; };
 		D5F5BBB7F1FC532399DE8DE2 /* GrizzyBot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GrizzyBot.entitlements; sourceTree = "<group>"; };
+		D87DBE8B0F52E051C297FA2B /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
 		DB704FD9B2CDB9B8C40ACF21 /* GrizzyBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GrizzyBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DD69F88EDAEFE3272168C64F /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
 		DDF394BDED582E532893E9AD /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
+		E0BAC0485B69EE9D834F1421 /* LLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMClient.swift; sourceTree = "<group>"; };
+		E3AD1552B3178B76EEDCDDA8 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		E3DAE95AF568C793F1B0F4A1 /* ComputerDesktopView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerDesktopView.swift; sourceTree = "<group>"; };
 		EA45AF3D349EA5C61D89CA03 /* ModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalog.swift; sourceTree = "<group>"; };
 		EFEF0D6BFF53DA0CBF74F153 /* ScriptedRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedRuntime.swift; sourceTree = "<group>"; };
 		F3759CA0FED3BDA9EF99C2D0 /* MessageViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageViews.swift; sourceTree = "<group>"; };
+		F49EFDC3FDC62028E85C4138 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		F7CA677539969350DA5AACF6 /* WindowChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowChrome.swift; sourceTree = "<group>"; };
 		F91A2645D5698998169C03B8 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		FB44D631A1BFEC6A49332CEF /* CronTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -127,37 +206,72 @@
 			buildActionMask = 2147483647;
 			files = (
 				D109624BFF8F2F13037AA2E0 /* libGrizzyBotCore.a in Frameworks */,
+				83679BCB66DF620E2156104F /* Sparkle in Frameworks */,
+				133A54CE8053E79FE17E8669 /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		00BD656BACD6C28A610A2A2A /* Configs */ = {
+			isa = PBXGroup;
+			children = (
+				F49EFDC3FDC62028E85C4138 /* Debug.xcconfig */,
+				B52990D4F2C40525BBC85828 /* Release.xcconfig */,
+			);
+			path = Configs;
+			sourceTree = "<group>";
+		};
 		1AE72DC10CE69A4D4D9DF828 /* GrizzyBotCoreTests */ = {
 			isa = PBXGroup;
 			children = (
+				9C6F47239DF8119B30729893 /* AgentEvalTests.swift */,
+				952F78D26F1214CD06838DD4 /* AgentLoopTests.swift */,
 				9A9628297E2F6AB290976547 /* AgentToolsTests.swift */,
 				034ABF68635D68B313AA7DEA /* BotHomeWebSearchTests.swift */,
+				25D0DA2A29296B6CA8B4DAFC /* ComposioTests.swift */,
 				FB44D631A1BFEC6A49332CEF /* CronTests.swift */,
 				90E608627E9ED8C81E3D90D8 /* LocalProvidersTests.swift */,
 				CC7102D998178BBA84298757 /* McpClientTests.swift */,
+				046251ABA24371B25741F1D9 /* ProductSurfaceTests.swift */,
 				080535B053570E1DAF2CA630 /* ScriptedRuntimeTests.swift */,
+				26AE1BDDBA0904EDDDF50C8F /* SkillsTests.swift */,
 				2C8AF18B9C627741E5A510CC /* StoreTests.swift */,
 			);
 			path = GrizzyBotCoreTests;
 			sourceTree = "<group>";
 		};
+		3360E6B82B499D7B6D6A1F0B /* GrizzyBotUITests */ = {
+			isa = PBXGroup;
+			children = (
+				39799E47CE1EEBF60A81AFDA /* OverlayUITests.swift */,
+			);
+			path = GrizzyBotUITests;
+			sourceTree = "<group>";
+		};
 		3714BA5BC0C678735A44D2B6 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				71FDA3375A5691B88F4182FE /* GrizzyBotAppTests */,
 				1AE72DC10CE69A4D4D9DF828 /* GrizzyBotCoreTests */,
+				3360E6B82B499D7B6D6A1F0B /* GrizzyBotUITests */,
 			);
 			path = Tests;
+			sourceTree = "<group>";
+		};
+		71FDA3375A5691B88F4182FE /* GrizzyBotAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				8E2CC9EE8BD0597819A0089C /* OverlaySnapshotTests.swift */,
+			);
+			path = GrizzyBotAppTests;
 			sourceTree = "<group>";
 		};
 		8174D682D4D9BC1A2A1A58EE = {
 			isa = PBXGroup;
 			children = (
+				00BD656BACD6C28A610A2A2A /* Configs */,
 				B07EC989C9AC5B4529F0474C /* Sources */,
 				3714BA5BC0C678735A44D2B6 /* Tests */,
 				98A3C543FF2ADE49F83E6E40 /* Products */,
@@ -168,7 +282,9 @@
 			isa = PBXGroup;
 			children = (
 				DB704FD9B2CDB9B8C40ACF21 /* GrizzyBot.app */,
+				1F4223D6DD17A3FD2298EB17 /* GrizzyBotAppTests.xctest */,
 				3C22124F7FE82A7C71958B52 /* GrizzyBotCoreTests.xctest */,
+				4F132427FF5F0E4A90DB18F7 /* GrizzyBotUITests.xctest */,
 				C3108710D4DD93C34D507A39 /* libGrizzyBotCore.a */,
 			);
 			name = Products;
@@ -187,14 +303,20 @@
 			isa = PBXGroup;
 			children = (
 				46DAE4FA2D21D33E50DC75AC /* AppSettingsOverlayView.swift */,
+				866AEEBA7A19C592C6896E1A /* Assets.xcassets */,
 				0BA7B2A255FBC58BB87CF143 /* AuthView.swift */,
 				08FA8FC9AEC1C43764D5736E /* BotAvatarView.swift */,
 				BC342E09BDBE58984F59E04D /* ChatView.swift */,
+				E3DAE95AF568C793F1B0F4A1 /* ComputerDesktopView.swift */,
 				977A76A0FDF8165D787040E5 /* Controls.swift */,
+				54109B48A948CCE11C2134C9 /* CrashReporting.swift */,
 				D5F5BBB7F1FC532399DE8DE2 /* GrizzyBot.entitlements */,
+				399CF9C4F90564BD9E964847 /* GrizzyBot.Release.entitlements */,
 				C9A422AE0345B5E77B84BA2E /* GrizzyBotApp.swift */,
 				BED9B320C808B307D93EB780 /* HostComputerPromptView.swift */,
+				31AAC2F56EC52FC99A5DC171 /* LoginItem.swift */,
 				A879DE77CAB82A98FA411202 /* MarkdownText.swift */,
+				E3AD1552B3178B76EEDCDDA8 /* MenuBarView.swift */,
 				F3759CA0FED3BDA9EF99C2D0 /* MessageViews.swift */,
 				3F1B5A4A25272D8DE8BEFC36 /* ModelConnectView.swift */,
 				6E36873F55BBBA4961D4F4A4 /* OnboardingView.swift */,
@@ -205,8 +327,13 @@
 				AE9778D00F176E80CBCAF9FD /* RoutinesPageView.swift */,
 				9FF70036E1B1DB5F93ADFD0E /* ShellView.swift */,
 				F91A2645D5698998169C03B8 /* SidebarView.swift */,
+				02646B4AC3D01508A64AAE45 /* SkillsOverlayView.swift */,
+				107F8E16F2EC4C7CAAB5AB1D /* SpeechSupport.swift */,
 				21F3B6B0B59AA23B0584273B /* Theme.swift */,
+				46EF092B52E8901BD0301058 /* UITestLaunch.swift */,
+				4E65E5FD8AC324D29470EBA6 /* UpdaterManager.swift */,
 				98FB56E6A8F0E04C374360D2 /* WelcomeView.swift */,
+				F7CA677539969350DA5AACF6 /* WindowChrome.swift */,
 			);
 			path = GrizzyBot;
 			sourceTree = "<group>";
@@ -214,16 +341,28 @@
 		FB0E0E6746960B56C9F74B00 /* GrizzyBotCore */ = {
 			isa = PBXGroup;
 			children = (
+				895CB54DF308C252E7F0408F /* AgentLoop.swift */,
 				8E31C4FBEF5A687BD0E8757D /* AgentTools.swift */,
 				31F28F0711AD84A51BEAE918 /* BotHome.swift */,
+				AB794C6AE198441526123B6F /* BotTemplates.swift */,
+				2607B85B157D19695C87F956 /* ComposioClient.swift */,
+				0C12DFABEB292FC633AB5790 /* ComputerRuntime.swift */,
 				33CF45217EF15990999EBA75 /* Cron.swift */,
+				06D4C278B4E67B463CF61827 /* DestinationStore.swift */,
+				18AF36B17110508186941B07 /* DeviceCodeAuth.swift */,
+				D87DBE8B0F52E051C297FA2B /* JSONValue.swift */,
+				E0BAC0485B69EE9D834F1421 /* LLMClient.swift */,
 				3A13665DC7A54059575E9646 /* LocalProviders.swift */,
 				1EAA172FAC1AB99A08E6AC55 /* McpClient.swift */,
+				5FC2BCBCCEAF080C3034CD88 /* MemoryIndex.swift */,
 				EA45AF3D349EA5C61D89CA03 /* ModelCatalog.swift */,
 				4E68757C80AA3F6C31769048 /* Models.swift */,
 				A8FDF1CBE020860BCC818C84 /* OpenMausFeatures.swift */,
 				DDF394BDED582E532893E9AD /* Persistence.swift */,
+				92A71407064CF2D0B90D2773 /* PluginClient.swift */,
+				9073EF84B672BC0253421319 /* ProductSurface.swift */,
 				EFEF0D6BFF53DA0CBF74F153 /* ScriptedRuntime.swift */,
+				DD69F88EDAEFE3272168C64F /* Skills.swift */,
 				916FFD0C6C6F1C1DB4E2F235 /* Store.swift */,
 				55D551FCA6542392FDA475B4 /* WebSearch.swift */,
 			);
@@ -251,6 +390,24 @@
 			productReference = C3108710D4DD93C34D507A39 /* libGrizzyBotCore.a */;
 			productType = "com.apple.product-type.library.static";
 		};
+		3C13EA0D1B0B9BA760B455FC /* GrizzyBotAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D601B4AE10F091E191AB41ED /* Build configuration list for PBXNativeTarget "GrizzyBotAppTests" */;
+			buildPhases = (
+				DB5343033FB32FE9B7C6D079 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3057671E309C8079F18A1794 /* PBXTargetDependency */,
+			);
+			name = GrizzyBotAppTests;
+			packageProductDependencies = (
+			);
+			productName = GrizzyBotAppTests;
+			productReference = 1F4223D6DD17A3FD2298EB17 /* GrizzyBotAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		4837798EE5DD22679AE0204D /* GrizzyBotCoreTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 310C4D09AF8718C2B1DF9A9D /* Build configuration list for PBXNativeTarget "GrizzyBotCoreTests" */;
@@ -275,6 +432,7 @@
 			buildConfigurationList = F39207201F2200D77074F681 /* Build configuration list for PBXNativeTarget "GrizzyBot" */;
 			buildPhases = (
 				BCC09DB40948931F6BD681AD /* Sources */,
+				5C8DDFC4CB5BB85B8BA0D3A4 /* Resources */,
 				61F51AF03737FC1B112009FB /* Frameworks */,
 			);
 			buildRules = (
@@ -284,10 +442,30 @@
 			);
 			name = GrizzyBot;
 			packageProductDependencies = (
+				DBAD0CA6B7D046880B870F2A /* Sparkle */,
+				A8C39A00FDBD11E12B8B3518 /* Sentry */,
 			);
 			productName = GrizzyBot;
 			productReference = DB704FD9B2CDB9B8C40ACF21 /* GrizzyBot.app */;
 			productType = "com.apple.product-type.application";
+		};
+		82E8038B0139887959C006C5 /* GrizzyBotUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AE57267C1D75C4945D28A8A1 /* Build configuration list for PBXNativeTarget "GrizzyBotUITests" */;
+			buildPhases = (
+				437F259D2CA0CA54A5315F74 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C95CCD5B84CAFA1657701D13 /* PBXTargetDependency */,
+			);
+			name = GrizzyBotUITests;
+			packageProductDependencies = (
+			);
+			productName = GrizzyBotUITests;
+			productReference = 4F132427FF5F0E4A90DB18F7 /* GrizzyBotUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -301,11 +479,15 @@
 					21CD727AF02EEE29AF57908C = {
 						ProvisioningStyle = Automatic;
 					};
+					3C13EA0D1B0B9BA760B455FC = {
+						ProvisioningStyle = Automatic;
+					};
 					4837798EE5DD22679AE0204D = {
 						ProvisioningStyle = Automatic;
 					};
-					4DED67AB21062EA52562E147 = {
+					82E8038B0139887959C006C5 = {
 						ProvisioningStyle = Automatic;
+						TestTargetID = 4DED67AB21062EA52562E147;
 					};
 				};
 			};
@@ -318,6 +500,10 @@
 			);
 			mainGroup = 8174D682D4D9BC1A2A1A58EE;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E5601A13BF5F34217A27F197 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+				A1CC82B3C9B8ED5F7821CD6B /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 98A3C543FF2ADE49F83E6E40 /* Products */;
 			projectDirPath = "";
@@ -326,9 +512,22 @@
 				21CD727AF02EEE29AF57908C /* GrizzyBotCore */,
 				4DED67AB21062EA52562E147 /* GrizzyBot */,
 				4837798EE5DD22679AE0204D /* GrizzyBotCoreTests */,
+				3C13EA0D1B0B9BA760B455FC /* GrizzyBotAppTests */,
+				82E8038B0139887959C006C5 /* GrizzyBotUITests */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5C8DDFC4CB5BB85B8BA0D3A4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				24D6710085EB943440D0877F /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		8E69AD35105EE1B242F543F1 /* Copy Swift Objective-C Interface Header */ = {
@@ -350,20 +549,40 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		437F259D2CA0CA54A5315F74 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A0B1C08071FF7138CCFB226 /* OverlayUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8890F4C6603084B48C5996B6 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CF093FECE761E921602DD6EA /* AgentLoop.swift in Sources */,
 				002000712F9B648B461791FB /* AgentTools.swift in Sources */,
 				1B3E830AD3F520262482FFC9 /* BotHome.swift in Sources */,
+				7EED246F2CB22EF04A3149C0 /* BotTemplates.swift in Sources */,
+				F4F4AD149A04743B443534DF /* ComposioClient.swift in Sources */,
+				2E70295D31A7021C554C7F0D /* ComputerRuntime.swift in Sources */,
 				71A10283014E6CA714B92E7E /* Cron.swift in Sources */,
+				5BFC52F247353EAFEF8E18FD /* DestinationStore.swift in Sources */,
+				3B91AC90C681D794785E8CDD /* DeviceCodeAuth.swift in Sources */,
+				02A75930E7E89FB469CF109F /* JSONValue.swift in Sources */,
+				A87D9D20E3EA567B5A64D60F /* LLMClient.swift in Sources */,
 				9E2708F345079F8E2E71CDB9 /* LocalProviders.swift in Sources */,
 				8ABB3A13219B3D5D73205E6D /* McpClient.swift in Sources */,
+				B5F54CF7C94AF3A43DA1DCF2 /* MemoryIndex.swift in Sources */,
 				B64BB9DAF2F3CC51CA893DEC /* ModelCatalog.swift in Sources */,
 				EF7C483E6C5D471929194F14 /* Models.swift in Sources */,
 				0CAD997F01B7DBA5C5F1EF93 /* OpenMausFeatures.swift in Sources */,
 				67786054E57D901D86FA257D /* Persistence.swift in Sources */,
+				CF3028E5FD59D3C6C55959DC /* PluginClient.swift in Sources */,
+				90FE300FCFE71BB659CBFBBF /* ProductSurface.swift in Sources */,
 				B3084169C569910C1658D873 /* ScriptedRuntime.swift in Sources */,
+				D1F6638E7866D8C5F78D1D6F /* Skills.swift in Sources */,
 				4EB54A526111A5A0F522FD81 /* Store.swift in Sources */,
 				48244E081B4FCD51C4EE0BA9 /* WebSearch.swift in Sources */,
 			);
@@ -373,12 +592,17 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0FE8776E8D339A119A07AC89 /* AgentEvalTests.swift in Sources */,
+				C9CC3636E4ABB5D3ED534B3F /* AgentLoopTests.swift in Sources */,
 				2ACD1183A80FB2BE5F6D54E3 /* AgentToolsTests.swift in Sources */,
 				7B06747F29BFD784602A65CD /* BotHomeWebSearchTests.swift in Sources */,
+				410D6CCD6F6BB2B03866B78D /* ComposioTests.swift in Sources */,
 				31C604F87009674137794FC5 /* CronTests.swift in Sources */,
 				E06758F1CD11E18D1E5496C2 /* LocalProvidersTests.swift in Sources */,
 				1BDD175C76D18C304B93A79F /* McpClientTests.swift in Sources */,
+				A084036EA9D1A3FE50831272 /* ProductSurfaceTests.swift in Sources */,
 				F5BC86FC50D5FD1EA4188973 /* ScriptedRuntimeTests.swift in Sources */,
+				5C6BD280104FE75CFECFEB30 /* SkillsTests.swift in Sources */,
 				0895BD5E1460BE67397E9FD3 /* StoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -391,10 +615,14 @@
 				40E300E19AADDFA37403A433 /* AuthView.swift in Sources */,
 				EC67741901A159D8D707CB5E /* BotAvatarView.swift in Sources */,
 				6F49041F1F18EB74984F2A9D /* ChatView.swift in Sources */,
+				D0F6D007526E6E538FF5439F /* ComputerDesktopView.swift in Sources */,
 				CCFE3A5F1F471C899C72C0C0 /* Controls.swift in Sources */,
+				19E4F803C82D8ECB96EEA58F /* CrashReporting.swift in Sources */,
 				0825B6C8DF176C162168B0CE /* GrizzyBotApp.swift in Sources */,
 				10C6F1583A6F593B003B67CB /* HostComputerPromptView.swift in Sources */,
+				E00627B414708FA9623A3199 /* LoginItem.swift in Sources */,
 				6FEF6EEED4274EB0912DC251 /* MarkdownText.swift in Sources */,
+				BF59AC18191EBCC9DD739712 /* MenuBarView.swift in Sources */,
 				BAA83BD3B6F882B9D61D60EA /* MessageViews.swift in Sources */,
 				846AF1F6C515AECFB760417D /* ModelConnectView.swift in Sources */,
 				83E2E7CFE433835A866E0943 /* OnboardingView.swift in Sources */,
@@ -405,14 +633,37 @@
 				AD768C48CA30733DC6389485 /* RoutinesPageView.swift in Sources */,
 				B6FE3347DCA50DBAE42A58DF /* ShellView.swift in Sources */,
 				D7F6B772596BF6184BEAAFC7 /* SidebarView.swift in Sources */,
+				A3DA8AD84F7220ABFE72688A /* SkillsOverlayView.swift in Sources */,
+				497108EB35AA26CB04983ABD /* SpeechSupport.swift in Sources */,
 				97CC4700DE1377D590B135D2 /* Theme.swift in Sources */,
+				F1803C0235BB9E89B8F3F096 /* UITestLaunch.swift in Sources */,
+				C79FBAA26A36188958F604FD /* UpdaterManager.swift in Sources */,
 				F388D25AA678456E088CDABD /* WelcomeView.swift in Sources */,
+				0F48845F0162CEF6CF41517A /* WindowChrome.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DB5343033FB32FE9B7C6D079 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7653A0FB5E882BC9CB7E2F79 /* OverlaySnapshotTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		3057671E309C8079F18A1794 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4DED67AB21062EA52562E147 /* GrizzyBot */;
+			targetProxy = 4C2C412FB0F50BCBFB25E409 /* PBXContainerItemProxy */;
+		};
+		C95CCD5B84CAFA1657701D13 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4DED67AB21062EA52562E147 /* GrizzyBot */;
+			targetProxy = 715EA2DFCEA37ADA9272A6CD /* PBXContainerItemProxy */;
+		};
 		CD6547977E3C40FEAC931A8B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 21CD727AF02EEE29AF57908C /* GrizzyBotCore */;
@@ -426,6 +677,27 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		1D6432C4E17B50A0B8150C08 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.grizzybot.app.tests;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GrizzyBot.app/Contents/MacOS/GrizzyBot";
+			};
+			name = Debug;
+		};
 		24C2C65D13879A214D0587AA /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -446,14 +718,56 @@
 			};
 			name = Debug;
 		};
-		6E783DC12F72DF33169786A4 /* Release */ = {
+		3A6DAC02F6008942A34D573A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Sources/GrizzyBot/GrizzyBot.entitlements;
+				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.grizzybot.app.uitests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = GrizzyBot;
+			};
+			name = Release;
+		};
+		58CA07AF20CE4DEC7384C5CB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.grizzybot.app.uitests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = GrizzyBot;
+			};
+			name = Debug;
+		};
+		6E783DC12F72DF33169786A4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B52990D4F2C40525BBC85828 /* Release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "$(GRIZZYBOT_CODE_SIGN_ENTITLEMENTS)";
+				CODE_SIGN_IDENTITY = "$(GRIZZYBOT_CODE_SIGN_IDENTITY)";
+				CODE_SIGN_STYLE = "$(GRIZZYBOT_CODE_SIGN_STYLE)";
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "$(GRIZZYBOT_DEVELOPMENT_TEAM)";
 				ENABLE_HARDENED_RUNTIME = YES;
 				EXECUTABLE_NAME = GrizzyBot;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -462,7 +776,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				OTHER_CODE_SIGN_FLAGS = "--timestamp=none";
+				OTHER_CODE_SIGN_FLAGS = "$(GRIZZYBOT_OTHER_CODE_SIGN_FLAGS)";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -528,6 +842,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -541,6 +856,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -585,6 +901,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -603,6 +920,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -640,6 +958,7 @@
 		};
 		F289E38B0EF90A2CAD566334 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F49EFDC3FDC62028E85C4138 /* Debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/GrizzyBot/GrizzyBot.entitlements;
@@ -690,6 +1009,27 @@
 			};
 			name = Debug;
 		};
+		FF5D146691323D169022134B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.grizzybot.app.tests;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GrizzyBot.app/Contents/MacOS/GrizzyBot";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -720,6 +1060,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		AE57267C1D75C4945D28A8A1 /* Build configuration list for PBXNativeTarget "GrizzyBotUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				58CA07AF20CE4DEC7384C5CB /* Debug */,
+				3A6DAC02F6008942A34D573A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D601B4AE10F091E191AB41ED /* Build configuration list for PBXNativeTarget "GrizzyBotAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1D6432C4E17B50A0B8150C08 /* Debug */,
+				FF5D146691323D169022134B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		F39207201F2200D77074F681 /* Build configuration list for PBXNativeTarget "GrizzyBot" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -730,6 +1088,38 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A1CC82B3C9B8ED5F7821CD6B /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.7.0;
+			};
+		};
+		E5601A13BF5F34217A27F197 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.24.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A8C39A00FDBD11E12B8B3518 /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E5601A13BF5F34217A27F197 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
+		DBAD0CA6B7D046880B870F2A /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1CC82B3C9B8ED5F7821CD6B /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 4AB0D8B019E7C200A2E73B88 /* Project object */;
 }

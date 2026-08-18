@@ -9,7 +9,9 @@ struct StoreTests {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return AppStore(dataDirectory: dir, delayScale: 0.01)
+        let store = AppStore(dataDirectory: dir, delayScale: 0.01)
+        store.pluginClient = AlwaysAllowPlugins()
+        return store
     }
 
     @Test("signUp validation")
@@ -89,6 +91,34 @@ struct StoreTests {
         #expect(!store.sidebarPreview(for: store.bots.first!).isEmpty)
     }
 
+    @Test("LLM agent writes files via tool calls")
+    func llmAgentLoop() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "llm@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Agent", title: "helper", instructions: "Use tools.")
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(
+                toolCalls: [
+                    LLMToolCall(
+                        id: "1",
+                        name: "write_file",
+                        arguments: "{\"path\":\"notes/result.txt\",\"content\":\"agent-ok\"}"
+                    ),
+                ]
+            ),
+            ChatCompletionResponse(text: "saved it in your files.", inputTokens: 8, outputTokens: 5),
+        ])
+        store.send(botId: bot.id, text: "write notes/result.txt")
+        try? await Task.sleep(for: .milliseconds(800))
+        let msgs = store.messages(for: bot.id)
+        #expect(msgs.contains(where: { $0.role == .bot && $0.firstText.contains("saved it") }))
+        #expect(store.readBotHomeFile(botId: bot.id, path: "notes/result.txt") == "agent-ok")
+        #expect(store.threads[bot.id]?.run?.status == .completed)
+        #expect(store.usage.last?.inputTokens == 8)
+        #expect(store.usage.last?.outputTokens == 5)
+        #expect(!(store.threads[bot.id]?.llmMessages.isEmpty ?? true))
+    }
+
     @Test("stopRun cancels")
     func stopRun() async {
         let store = tempStore()
@@ -137,12 +167,40 @@ struct StoreTests {
     func plugins() async {
         let store = tempStore()
         #expect(store.signUp(name: "A", email: "plug@b.com", password: "password1") == nil)
-        store.connect(slug: "gmail")
+        store.connect(slug: "gmail", token: "test-token")
         try? await Task.sleep(for: .milliseconds(100))
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == true)
         store.revoke(slug: "gmail")
         try? await Task.sleep(for: .milliseconds(100))
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == false)
+    }
+
+    @Test("plugins without Composio open the token sheet")
+    func pluginsTokenSheet() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "token@b.com", password: "password1") == nil)
+        store.connect(slug: "gmail")
+        #expect(store.connectingSlug == "gmail")
+        #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == false)
+    }
+
+    @Test("plugins Composio OAuth marks the app connected")
+    func pluginsComposioOAuth() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "oauth@b.com", password: "password1") == nil)
+        let composio = ImmediateComposio()
+        store.composioClient = composio
+        store.connect(slug: "gmail")
+        try? await Task.sleep(for: .milliseconds(250))
+        #expect(composio.lastAuthorize == "gmail")
+        let gmail = store.connections.first(where: { $0.slug == "gmail" })
+        #expect(gmail?.connected == true)
+        #expect(gmail?.viaComposio == true)
+        #expect(store.connectingSlug == nil)
+        store.revoke(slug: "gmail")
+        try? await Task.sleep(for: .milliseconds(80))
+        #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == false)
+        #expect(store.connections.first(where: { $0.slug == "gmail" })?.viaComposio == false)
     }
 
     @Test("weeklySummary math")
@@ -188,5 +246,71 @@ struct StoreTests {
         #expect(store.threads.isEmpty)
         #expect(store.route == .onboarding)
         #expect(store.listWorkspaceSnapshots().count == 1)
+    }
+
+    @Test("Box.com key seeds the Box plugin without Composio")
+    func boxKeySeedsPlugin() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "box@b.com", password: "password1") == nil)
+        #expect(ConnectionCatalog.defaults.contains(where: { $0.slug == "box" }))
+        var config = store.appConfig
+        config.boxToken = "box_dev_token"
+        store.saveAppConfig(config)
+        #expect(store.appConfig.boxConfigured)
+        #expect(store.connectionSecrets["box"] == "box_dev_token")
+        #expect(store.connections.first(where: { $0.slug == "box" })?.connected == true)
+        #expect(PluginClient.tokenHint(for: "box").lowercased().contains("box"))
+    }
+
+    @Test("updateMcpServer keeps id and rewrites command")
+    func updateMcpServer() throws {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "mcp@b.com", password: "password1") == nil)
+        let added = try #require(store.addMcpServer(
+            name: "filesystem",
+            transport: .stdio,
+            command: "npx",
+            args: ["-y", "old"],
+            env: ["A": "1"],
+            url: "",
+            headers: [:]
+        ))
+        var edited = added
+        edited.name = "files"
+        edited.command = "uvx"
+        edited.args = ["mcp-server"]
+        edited.env = ["B": "2"]
+        store.updateMcpServer(edited)
+        let saved = store.mcpServers.first(where: { $0.id == added.id })
+        #expect(saved?.name == "files")
+        #expect(saved?.command == "uvx")
+        #expect(saved?.args == ["mcp-server"])
+        #expect(saved?.env["B"] == "2")
+        #expect(store.mcpServers.count == 1)
+    }
+
+    @Test("addToolkit copies a Composio catalog item into connections")
+    func addToolkitFromCatalog() async throws {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "tk@b.com", password: "password1") == nil)
+        let composio = ImmediateComposio()
+        composio.catalog = ConnectionCatalog.defaults + [
+            ConnectionItem(slug: "clickup", name: "ClickUp", logo: "https://example.com/c.png", blurb: "Tasks and docs"),
+        ]
+        store.composioClient = composio
+        await store.browseComposioCatalog(query: "")
+        #expect(store.composioCatalog.contains(where: { $0.slug == "clickup" }))
+        #expect(!store.connections.contains(where: { $0.slug == "clickup" }))
+
+        await store.browseComposioCatalog(query: "click")
+        #expect(store.composioCatalog.map(\.slug) == ["clickup"])
+
+        let item = try #require(store.composioCatalog.first(where: { $0.slug == "clickup" }))
+        let added = try #require(store.addToolkit(item))
+        #expect(added.slug == "clickup")
+        #expect(store.connections.contains(where: { $0.slug == "clickup" && $0.name == "ClickUp" }))
+        #expect(store.addToolkit(slug: "  ") == nil)
+        #expect(store.addToolkit(slug: "ClickUp")?.slug == "clickup")
+        #expect(store.connections.filter { $0.slug == "clickup" }.count == 1)
     }
 }
