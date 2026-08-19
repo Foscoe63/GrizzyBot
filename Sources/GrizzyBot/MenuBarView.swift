@@ -19,16 +19,17 @@ struct MenuBarView: View {
             }
             ForEach(store.allRoutines.prefix(5)) { routine in
                 Button(routine.name) {
-                    store.runNow(botId: routine.botId)
+                    store.runRoutine(routine.id)
                     NSApp.activate(ignoringOtherApps: true)
                 }
             }
             Divider()
-            Button("Check for Updates…") {
-                UpdaterManager.shared.checkForUpdates()
-            }
             Button("Open GrizzyBot") {
-                NSApp.activate(ignoringOtherApps: true)
+                MainWindowController.showMainWindow()
+            }
+            Button("Open Routines") {
+                MainWindowController.showMainWindow()
+                store.showRoutinesPage()
             }
             Button("Quit") {
                 NSApp.terminate(nil)

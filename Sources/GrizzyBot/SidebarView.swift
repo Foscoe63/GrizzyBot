@@ -206,13 +206,13 @@ struct SidebarView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 11)
             .background(
-                bot.chiefOfStaff
-                    ? (active ? Theme.orange.opacity(0.16) : Theme.orange.opacity(0.07))
-                    : (active ? Theme.bgHoverRow : Color.clear)
+                active
+                    ? Theme.orange.opacity(0.16)
+                    : (bot.chiefOfStaff ? Theme.orange.opacity(0.07) : Color.clear)
             )
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
-                if bot.chiefOfStaff {
+                if active || bot.chiefOfStaff {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(Theme.orange.opacity(active ? 0.45 : 0.25), lineWidth: 1)
                 }
@@ -305,7 +305,7 @@ struct SidebarView: View {
             HStack(spacing: 10) {
                 ZStack {
                     Circle()
-                        .fill(Color(hex: "#17171A"))
+                        .fill(Theme.bgCard)
                         .frame(width: 30, height: 30)
                     Text("◷")
                         .font(.system(size: 13))
@@ -323,7 +323,7 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(store.mainView == .routines ? Color(hex: "#131315") : Color.clear)
+            .background(store.mainView == .routines ? Theme.bgHoverRow : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             .contentShape(Rectangle())
         }
@@ -337,7 +337,7 @@ struct SidebarView: View {
             HStack(spacing: 10) {
                 ZStack {
                     Circle()
-                        .fill(Color(hex: "#17171A"))
+                        .fill(Theme.bgCard)
                         .frame(width: 30, height: 30)
                     PuzzleIcon()
                         .stroke(Theme.textLetter, style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
@@ -350,7 +350,7 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(hoverPlugins ? Color(hex: "#131315") : Color.clear)
+            .background(hoverPlugins ? Theme.bgHoverRow : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             .contentShape(Rectangle())
         }
@@ -365,7 +365,7 @@ struct SidebarView: View {
             HStack(spacing: 10) {
                 ZStack {
                     Circle()
-                        .fill(Color(hex: "#17171A"))
+                        .fill(Theme.bgCard)
                         .frame(width: 30, height: 30)
                     Text("✦")
                         .font(.system(size: 13))
@@ -378,7 +378,7 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(hoverSkills ? Color(hex: "#131315") : Color.clear)
+            .background(hoverSkills ? Theme.bgHoverRow : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             .contentShape(Rectangle())
         }

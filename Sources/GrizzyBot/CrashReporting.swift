@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import GrizzyBotCore
 #if canImport(Sentry)
 import Sentry
 #endif
@@ -46,6 +47,9 @@ enum CrashReporting {
             options.dsn = dsn
             options.debug = false
             options.swiftAsyncStacktraces = true
+            options.beforeSend = { event in
+                SentryScrubber.scrub(event)
+            }
         }
         sentryStarted = true
         #endif
@@ -80,13 +84,13 @@ enum CrashReporting {
 }
 
 private func uncaughtException(_ exception: NSException) {
-    let text = """
+    let text = DiagnosticScrubber.redact("""
     \(Date())
     Name: \(exception.name.rawValue)
     Reason: \(exception.reason ?? "")
     Call stack:
     \(exception.callStackSymbols.joined(separator: "\n"))
-    """
+    """)
     try? text.write(to: CrashReporting.fileURL(), atomically: true, encoding: .utf8)
 }
 

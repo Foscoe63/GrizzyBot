@@ -31,6 +31,7 @@ struct MemoryDiffTests {
         let text = MemoryIndex.excerpt(long, maxChars: 80)
         #expect(text.contains("search_memory"))
         #expect(text.count < long.count)
+        #expect(text.contains("fact"))
     }
 
     @Test("unified diff marks new and changed lines")
@@ -216,7 +217,7 @@ struct StoreRobustnessTests {
             ChatCompletionResponse(text: "waiting"),
         ])
         store.send(botId: bot.id, text: "run echo hi")
-        try? await Task.sleep(for: .milliseconds(400))
+        #expect(await store.waitForPendingTool(botId: bot.id))
         let thread = store.threads[bot.id]
         #expect(thread?.pendingTool?.tool == "shell.exec")
         #expect(thread?.run?.status == .waitingInput)
@@ -228,7 +229,7 @@ struct StoreRobustnessTests {
         #expect(store.signUp(name: "A", email: "plug2@b.com", password: "password1") == nil)
         store.composioClient = ImmediateComposio()
         store.connect(slug: "gmail")
-        try? await Task.sleep(for: .milliseconds(250))
+        await store.waitForPluginTasks()
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == true)
         let bot = store.createBot(name: "Mailer", title: "inbox")
         if let idx = store.bots.firstIndex(where: { $0.id == bot.id }) {
@@ -245,7 +246,7 @@ struct StoreRobustnessTests {
             ChatCompletionResponse(text: "you have mail"),
         ])
         store.send(botId: bot.id, text: "check gmail")
-        try? await Task.sleep(for: .milliseconds(400))
+        #expect(await store.waitForRunCompletion(botId: bot.id))
         let text = store.threads[bot.id]?.messages.last?.firstText ?? ""
         #expect(text.contains("mail") || (store.threads[bot.id]?.messages.contains(where: { $0.blocks.contains { if case .card = $0 { return true }; return false } }) == true))
     }

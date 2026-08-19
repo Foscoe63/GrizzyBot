@@ -167,65 +167,151 @@ struct GrizzySelect<T: Hashable & CustomStringConvertible>: View {
     let options: [T]
     @Binding var selection: T
     var style: GrizzySelectStyle = .field
+    var searchable: Bool = false
     var label: ((T) -> String)? = nil
 
     @State private var open = false
+    @State private var query = ""
 
     private func title(for value: T) -> String {
         label?(value) ?? value.description
     }
 
+    private var filtered: [T] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard searchable, !q.isEmpty else { return options }
+        return options.filter { title(for: $0).lowercased().contains(q) || "\($0)".lowercased().contains(q) }
+    }
+
     var body: some View {
-        Button {
-            open.toggle()
-        } label: {
-            HStack(spacing: 8) {
-                Text(title(for: selection))
-                    .font(.system(size: style == .chip ? 14 : 15))
-                    .foregroundStyle(Theme.textBright)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Theme.textChevron)
-            }
-            .padding(.horizontal, style == .chip ? 11 : 14)
-            .padding(.vertical, style == .chip ? 7 : 12)
-            .padding(.trailing, style == .chip ? 4 : 0)
-            .background(style == .chip ? Theme.bgChip : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: style == .chip ? 8 : 11, style: .continuous))
-            .overlay {
-                if style == .field {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(Theme.borderInputsDark, lineWidth: 1)
-                }
+        Group {
+            if searchable {
+                searchableField
+            } else {
+                menuField
             }
         }
+    }
+
+    private var fieldLabel: some View {
+        HStack(spacing: 8) {
+            Text(title(for: selection))
+                .font(.system(size: style == .chip ? 14 : 15))
+                .foregroundStyle(Theme.textBright)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.textChevron)
+        }
+        .padding(.horizontal, style == .chip ? 11 : 14)
+        .padding(.vertical, style == .chip ? 7 : 12)
+        .padding(.trailing, style == .chip ? 4 : 0)
+        .background(style == .chip ? Theme.bgChip : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: style == .chip ? 8 : 11, style: .continuous))
+        .overlay {
+            if style == .field {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(Theme.borderInputsDark, lineWidth: 1)
+            }
+        }
+    }
+
+    private var searchableField: some View {
+        Button {
+            open = true
+        } label: {
+            fieldLabel
+        }
         .buttonStyle(.plain)
-        .popover(isPresented: $open, arrowEdge: .bottom) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(options, id: \.self) { option in
+        .sheet(isPresented: $open) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Choose model")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.textBright)
+                    Spacer()
+                    Button("Done") {
+                        query = ""
+                        open = false
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.orange)
+                }
+
+                TextField("Search", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textBright)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Theme.bgSearch)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                Text("\(filtered.count) model\(filtered.count == 1 ? "" : "s")")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textMuted)
+
+                List {
+                    ForEach(filtered, id: \.self) { option in
                         Button {
                             selection = option
+                            query = ""
                             open = false
                         } label: {
-                            Text(title(for: option))
-                                .font(.system(size: 14))
-                                .foregroundStyle(Theme.textBright)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 9)
-                                .background(option == selection ? Theme.bgSelectedRow : Color.clear)
+                            HStack(spacing: 8) {
+                                Text(title(for: option))
+                                    .foregroundStyle(Theme.textBright)
+                                    .lineLimit(2)
+                                Spacer(minLength: 0)
+                                if option == selection {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Theme.orange)
+                                }
+                            }
                         }
                         .buttonStyle(.plain)
                     }
                 }
+                .listStyle(.plain)
+
+                Button("Done") {
+                    query = ""
+                    open = false
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Theme.textCream)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Theme.bgCream)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
-            .frame(minWidth: 160, maxHeight: 260)
-            .padding(6)
-            .background(Theme.bgUserMenu)
+            .padding(16)
+            .frame(minWidth: 420, minHeight: 400)
+            .background(Theme.bgMain)
+            .onDisappear { query = "" }
         }
+    }
+
+    private var menuField: some View {
+        Menu {
+            ForEach(options, id: \.self) { option in
+                Button {
+                    selection = option
+                } label: {
+                    if option == selection {
+                        Label(title(for: option), systemImage: "checkmark")
+                    } else {
+                        Text(title(for: option))
+                    }
+                }
+            }
+        } label: {
+            fieldLabel
+        }
+        .menuStyle(.borderlessButton)
     }
 }
 

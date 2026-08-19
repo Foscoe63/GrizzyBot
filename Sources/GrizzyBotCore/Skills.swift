@@ -236,7 +236,7 @@ public enum BundledSkills {
     public static let browser = AgentSkill(
         id: "browser",
         name: "browser",
-        description: "Drive the live computer: open URLs, screenshot, click, type, take over.",
+        description: "Drive the live computer: open URLs, screenshot, click, scroll, type, take over.",
         body: """
         # Browser
 
@@ -244,15 +244,18 @@ public enum BundledSkills {
 
         ## Workflow
         1. `computer_open` the URL (or a local `file://` path).
-        2. `computer_screenshot` and read the image before clicking.
-        3. `computer_click` / `computer_type` for the next action. Screenshot again after each important step.
+        2. `computer_screenshot` and read the image (and the Targets list) before clicking.
+        3. `computer_click` / `computer_scroll` / `computer_type` / `computer_key` for the next action. Screenshot again after each important step.
         4. If a login, captcha, or 2FA appears, `request_takeover` and wait.
 
         ## Rules
-        - Do not guess coordinates. Use the latest screenshot.
+        - Click (x, y) is in the latest screenshot’s pixel space. Prefer the Targets list when you cannot see the image.
+        - Do not guess coordinates.
+        - `computer_click` with `button: right` for a context menu, `count: 2` for a double-click.
+        - `computer_key` accepts chords such as `cmd+c` or `shift+enter`.
         - Prefer the computer tools over `web_fetch` when the page is interactive or behind a session.
         """,
-        allowedTools: ["computer_open", "computer_screenshot", "computer_click", "computer_type", "request_takeover"]
+        allowedTools: ["computer_open", "computer_screenshot", "computer_click", "computer_scroll", "computer_type", "computer_key", "request_takeover"]
     )
 
     public static let officeDocs = AgentSkill(
@@ -311,21 +314,29 @@ public enum BundledSkills {
         body: """
         # Memory
 
-        Use when the user says remember, or when a preference/fact should survive this turn.
+        Use when the user says remember or forget, or when a preference/fact should survive this turn.
+
+        ## Files
+        - Bot: `MEMORY.md` in this bot’s home.
+        - Shared: `SHARED.md` at the workspace root (every bot on this account).
 
         ## Scope
-        - `remember` with `scope: bot` (default): only this bot sees it (MEMORY.md).
-        - `remember` with `scope: shared`: every bot on this Mac sees it (SHARED.md).
+        - `remember` with `scope: bot` (default): only this bot.
+        - `remember` with `scope: shared`: every bot on this Mac.
+        - `remember` with `pin: true` (or `scope: pin`): standing rules under `## Pin` that always load.
+        - Put standing rules the model must always see under `## Pin`. Recent facts go under `## Facts`.
 
         ## What to store
         - Names, preferences, standing instructions, project facts.
-        - Not secrets (API keys, passwords) unless the user explicitly asks.
+        - Not secrets (API keys, passwords) unless the user explicitly asks — the tool refuses those.
 
         ## Rules
         - One fact per remember call. Phrase it as a standalone bullet.
+        - Similar facts are updated, not duplicated.
+        - `forget` with a short query when a fact is wrong.
         - Do not remember ephemeral task progress.
         """,
-        allowedTools: ["remember"]
+        allowedTools: ["remember", "search_memory", "forget"]
     )
 
     public static let skillCreator = AgentSkill(

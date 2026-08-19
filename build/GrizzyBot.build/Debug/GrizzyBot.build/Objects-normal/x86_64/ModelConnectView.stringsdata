@@ -1,0 +1,200 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/ModelConnectView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Connect a model",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 85
+        }
+      },
+      {
+        "comment": "",
+        "key": "Paste an API key, sign in with ChatGPT / Copilot / SuperGrok, or point at a local provider (Ollama, LM Studio, vMLX, oMLX) on this machine or another host on your LAN.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 89
+        }
+      },
+      {
+        "comment": "",
+        "key": "This provider cannot paste a key here. Skip if this deployment already has credentials.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 140
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search providers and models",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 97
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip for now",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 180
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sign in with a subscription",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 196
+        }
+      },
+      {
+        "comment": "",
+        "key": "ChatGPT Plus/Pro, GitHub Copilot, and SuperGrok use a browser code — you do not need to paste an API key.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 199
+        }
+      },
+      {
+        "comment": "",
+        "key": "Base URL",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 274
+        }
+      },
+      {
+        "comment": "",
+        "key": "Use 127.0.0.1 for this machine, or a LAN IP like 192.168.1.40 for another computer. The server must listen on 0.0.0.0 (not only localhost).",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 293
+        }
+      },
+      {
+        "comment": "",
+        "key": "This machine’s LAN addresses: %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 355
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading models…",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 302
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh models",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 302
+        }
+      },
+      {
+        "comment": "",
+        "key": "LAN host",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 320
+        }
+      },
+      {
+        "comment": "",
+        "key": "Scanning…",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 339
+        }
+      },
+      {
+        "comment": "",
+        "key": "Find on LAN",
+        "location": {
+          "startingColumn": 60,
+          "startingLine": 339
+        }
+      },
+      {
+        "comment": "",
+        "key": "Model",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 366
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh models or add one below",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 371
+        }
+      },
+      {
+        "comment": "",
+        "key": "No models listed",
+        "location": {
+          "startingColumn": 68,
+          "startingLine": 371
+        }
+      },
+      {
+        "comment": "",
+        "key": "Or type a model id",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 395
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 408
+        }
+      },
+      {
+        "comment": "",
+        "key": "Waiting for sign-in…",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 460
+        }
+      },
+      {
+        "comment": "",
+        "key": "Enter this code at %@",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 450
+        }
+      },
+      {
+        "comment": "",
+        "key": "Model",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 658
+        }
+      },
+      {
+        "comment": "",
+        "key": "✕",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 665
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -180,7 +180,7 @@ public enum ContextCompactor {
                 copy[i].toolCalls = copy[i].toolCalls.map { call in
                     var next = call
                     if next.arguments.count > 800 {
-                        next.arguments = summarizePayload(next.arguments)
+                        next.arguments = compactToolArguments(next.arguments)
                     }
                     return next
                 }
@@ -195,6 +195,68 @@ public enum ContextCompactor {
         return String(content.prefix(head))
             + "\n…[summarized \(omitted) chars]…\n"
             + String(content.suffix(tail))
+    }
+
+    public static func isValidJSON(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return false }
+        return (try? JSONSerialization.jsonObject(with: data)) != nil
+    }
+
+    /// LM Studio (and some other local servers) 500 when `tool_calls[].function.arguments` is not valid JSON.
+    public static func ensureValidJSONArguments(_ arguments: String) -> String {
+        let trimmed = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "{}" }
+        if isValidJSON(trimmed) { return trimmed }
+        return wrappedToolArguments(trimmed)
+    }
+
+    /// Shrink oversized tool-call JSON while remaining parseable. Never splice a summary into raw JSON.
+    public static func compactToolArguments(_ arguments: String, limit: Int = 800) -> String {
+        if arguments.count <= limit, isValidJSON(arguments) { return arguments }
+        if var object = jsonObject(arguments) {
+            shrinkJSONStringValues(&object)
+            if let encoded = encodeJSON(object) {
+                if encoded.count <= max(limit, 1_200) || isValidJSON(encoded) {
+                    return encoded
+                }
+            }
+        }
+        return wrappedToolArguments(arguments)
+    }
+
+    static func wrappedToolArguments(_ arguments: String, previewLimit: Int = 400) -> String {
+        let preview = String(arguments.prefix(previewLimit))
+        let payload: [String: Any] = [
+            "_compacted": true,
+            "omitted": max(0, arguments.count - preview.count),
+            "preview": preview,
+        ]
+        return encodeJSON(payload) ?? #"{"_compacted":true}"#
+    }
+
+    private static func jsonObject(_ text: String) -> [String: Any]? {
+        guard let data = text.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private static func encodeJSON(_ value: Any) -> String? {
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value),
+              let text = String(data: data, encoding: .utf8)
+        else { return nil }
+        return text
+    }
+
+    private static func shrinkJSONStringValues(_ object: inout [String: Any]) {
+        for (key, raw) in object {
+            if let string = raw as? String, string.count > 400 {
+                object[key] = summarizePayload(string, head: 220, tail: 80)
+            } else if var nested = raw as? [String: Any] {
+                shrinkJSONStringValues(&nested)
+                object[key] = nested
+            }
+        }
     }
 }
 
@@ -217,8 +279,9 @@ public enum AgentLoop {
             "You are a fully capable agent: think, use tools, and keep going until the user's request is done or you must wait for them.",
             "Be concise. Prefer tools over guessing. Never claim you wrote a file, ran a command, searched, signed in, or called a plugin unless a tool result says so.",
             "Shell runs inside a macOS seatbelt sandbox rooted at your home. Destructive shell and plugin writes pause for user approval unless always-allowed.",
+            "Shell default timeout is \(Int(BotHomeStore.ShellTimeout.default))s. For multi-step research (curl loops, sleeps), pass timeout_seconds up to \(Int(BotHomeStore.ShellTimeout.max)) or split into shorter commands.",
             "Keep going across many tool rounds. If context is compacted, trust the remaining transcript and continue the job.",
-            "Memory in this prompt is only an excerpt. Use search_memory to recall more. Matched skills are already inlined — follow them.",
+            "Memory in this prompt is pinned standing rules plus the newest facts. Use search_memory for older facts. Use forget when a fact is wrong or outdated.",
             "read_file and list_files read the bot home, or an absolute/~ path on this Mac when the user named a folder (for example ~/.agents/skills). Prefer them over shell cat. write_file only writes the bot sandbox (Home path), not the user's Obsidian vault. To write Obsidian or other MCP apps, call mcp_list_tools then mcp_call with that server's write/append tool and its arguments (filepath/filename + content). Shell ~ is the bot home, not the Mac home.",
             AppConfig.keysHelp,
         ]
@@ -265,6 +328,7 @@ public enum AgentLoop {
         client: any ChatCompleting,
         request: AgentLoopRequest,
         onDelta: (@Sendable (String) -> Void)? = nil,
+        onStep: (@Sendable (Int, Int) -> Void)? = nil,
         onTool: (@Sendable (String, String, AgentToolCallResult) -> Void)? = nil,
         execute: @escaping @Sendable (String, String) async -> AgentToolCallResult
     ) async throws -> AgentLoopResult {
@@ -301,30 +365,69 @@ public enum AgentLoop {
             Array(messages.drop(while: { $0.role == "system" }).prefix(200))
         }
 
+        func modelRequest(
+            onDelta: (@Sendable (String) -> Void)?,
+            charBudget: Int
+        ) async throws -> ChatCompletionResponse {
+            var lastError: Error?
+            var retryBudget = charBudget
+            for attempt in 0..<ModelRequestRetry.maxAttempts {
+                if attempt > 0 {
+                    try await Task.sleep(nanoseconds: ModelRequestRetry.backoffNanoseconds(attempt: attempt - 1))
+                    if let lastError, ModelRequestRetry.shouldCompactOnRetry(lastError) {
+                        retryBudget = max(8_000, retryBudget * 3 / 4)
+                        let tighter = ContextCompactor.compact(messages, budget: retryBudget)
+                        messages = tighter.messages
+                        if tighter.compacted { compacted = true }
+                    }
+                }
+                let chatRequest = ChatCompletionRequest(
+                    endpoint: request.endpoint,
+                    messages: messages,
+                    tools: tools
+                )
+                do {
+                    if let onDelta {
+                        return try await client.stream(chatRequest, onDelta: onDelta)
+                    }
+                    return try await client.complete(chatRequest)
+                } catch {
+                    lastError = error
+                    if error is CancellationError { throw error }
+                    if attempt + 1 < ModelRequestRetry.maxAttempts, ModelRequestRetry.isRetryable(error) {
+                        continue
+                    }
+                    throw error
+                }
+            }
+            throw lastError ?? LLMError.emptyResponse
+        }
+
         for step in 1...maxSteps {
             if Task.isCancelled { throw CancellationError() }
+            onStep?(step, maxSteps)
             let packed = ContextCompactor.compact(messages, budget: request.charBudget)
             messages = packed.messages
             if packed.compacted { compacted = true }
 
             let response: ChatCompletionResponse
-            if let onDelta {
-                response = try await client.stream(
-                    ChatCompletionRequest(
-                        endpoint: request.endpoint,
-                        messages: messages,
-                        tools: tools
-                    ),
-                    onDelta: onDelta
-                )
-            } else {
-                response = try await client.complete(
-                    ChatCompletionRequest(
-                        endpoint: request.endpoint,
-                        messages: messages,
-                        tools: tools
+            do {
+                response = try await modelRequest(onDelta: onDelta, charBudget: request.charBudget)
+            } catch {
+                if !blocks.isEmpty {
+                    let detail = error.localizedDescription
+                    return AgentLoopResult(
+                        text: "The model stopped responding (\(detail)). Tool results above may still be useful — ask me to continue.",
+                        blocks: blocks,
+                        pause: pause,
+                        inputTokens: inputTokens,
+                        outputTokens: outputTokens,
+                        steps: step,
+                        messages: persistable(),
+                        compacted: compacted
                     )
-                )
+                }
+                throw error
             }
             inputTokens += response.inputTokens
             outputTokens += response.outputTokens
@@ -361,15 +464,27 @@ public enum AgentLoop {
             )
             for (call, result) in zip(response.toolCalls, results) {
                 blocks.append(contentsOf: result.blocks)
-                var toolMessage = ChatMessage.tool(
-                    id: call.id,
-                    content: String((result.output.isEmpty ? "(empty tool result)" : result.output).prefix(6_000))
+                let raw = result.output.isEmpty ? "(empty tool result)" : result.output
+                var output = raw.count > 3_500
+                    ? ContextCompactor.summarizePayload(raw, head: 2_000, tail: 1_000)
+                    : raw
+                let vision = LLMRouting.supportsVisionImages(
+                    provider: request.endpoint.provider,
+                    model: request.endpoint.model
                 )
-                if let jpeg = result.imageJPEGBase64 {
-                    toolMessage.imageJPEGBase64 = jpeg
-                    toolMessage.content = (toolMessage.content ?? "") + "\n[screenshot attached]"
+                if result.imageJPEGBase64 != nil, !vision {
+                    output += "\n[screenshot captured as pixels; this model cannot view images — use accessibility/UI text from the tool result.]"
                 }
-                messages.append(toolMessage)
+                messages.append(ChatMessage.tool(id: call.id, content: output))
+                if let jpeg = result.imageJPEGBase64, vision {
+                    messages.append(
+                        ChatMessage(
+                            role: "user",
+                            content: "Screenshot from \(call.name).",
+                            imageJPEGBase64: jpeg
+                        )
+                    )
+                }
                 if nameIsWeb(call.name) {
                     if isFailedWeb(output: result.output) {
                         webFails += 1

@@ -1,0 +1,11 @@
+Target dependency graph (5 targets)
+Target 'GrizzyBot' in project 'GrizzyBot'
+➜ Explicit dependency on target 'GrizzyBotCore' in project 'GrizzyBot'
+➜ Explicit dependency on target 'GrizzyBotRoutineAgent' in project 'GrizzyBot'
+➜ Explicit dependency on target 'Sentry-product' in project 'Sentry'
+Target 'Sentry-product' in project 'Sentry'
+➜ Explicit dependency on target 'SentryCppHelper' in project 'Sentry'
+Target 'SentryCppHelper' in project 'Sentry' (no dependencies)
+Target 'GrizzyBotRoutineAgent' in project 'GrizzyBot'
+➜ Explicit dependency on target 'GrizzyBotCore' in project 'GrizzyBot'
+Target 'GrizzyBotCore' in project 'GrizzyBot' (no dependencies)

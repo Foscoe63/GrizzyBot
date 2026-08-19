@@ -248,6 +248,7 @@ public enum AgentToolCatalog {
         .init(id: "shell", label: "Shell", subtitle: "Run shell commands in the bot home"),
         .init(id: "remember", label: "Remember", subtitle: "Store durable memory facts"),
         .init(id: "search_memory", label: "Search memory", subtitle: "Retrieve facts from bot and shared memory"),
+        .init(id: "forget", label: "Forget", subtitle: "Remove a durable memory fact"),
         .init(id: "request_takeover", label: "Request takeover", subtitle: "Hand the computer to you for sign-in"),
         .init(id: "spawn_bot", label: "Spawn bot", subtitle: "Create a child bot"),
         .init(id: "delete_bot", label: "Delete bot", subtitle: "Permanently remove a spawned bot"),
@@ -258,6 +259,7 @@ public enum AgentToolCatalog {
         .init(id: "computer_click", label: "Click", subtitle: "Click on the computer screen"),
         .init(id: "computer_type", label: "Type", subtitle: "Type into the computer"),
         .init(id: "computer_key", label: "Key", subtitle: "Press a key on the computer"),
+        .init(id: "computer_scroll", label: "Scroll", subtitle: "Scroll the computer screen"),
         .init(id: "plugin_call", label: "Plugin call", subtitle: "Search or write through a connected plugin"),
         .init(id: "read_skill", label: "Read skill", subtitle: "Load a skill's full instructions"),
         .init(id: "import_skills", label: "Import skills", subtitle: "Copy SKILL.md folders into GrizzyBot"),
@@ -325,7 +327,7 @@ extension Bot {
         if enabledTools.contains(toolId) { return true }
         if toolId.hasPrefix("computer_"), enabledTools.contains("request_takeover") { return true }
         if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
-        if toolId == "search_memory", enabledTools.contains("remember") { return true }
+        if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
         if toolId == "import_skills", enabledTools.contains("read_file") { return true }
         return false
     }
@@ -492,26 +494,43 @@ extension AgentToolCatalog {
             properties: [
                 "command": stringProp("Command passed to zsh -lc"),
                 "cwd": stringProp("Optional subdirectory of the bot home"),
+                "timeout_seconds": stringProp("Optional timeout in seconds (5–300, default 120)"),
             ],
             required: ["command"]
         )
         add(
             "remember",
-            description: "Store a durable fact. scope=bot (default) writes MEMORY.md for this bot; scope=shared writes workspace memory every bot can read.",
+            description: "Store a durable fact in MEMORY.md (this bot) or SHARED.md (every bot). Similar facts are updated in place, not duplicated. Standing rules belong under ## Pin.",
             properties: [
                 "content": stringProp("Fact to remember"),
-                "scope": stringProp("bot or shared"),
+                "scope": stringProp("bot, shared, or pin"),
+                "pin": stringProp("true to store under ## Pin so it always loads"),
             ],
             required: ["content"]
         )
-        if enabled.contains("remember") || enabled.contains("search_memory") {
+        if enabled.contains("remember") || enabled.contains("search_memory") || enabled.contains("forget") {
             tools.append(
                 ChatTool(
                     function: ChatToolFunction(
                         name: "search_memory",
-                        description: "Search bot-local and shared workspace memory. Use this instead of guessing past facts.",
+                        description: "Search this bot’s MEMORY.md and workspace SHARED.md. The prompt only has pins plus recent facts.",
                         parameters: objectSchema(
                             ["query": stringProp("Keywords to find")],
+                            required: ["query"]
+                        )
+                    )
+                )
+            )
+            tools.append(
+                ChatTool(
+                    function: ChatToolFunction(
+                        name: "forget",
+                        description: "Remove a durable fact that is wrong or outdated. Matches bullets in bot or shared memory.",
+                        parameters: objectSchema(
+                            [
+                                "query": stringProp("Keywords that identify the fact to drop"),
+                                "scope": stringProp("bot (default) or shared"),
+                            ],
                             required: ["query"]
                         )
                     )
@@ -536,7 +555,7 @@ extension AgentToolCatalog {
         )
         add(
             "computer_screenshot",
-            description: "Capture a JPEG of this bot's live computer screen. The image is attached for you to see.",
+            description: "Capture a JPEG of this bot's live computer screen plus a text list of clickable Targets in the same pixel space. Use those coordinates for computer_click. The image is attached when the model can view images.",
             properties: [:],
             required: []
         )
@@ -548,10 +567,22 @@ extension AgentToolCatalog {
         )
         add(
             "computer_click",
-            description: "Click on the computer screen at pixel coordinates.",
+            description: "Click at screenshot-pixel coordinates from the latest computer_screenshot (0,0 is top-left of that image). Prefer a Targets line from that screenshot. button=right for a context menu; count=2 for a double-click.",
             properties: [
                 "x": stringProp("X pixel"),
                 "y": stringProp("Y pixel"),
+                "button": stringProp("left (default) or right"),
+                "count": stringProp("1 (default) or 2 for double-click"),
+            ],
+            required: ["x", "y"]
+        )
+        add(
+            "computer_scroll",
+            description: "Scroll at screenshot-pixel coordinates. Positive delta scrolls down. Screenshot first so x,y match the image.",
+            properties: [
+                "x": stringProp("X pixel"),
+                "y": stringProp("Y pixel"),
+                "delta": stringProp("Pixels to scroll (default 120, negative for up)"),
             ],
             required: ["x", "y"]
         )
@@ -563,7 +594,7 @@ extension AgentToolCatalog {
         )
         add(
             "computer_key",
-            description: "Press a keyboard key on the computer (Enter, Escape, Tab, Backspace, or a character).",
+            description: "Press a key or chord on the computer (Enter, Escape, Tab, cmd+c, shift+enter).",
             properties: ["key": stringProp("Key name, e.g. Enter")],
             required: ["key"]
         )

@@ -39,6 +39,7 @@ public final class AppStore {
     public var apiKey: String?
     public var modelBaseUrl: String?
     public var fetchedModels: [LocalModelRef] = []
+    public var providerProfiles: [String: ModelProviderProfile] = [:]
     public var modelSettingsOpen: Bool = false
     public var groups: [GroupRoom] = []
     public var appConfig: AppConfig = AppConfig()
@@ -53,17 +54,20 @@ public final class AppStore {
     public var chatSearchOpen: Bool = false
     public var highlightMessageId: String?
     public var pendingComposerText: String?
+    /// Prefills Sign in when the user picks an existing account on Welcome.
+    public var pendingAuthEmail: String = ""
 
     public enum AppSettingsSection: String, Sendable, CaseIterable, Identifiable {
-        case general, connections, computer, voice, tools, diagnostics
+        case general, connections, computer, voice, tools, themes, diagnostics
         public var id: String { rawValue }
         public var label: String {
             switch self {
             case .general: return "General"
             case .connections: return "Connections"
-            case .computer: return "Local VM"
+            case .computer: return "Computer"
             case .voice: return "Voice"
             case .tools: return "Tools"
+            case .themes: return "Themes"
             case .diagnostics: return "Diagnostics"
             }
         }
@@ -96,9 +100,11 @@ public final class AppStore {
     }
 
     private var users: [UserAccount] = []
-    private let persistence: Persistence
-    private let botHome: BotHomeStore
-    private let destinations: DestinationStore
+    private let globalRoot: URL
+    private var globalPersistence: Persistence
+    private var userPersistence: Persistence
+    private var botHome: BotHomeStore
+    private var destinations: DestinationStore
     private var runTasks: [String: Task<Void, Never>] = [:]
     private var bootTasks: [String: Task<Void, Never>] = [:]
     private var pluginTasks: [String: Task<Void, Never>] = [:]
@@ -109,6 +115,7 @@ public final class AppStore {
     /// Injected chat client (tests). Production uses `OpenAIChatClient.shared`.
     public var chatCompleter: (any ChatCompleting)?
     public var oauthJSON: String?
+    private var providerCredentials: [String: ProviderCredential] = [:]
     public var connectionSecrets: [String: String] = [:]
     public var computerRuntime: (any ComputerRuntime)?
     public var pluginClient: any PluginConnecting = PluginClient.shared
@@ -142,14 +149,20 @@ public final class AppStore {
     }
 
     public init(dataDirectory: URL? = nil, delayScale: Double = 1.0) {
-        self.persistence = Persistence(root: dataDirectory)
-        self.botHome = BotHomeStore(root: self.persistence.root)
-        self.destinations = DestinationStore(root: self.persistence.root)
+        let root = dataDirectory ?? Persistence.defaultGlobalRoot()
+        self.globalRoot = root
+        AccountMigration.migrateIfNeeded(globalRoot: root)
+        self.globalPersistence = Persistence(root: root)
+        self.userPersistence = Persistence(root: root)
+        self.botHome = BotHomeStore(root: root)
+        self.destinations = DestinationStore(root: root)
         self.computerRuntime = FileDesktopRuntime()
         self.delayScale = delayScale
         bootstrap()
         reloadSkills()
         optInNewTool("import_skills")
+        optInNewTool("forget")
+        optInNewTool("computer_scroll")
         if delayScale >= 1 {
             startRoutineScheduler()
         }
@@ -162,12 +175,14 @@ public final class AppStore {
     private static let localName = "Local User"
 
     private func bootstrap() {
-        users = persistence.loadUsers()
-        if let session = persistence.loadSession(),
+        users = globalPersistence.loadUsers()
+        if let session = globalPersistence.loadSession(),
            users.contains(where: { $0.id == session.userId }) {
             enterSession(session)
-        } else {
+        } else if users.isEmpty {
             ensureLocalSession()
+        } else {
+            route = .welcome
         }
     }
 
@@ -177,28 +192,77 @@ public final class AppStore {
         if let existing = users.first(where: { $0.email == Self.localEmail }) {
             user = existing
         } else {
+            let userId = Ids.new()
+            try? AccountCredentialStore.save(userId: userId, passwordHash: PasswordHasher.hash(Ids.new()))
             user = UserAccount(
-                id: Ids.new(),
+                id: userId,
                 email: Self.localEmail,
-                name: Self.localName,
-                passwordHash: Persistence.hashPassword(Ids.new())
+                name: Self.localName
             )
             users.append(user)
-            persistence.saveUsers(users)
+            globalPersistence.saveUsers(users)
         }
         enterSession(Session(userId: user.id, name: user.name, email: user.email))
     }
 
+    /// Resume the built-in local workspace from the welcome screen.
+    public func continueAsLocalUser() {
+        ensureLocalSession()
+    }
+
+    /// Registered accounts on this Mac (passwords live in Keychain).
+    public var registeredAccounts: [UserAccount] { users }
+
+    private func attachUserPersistence(userId: String) {
+        let userDir = AccountLayout.ensureUserDirectory(global: globalRoot, userId: userId)
+        userPersistence = Persistence(root: userDir)
+        botHome = BotHomeStore(root: userDir)
+        destinations = DestinationStore(root: userDir)
+    }
+
     private func enterSession(_ session: Session) {
+        attachUserPersistence(userId: session.userId)
         self.session = session
         loadWorkspace(for: session.userId)
         route = bots.isEmpty ? .onboarding : .shell
         showHostPrompt = route == .shell && deployment.computerHost == nil
-        persistence.saveSession(session)
+        globalPersistence.saveSession(session)
     }
 
     private func loadWorkspace(for userId: String) {
-        applyWorkspace(persistence.loadWorkspace(userId: userId))
+        applyWorkspace(userPersistence.loadWorkspace(userId: userId))
+    }
+
+    private func clearWorkspaceState() {
+        bots = []
+        threads = [:]
+        routines = [:]
+        computers = [:]
+        connections = ConnectionCatalog.defaults
+        usage = []
+        memory = []
+        files = []
+        deployment = DeploymentSettings()
+        modelProvider = nil
+        modelId = nil
+        apiKey = nil
+        modelBaseUrl = nil
+        fetchedModels = []
+        providerProfiles = [:]
+        providerCredentials = [:]
+        groups = []
+        customTools = []
+        mcpServers = []
+        oauthJSON = nil
+        connectionSecrets = [:]
+        activeBotId = nil
+        activeGroupId = nil
+        panel = nil
+        computerOpen = false
+        booting = false
+        pluginsOpen = false
+        showHostPrompt = false
+        mainView = .chat
     }
 
     private func applyWorkspace(_ ws: UserWorkspace) {
@@ -216,12 +280,25 @@ public final class AppStore {
         apiKey = ws.apiKey
         modelBaseUrl = ws.modelBaseUrl
         fetchedModels = ws.fetchedModels
+        providerProfiles = ModelProviderProfiles.migrateProfiles(from: ws)
         groups = ws.groups
         appConfig = ws.appConfig
         customTools = ws.customTools
         mcpServers = ws.mcpServers
         oauthJSON = ws.oauthJSON
         connectionSecrets = ws.connectionSecrets
+        if let userId = session?.userId, let secrets = SecretStore.load(userId: userId) {
+            providerCredentials = ModelProviderProfiles.migrateCredentials(
+                from: ws,
+                existing: secrets.providerCredentials
+            )
+            for (provider, cred) in secrets.providerCredentials where !cred.isEmpty {
+                providerCredentials[provider] = cred
+            }
+        } else {
+            providerCredentials = ModelProviderProfiles.migrateCredentials(from: ws, existing: [:])
+        }
+        syncActiveProviderFields()
         mergeCatalog(ConnectionCatalog.defaults)
         applyBoxToken(appConfig.boxToken, persist: false)
         if !appConfig.profileName.isEmpty, let existing = session {
@@ -238,6 +315,7 @@ public final class AppStore {
         pluginsOpen = false
         skillsOpen = false
         mainView = .chat
+        hydrateMemoryFiles()
     }
 
     private func currentWorkspace() -> UserWorkspace {
@@ -256,6 +334,7 @@ public final class AppStore {
             apiKey: apiKey,
             modelBaseUrl: modelBaseUrl,
             fetchedModels: fetchedModels,
+            providerProfiles: providerProfiles,
             groups: groups,
             appConfig: appConfig,
             customTools: customTools,
@@ -267,9 +346,106 @@ public final class AppStore {
 
     private func save() {
         guard let userId = session?.userId else { return }
-        persistence.saveWorkspace(currentWorkspace(), userId: userId)
-        persistence.saveUsers(users)
-        persistence.saveSession(session)
+        persistMemoryFiles()
+        userPersistence.saveWorkspace(
+            currentWorkspace(),
+            userId: userId,
+            providerCredentials: providerCredentials
+        )
+        globalPersistence.saveUsers(users)
+        globalPersistence.saveSession(session)
+    }
+
+    public func modelProviderSettings(for provider: String) -> ModelProviderSettings {
+        ModelProviderProfiles.settings(
+            provider: provider,
+            profiles: providerProfiles,
+            credentials: providerCredentials,
+            activeProvider: modelProvider,
+            activeModelId: modelId,
+            activeBaseUrl: modelBaseUrl,
+            activeFetched: fetchedModels,
+            activeApiKey: apiKey,
+            activeOAuthJSON: oauthJSON
+        )
+    }
+
+    public func fetchedModels(for provider: String) -> [LocalModelRef] {
+        modelProviderSettings(for: provider).fetchedModels
+    }
+
+    public func isProviderEnabled(_ provider: String) -> Bool {
+        modelProviderSettings(for: provider).enabled
+    }
+
+    public func setProviderEnabled(_ provider: String, enabled: Bool) {
+        let trimmed = provider.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var profile = providerProfiles[trimmed] ?? ModelProviderProfile()
+        profile.enabled = enabled
+        providerProfiles[trimmed] = profile
+        save()
+    }
+
+    public func enabledModelSources() -> [EnabledProviderModels] {
+        ModelCatalog.providers.compactMap { entry in
+            guard isProviderEnabled(entry.provider) else { return nil }
+            return EnabledProviderModels(
+                provider: entry.provider,
+                providerName: entry.providerName ?? entry.provider,
+                fetched: modelProviderSettings(for: entry.provider).fetchedModels
+            )
+        }
+    }
+
+    /// Stash in-progress Connect form fields for the current provider without switching workspace default.
+    public func updateModelProviderDraft(
+        provider: String,
+        modelId: String?,
+        apiKey: String?,
+        baseUrl: String?,
+        models: [LocalModelRef]
+    ) {
+        let trimmedProvider = provider.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedProvider.isEmpty else { return }
+
+        var profile = providerProfiles[trimmedProvider] ?? ModelProviderProfile()
+        if let modelId {
+            let trimmed = modelId.trimmingCharacters(in: .whitespacesAndNewlines)
+            profile.modelId = trimmed.isEmpty ? nil : trimmed
+        }
+        if let baseUrl, !baseUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if ModelCatalog.usesCustomBase(trimmedProvider) {
+                profile.baseUrl = (try? LocalProviders.normalizeBaseUrl(baseUrl, provider: trimmedProvider)) ?? baseUrl
+            } else {
+                profile.baseUrl = baseUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        if !models.isEmpty {
+            profile.fetchedModels = models
+        }
+        providerProfiles[trimmedProvider] = profile
+
+        var cred = providerCredentials[trimmedProvider] ?? ProviderCredential()
+        if let apiKey {
+            let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            cred.apiKey = trimmed.isEmpty ? nil : trimmed
+        }
+        providerCredentials[trimmedProvider] = cred
+
+        if trimmedProvider == modelProvider {
+            syncActiveProviderFields()
+        }
+    }
+
+    private func syncActiveProviderFields() {
+        guard let provider = modelProvider else { return }
+        let settings = modelProviderSettings(for: provider)
+        modelId = settings.modelId
+        modelBaseUrl = settings.baseUrl
+        fetchedModels = settings.fetchedModels
+        apiKey = settings.apiKey
+        oauthJSON = settings.oauthJSON
     }
 
     private func sleep(_ seconds: Double) async {
@@ -279,7 +455,10 @@ public final class AppStore {
 
     // MARK: - Auth
 
-    public func goToSignIn() { route = .signIn }
+    public func goToSignIn(email: String = "") {
+        if !email.isEmpty { pendingAuthEmail = email }
+        route = .signIn
+    }
     public func goToSignUp() { route = .signUp }
     public func goToWelcome() { route = .welcome }
 
@@ -297,13 +476,15 @@ public final class AppStore {
         let local = trimmedEmail.split(separator: "@").first.map(String.init) ?? "User"
         let resolvedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalName = resolvedName.isEmpty ? (local.isEmpty ? "User" : local) : resolvedName
+        let userId = Ids.new()
+        try? AccountCredentialStore.save(userId: userId, passwordHash: PasswordHasher.hash(password))
         let user = UserAccount(
-            id: Ids.new(),
+            id: userId,
             email: trimmedEmail,
-            name: finalName,
-            passwordHash: Persistence.hashPassword(password)
+            name: finalName
         )
         users.append(user)
+        attachUserPersistence(userId: userId)
         session = Session(userId: user.id, name: user.name, email: user.email)
         bots = []
         threads = [:]
@@ -327,12 +508,20 @@ public final class AppStore {
 
     public func signIn(email: String, password: String) -> String? {
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let hash = Persistence.hashPassword(password)
         guard let user = users.first(where: { $0.email.lowercased() == trimmedEmail }),
-              user.passwordHash == hash else {
+              AccountCredentialStore.verify(userId: user.id, password: password)
+        else {
             return "Invalid login credentials"
         }
+        if let stored = AccountCredentialStore.load(userId: user.id),
+           PasswordHasher.needsUpgrade(stored) {
+            try? AccountCredentialStore.save(userId: user.id, passwordHash: PasswordHasher.hash(password))
+        }
+        if session?.userId != user.id {
+            save()
+        }
         session = Session(userId: user.id, name: user.name, email: user.email)
+        attachUserPersistence(userId: user.id)
         loadWorkspace(for: user.id)
         route = bots.isEmpty ? .onboarding : .shell
         if route == .shell, deployment.computerHost == nil {
@@ -352,8 +541,11 @@ public final class AppStore {
         booting = false
         pluginsOpen = false
         showHostPrompt = false
-        // No auth gate — return to the local on-device workspace.
-        ensureLocalSession()
+        save()
+        session = nil
+        globalPersistence.saveSession(nil)
+        clearWorkspaceState()
+        route = .welcome
     }
 
     public func saveModelSelection(
@@ -363,29 +555,43 @@ public final class AppStore {
         baseUrl: String? = nil,
         models: [LocalModelRef] = []
     ) {
-        self.modelProvider = provider
-        self.modelId = modelId
-        self.apiKey = apiKey
+        updateModelProviderDraft(
+            provider: provider,
+            modelId: modelId,
+            apiKey: apiKey,
+            baseUrl: baseUrl,
+            models: models
+        )
+        var profile = providerProfiles[provider] ?? ModelProviderProfile()
         if let baseUrl, !baseUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            self.modelBaseUrl = (try? LocalProviders.normalizeBaseUrl(baseUrl, provider: provider)) ?? baseUrl
+            profile.baseUrl = (try? LocalProviders.normalizeBaseUrl(baseUrl, provider: provider)) ?? baseUrl
         } else if LocalProviders.isLocal(provider) {
-            self.modelBaseUrl = LocalProviders.def(for: provider)?.defaultBaseUrl
-        } else {
-            self.modelBaseUrl = nil
+            profile.baseUrl = LocalProviders.def(for: provider)?.defaultBaseUrl
+        } else if !ModelCatalog.usesCustomBase(provider) {
+            profile.baseUrl = nil
         }
-        if !models.isEmpty {
-            self.fetchedModels = models
-        }
+        profile.enabled = true
+        providerProfiles[provider] = profile
+        self.modelProvider = provider
+        syncActiveProviderFields()
         save()
     }
 
     public func saveOAuthCredential(_ credential: OAuthCredential, provider: String, modelId: String) {
+        var cred = providerCredentials[provider] ?? ProviderCredential()
         if let data = try? JSONEncoder().encode(credential), let json = String(data: data, encoding: .utf8) {
-            oauthJSON = json
+            cred.oauthJSON = json
         }
-        apiKey = credential.access
-        modelProvider = provider
-        self.modelId = modelId
+        cred.apiKey = credential.access
+        providerCredentials[provider] = cred
+
+        var profile = providerProfiles[provider] ?? ModelProviderProfile()
+        profile.modelId = modelId
+        profile.enabled = true
+        providerProfiles[provider] = profile
+
+        self.modelProvider = provider
+        syncActiveProviderFields()
         save()
     }
 
@@ -470,10 +676,10 @@ public final class AppStore {
             botId: bot.id,
             kind: {
                 switch appConfig.defaultComputerMode == .auto
-                    ? (deployment.computerHost == "this-mac" ? ComputerMode.thisMac : .cloud)
+                    ? (deployment.normalizedHost == .thisMac ? ComputerMode.thisMac : .inAppBrowser)
                     : appConfig.defaultComputerMode {
                 case .thisMac: return .desktop
-                case .off: return .fake
+                case .off: return .none
                 default: return deployment.sandboxKind
                 }
             }(),
@@ -486,9 +692,10 @@ public final class AppStore {
                 scope: "bot",
                 botId: bot.id,
                 path: "MEMORY.md",
-                content: "# Memory\n\n"
+                content: MemoryLedger.botTemplate
             )
         )
+        try? botHome.write(botId: bot.id, path: MemoryFiles.botFileName, content: MemoryLedger.botTemplate)
         activeBotId = bot.id
         save()
         return bot
@@ -529,6 +736,7 @@ public final class AppStore {
         computers.removeValue(forKey: botId)
         routines.removeValue(forKey: botId)
         memory.removeAll { $0.botId == botId }
+        try? botHome.delete(botId: botId, path: MemoryFiles.botFileName)
         if activeBotId == botId {
             activeBotId = bots.first?.id
         }
@@ -648,12 +856,14 @@ public final class AppStore {
     }
 
     private func canRunLLM(for bot: Bot) -> Bool {
-        LLMRouting.canRun(
-            provider: bot.modelProvider ?? modelProvider,
-            apiKey: apiKey,
-            baseUrl: modelBaseUrl,
+        let provider = bot.modelProvider ?? modelProvider
+        let settings = modelProviderSettings(for: provider ?? "")
+        return LLMRouting.canRun(
+            provider: provider,
+            apiKey: settings.apiKey,
+            baseUrl: settings.baseUrl,
             injectedClient: chatCompleter != nil
-        ) || (oauthJSON?.isEmpty == false)
+        ) || !(settings.oauthJSON?.isEmpty ?? true)
     }
 
     private func runLLMAgent(botId: String, threadKey: String, runId: String, prompt: String) async {
@@ -673,7 +883,8 @@ public final class AppStore {
         threads[threadKey] = thread
 
         let provider = bot.modelProvider ?? modelProvider
-        let selectedModel = bot.modelId ?? modelId
+        let providerSettings = modelProviderSettings(for: provider ?? ModelCatalog.defaultProvider)
+        let selectedModel = bot.modelId ?? providerSettings.modelId ?? modelId
         let client: any ChatCompleting = chatCompleter ?? OpenAIChatClient.shared
         let tools = AgentToolCatalog.chatTools(
             enabledIds: bot.enabledTools,
@@ -716,8 +927,8 @@ public final class AppStore {
                 endpoint = (try? LLMRouting.endpoint(
                     provider: provider,
                     modelId: selectedModel,
-                    apiKey: apiKey,
-                    baseUrl: modelBaseUrl
+                    apiKey: providerSettings.apiKey,
+                    baseUrl: providerSettings.baseUrl
                 )) ?? ModelEndpoint(
                     provider: provider ?? "injected",
                     model: selectedModel ?? "test",
@@ -725,10 +936,10 @@ public final class AppStore {
                     apiKey: "local"
                 )
             } else {
-                var resolvedKey = apiKey
+                var resolvedKey = providerSettings.apiKey
                 if let token = await DeviceCodeAuth.resolveAccessToken(
-                    apiKey: apiKey,
-                    oauthJSON: oauthJSON,
+                    apiKey: providerSettings.apiKey,
+                    oauthJSON: providerSettings.oauthJSON,
                     provider: provider ?? ""
                 ) {
                     resolvedKey = token
@@ -737,7 +948,7 @@ public final class AppStore {
                     provider: provider,
                     modelId: selectedModel,
                     apiKey: resolvedKey,
-                    baseUrl: modelBaseUrl
+                    baseUrl: providerSettings.baseUrl
                 )
             }
             let progressId = progressMsg.id
@@ -763,6 +974,16 @@ public final class AppStore {
                 onDelta: { [weak self] delta in
                     Task { @MainActor in
                         self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: delta)
+                    }
+                },
+                onStep: { [weak self] step, max in
+                    Task { @MainActor in
+                        self?.setThinkingProgress(
+                            threadKey: threadKey,
+                            runId: runId,
+                            messageId: progressId,
+                            text: "thinking… step \(step)/\(max)"
+                        )
                     }
                 },
                 onTool: { [weak self] name, _, result in
@@ -998,12 +1219,27 @@ public final class AppStore {
         announceFinished(botId: botId, text: botMsg.firstText, status: thread2.run?.status)
     }
 
+    private func setThinkingProgress(threadKey: String, runId: String, messageId: String, text: String) {
+        guard var thread = threads[threadKey], thread.run?.id == runId else { return }
+        guard let idx = thread.messages.firstIndex(where: { $0.id == messageId }) else { return }
+        if case .progress(let existing) = thread.messages[idx].blocks.first {
+            if existing.hasPrefix("thinking…") || existing.isEmpty {
+                thread.messages[idx].blocks = [.progress(text)]
+                threads[threadKey] = thread
+            }
+        }
+    }
+
     private func appendStreamDelta(threadKey: String, runId: String, messageId: String, delta: String) {
         guard var thread = threads[threadKey], thread.run?.id == runId else { return }
         guard let idx = thread.messages.firstIndex(where: { $0.id == messageId }) else { return }
         var text = ""
-        if case .progress(let existing) = thread.messages[idx].blocks.first, existing != "thinking…" {
-            text = existing
+        if case .progress(let existing) = thread.messages[idx].blocks.first {
+            if existing.hasPrefix("thinking…") {
+                text = ""
+            } else {
+                text = existing
+            }
         } else if case .text(let existing) = thread.messages[idx].blocks.first {
             text = existing
         }
@@ -1107,6 +1343,7 @@ public final class AppStore {
             do {
                 try botHome.edit(botId: botId, path: path, content: content, mode: append ? .append : .replace)
                 refreshFilesMirror(botId: botId)
+                ingestMemoryFileIfNeeded(botId: botId, path: path)
                 return AgentToolCallResult(
                     output: "\(append ? "Appended" : "Edited") \(path).",
                     blocks: [.card(lines: [CardLine(k: append ? "appended" : "edited", v: path)])]
@@ -1138,6 +1375,10 @@ public final class AppStore {
             do {
                 try botHome.delete(botId: botId, path: path)
                 refreshFilesMirror(botId: botId)
+                if URL(fileURLWithPath: path).lastPathComponent == MemoryFiles.botFileName {
+                    try? botHome.write(botId: botId, path: MemoryFiles.botFileName, content: MemoryLedger.botTemplate)
+                    ingestMemoryFileIfNeeded(botId: botId, path: MemoryFiles.botFileName)
+                }
                 return AgentToolCallResult(
                     output: "Deleted \(path).",
                     blocks: [.card(lines: [CardLine(k: "deleted", v: path)])]
@@ -1169,7 +1410,7 @@ public final class AppStore {
             let query = s("query", "q")
             guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
             do {
-                let results = try await WebSearch.search(query: query, limit: 5)
+                let results = try await WebSearch.search(query: query, limit: 5, braveKey: appConfig.braveSearchKey)
                 if results.isEmpty {
                     return AgentToolCallResult(
                         output: "No results for \(query). Do not retry similar queries this turn unless you have a new proper noun. If this is about GrizzyBot Settings, answer from this Mac.",
@@ -1210,6 +1451,7 @@ public final class AppStore {
         case "shell":
             let command = s("command", "cmd")
             let cwd = s("cwd")
+            let timeout = BotHomeStore.ShellTimeout.parse(s("timeout_seconds", "timeout"))
             guard !command.isEmpty else { return AgentToolCallResult(output: "command is required") }
             if let gated = gatedWrite(
                 tool: "shell.exec",
@@ -1222,7 +1464,7 @@ public final class AppStore {
             }
             let allowed = bot.autoApprove || bot.alwaysAllowTools.contains("shell.exec")
             do {
-                let result = try await botHome.runShell(botId: botId, command: command, cwd: cwd)
+                let result = try await botHome.runShell(botId: botId, command: command, cwd: cwd, timeout: timeout)
                 let status: ApprovalStatus = allowed ? .alwaysAllowed : .allowed
                 return AgentToolCallResult(
                     output: result.combined,
@@ -1243,26 +1485,61 @@ public final class AppStore {
             let content = s("content", "text")
             guard !content.isEmpty else { return AgentToolCallResult(output: "content is required") }
             let scope = s("scope").lowercased()
-            if scope == "shared" || scope == "workspace" {
-                upsertSharedMemory(text: content)
+            let shared = scope == "shared" || scope == "workspace"
+            let pin = s("pin").lowercased() == "true" || scope == "pin"
+            let result = rememberFact(botId: botId, text: content, shared: shared, pin: pin)
+            switch result {
+            case .rejectedSecret:
+                return AgentToolCallResult(output: "Refused — that looks like a secret. Store keys in Settings, not memory.")
+            case .empty:
+                return AgentToolCallResult(output: "content is required")
+            case .unchanged:
                 return AgentToolCallResult(
-                    output: "Remembered in shared workspace memory.",
+                    output: "Already in \(shared ? "shared" : "bot") memory.",
                     blocks: [.card(lines: [
                         CardLine(k: "memory", v: String(content.prefix(200))),
-                        CardLine(k: "scope", v: "shared"),
+                        CardLine(k: "scope", v: shared ? "shared" : "bot"),
+                        CardLine(k: "pin", v: pin ? "true" : "false"),
+                    ])]
+                )
+            case .updated(let previous):
+                return AgentToolCallResult(
+                    output: "Updated \(shared ? "shared" : "bot") memory (replaced \"\(previous)\").",
+                    blocks: [.card(lines: [
+                        CardLine(k: "memory", v: String(content.prefix(200))),
+                        CardLine(k: "scope", v: shared ? "shared" : "bot"),
+                        CardLine(k: "pin", v: pin ? "true" : "false"),
+                    ])]
+                )
+            case .inserted:
+                return AgentToolCallResult(
+                    output: shared ? "Remembered in shared workspace memory." : "Remembered.",
+                    blocks: [.card(lines: [
+                        CardLine(k: "memory", v: String(content.prefix(200))),
+                        CardLine(k: "scope", v: shared ? "shared" : "bot"),
+                        CardLine(k: "pin", v: pin ? "true" : "false"),
                     ])]
                 )
             }
-            upsertMemory(botId: botId, text: content)
+
+        case "forget":
+            let query = s("query", "content", "text")
+            guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
+            let scope = s("scope").lowercased()
+            let shared = scope == "shared" || scope == "workspace"
+            let removed = forgetFacts(botId: botId, query: query, shared: shared)
+            if removed.isEmpty {
+                return AgentToolCallResult(output: "No memory matched \(query).")
+            }
             return AgentToolCallResult(
-                output: "Remembered.",
-                blocks: [.card(lines: [CardLine(k: "memory", v: String(content.prefix(200)))])]
+                output: "Forgot \(removed.count) fact(s): \(removed.joined(separator: "; ")).",
+                blocks: [.card(lines: removed.prefix(8).map { CardLine(k: "forgot", v: $0) })]
             )
 
         case "search_memory":
             let query = s("query", "q")
             guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
-            let hits = MemoryIndex.search(documents: memory, query: query)
+            let hits = MemoryIndex.search(documents: memory, query: query, botId: botId)
             if hits.isEmpty {
                 return AgentToolCallResult(output: "No memory hits for \(query).")
             }
@@ -1295,7 +1572,7 @@ public final class AppStore {
                 } else {
                     folder = try botHome.homeURL(botId: botId).appendingPathComponent(path)
                 }
-                let imported = try SkillLibrary.importFromDirectory(folder, into: persistence.root)
+                let imported = try SkillLibrary.importFromDirectory(folder, into: userPersistence.root)
                 reloadSkills()
                 let names = imported.map(\.id).joined(separator: ", ")
                 return AgentToolCallResult(
@@ -1434,8 +1711,10 @@ public final class AppStore {
                         botName: helperName,
                         botTitle: "helper",
                         instructions: extra,
-                        memory: memory.first(where: { $0.botId == botId && $0.path == "MEMORY.md" })?.content ?? "",
-                        sharedMemory: sharedMemory,
+                        memory: MemoryIndex.excerpt(
+                            memory.first(where: { $0.botId == botId && $0.path == "MEMORY.md" })?.content ?? ""
+                        ),
+                        sharedMemory: MemoryIndex.excerpt(sharedMemory),
                         skillCatalog: SkillMarkdown.catalogPrompt(from: skills(for: bot)),
                         homePath: (try? botHome.homeURL(botId: botId).path) ?? "",
                         prompt: task,
@@ -1539,10 +1818,11 @@ public final class AppStore {
             }
 
         case "computer_screenshot":
-            let home = (try? botHome.homeURL(botId: botId)) ?? persistence.root
+            if let blocked = computerBlockedIfHeadless(bot: bot) { return blocked }
+            let home = (try? botHome.homeURL(botId: botId)) ?? userPersistence.root
             await computerRuntime?.attach(botId: botId, homeURL: home)
             guard let snap = await computerRuntime?.snapshot(botId: botId) else {
-                return AgentToolCallResult(output: "No computer surface is attached.")
+                return AgentToolCallResult(output: "No computer surface is attached. Enable Screen Recording (This Mac) or open the in-app browser.")
             }
             let path = ".computer/screen.jpg"
             if let url = try? botHome.homeURL(botId: botId).appendingPathComponent(path) {
@@ -1552,47 +1832,83 @@ public final class AppStore {
                 )
                 try? snap.jpeg.write(to: url)
             }
+            var output = "Screenshot \(snap.width)x\(snap.height) at \(snap.url). Saved \(path). Click (x,y) uses this image’s pixel space (0,0 is top-left)."
+            if !snap.outline.isEmpty {
+                output += "\nTargets:\n\(snap.outline)"
+            }
             return AgentToolCallResult(
-                output: "Screenshot \(snap.width)x\(snap.height) at \(snap.url). Saved \(path).",
+                output: output,
                 blocks: [.card(lines: [
                     CardLine(k: "screen", v: "\(snap.width)×\(snap.height)"),
                     CardLine(k: "url", v: snap.url),
+                    CardLine(k: "targets", v: snap.outline.isEmpty ? "none" : "listed"),
                 ])],
                 imageJPEGBase64: snap.jpeg.base64EncodedString()
             )
 
         case "computer_open":
+            if let blocked = computerBlockedIfHeadless(bot: bot) { return blocked }
             let url = s("url")
             guard !url.isEmpty else { return AgentToolCallResult(output: "url is required") }
-            let home = (try? botHome.homeURL(botId: botId)) ?? persistence.root
+            let home = (try? botHome.homeURL(botId: botId)) ?? userPersistence.root
             await computerRuntime?.attach(botId: botId, homeURL: home)
-            await computerRuntime?.send(ComputerInput(kind: .open, text: url), botId: botId)
+            let action = await computerRuntime?.send(ComputerInput(kind: .open, text: url), botId: botId)
             if var computer = computers[botId] {
                 computer.state = .running
                 computer.screenAvailable = true
                 computers[botId] = computer
             }
             return AgentToolCallResult(
-                output: "Opened \(url).",
+                output: action?.output ?? "Opened \(url).",
                 blocks: [.computer(state: "running", text: url)]
             )
 
         case "computer_click":
+            if let blocked = computerBlockedIfHeadless(bot: bot) { return blocked }
             let x = Double(s("x")) ?? 0
             let y = Double(s("y")) ?? 0
-            await computerRuntime?.send(ComputerInput(kind: .click, x: x, y: y), botId: botId)
-            return AgentToolCallResult(output: "Clicked (\(Int(x)), \(Int(y))).")
+            let button = s("button").lowercased()
+            let count = Int(s("count")) ?? 1
+            let kind: ComputerInput.Kind
+            if button == "right" || button == "secondary" {
+                kind = .rightClick
+            } else if count >= 2 || s("count").lowercased() == "double" {
+                kind = .doubleClick
+            } else {
+                kind = .click
+            }
+            let action = await computerRuntime?.send(ComputerInput(kind: kind, x: x, y: y), botId: botId)
+            return AgentToolCallResult(
+                output: action?.output ?? "Clicked (\(Int(x)), \(Int(y))).",
+                blocks: [.card(lines: [
+                    CardLine(k: "click", v: "(\(Int(x)), \(Int(y)))"),
+                    CardLine(k: "hit", v: action?.hit?.summary ?? ""),
+                ])]
+            )
+
+        case "computer_scroll":
+            if let blocked = computerBlockedIfHeadless(bot: bot) { return blocked }
+            let x = Double(s("x")) ?? 0
+            let y = Double(s("y")) ?? 0
+            let delta = s("delta", "amount", "dy")
+            let action = await computerRuntime?.send(
+                ComputerInput(kind: .scroll, x: x, y: y, text: delta.isEmpty ? "120" : delta),
+                botId: botId
+            )
+            return AgentToolCallResult(output: action?.output ?? "Scrolled at (\(Int(x)), \(Int(y))).")
 
         case "computer_type":
+            if let blocked = computerBlockedIfHeadless(bot: bot) { return blocked }
             let text = s("text")
-            await computerRuntime?.send(ComputerInput(kind: .type, text: text), botId: botId)
-            return AgentToolCallResult(output: "Typed \(text.count) characters.")
+            let action = await computerRuntime?.send(ComputerInput(kind: .type, text: text), botId: botId)
+            return AgentToolCallResult(output: action?.output ?? "Typed \(text.count) characters.")
 
         case "computer_key":
+            if let blocked = computerBlockedIfHeadless(bot: bot) { return blocked }
             let key = s("key")
             guard !key.isEmpty else { return AgentToolCallResult(output: "key is required") }
-            await computerRuntime?.send(ComputerInput(kind: .key, text: key), botId: botId)
-            return AgentToolCallResult(output: "Pressed \(key).")
+            let action = await computerRuntime?.send(ComputerInput(kind: .key, text: key), botId: botId)
+            return AgentToolCallResult(output: action?.output ?? "Pressed \(key).")
 
         case "plugin_call":
             let slug = s("slug")
@@ -1769,7 +2085,7 @@ public final class AppStore {
 
         case .webSearch(let query):
             do {
-                let results = try await WebSearch.search(query: query, limit: 5)
+                let results = try await WebSearch.search(query: query, limit: 5, braveKey: appConfig.braveSearchKey)
                 if results.isEmpty {
                     blocks.append(.card(lines: [
                         CardLine(k: "search", v: query),
@@ -1854,6 +2170,7 @@ public final class AppStore {
         }
         upsertFile(path: path, content: content)
         refreshFilesMirror(botId: botId)
+        ingestMemoryFileIfNeeded(botId: botId, path: path)
     }
 
     private func refreshFilesMirror(botId: String) {
@@ -1950,47 +2267,131 @@ public final class AppStore {
     }
 
     private func upsertMemory(botId: String, text: String) {
-        let line = "- \(text)\n"
-        if let idx = memory.firstIndex(where: { $0.botId == botId && $0.path == "MEMORY.md" }) {
-            var doc = memory[idx]
-            if !doc.content.contains("# Memory") {
-                doc.content = "# Memory\n\n" + doc.content
-            }
-            doc.content += line
-            doc.revision += 1
-            doc.updatedAt = .now
-            memory[idx] = doc
+        _ = rememberFact(botId: botId, text: text, shared: false)
+    }
+
+    private func upsertSharedMemory(text: String) {
+        _ = rememberFact(botId: "", text: text, shared: true)
+    }
+
+    public func botMemory(botId: String) -> String {
+        memory.first(where: { $0.botId == botId && $0.path == "MEMORY.md" })?.content ?? ""
+    }
+
+    public func setBotMemory(botId: String, text: String) {
+        let content = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? MemoryLedger.botTemplate
+            : text
+        replaceMemoryDocument(scope: "bot", botId: botId, path: MemoryFiles.botFileName, content: content)
+        try? botHome.write(botId: botId, path: MemoryFiles.botFileName, content: content)
+        save()
+    }
+
+    @discardableResult
+    private func rememberFact(botId: String, text: String, shared: Bool, pin: Bool = false) -> MemoryWriteResult {
+        let title = shared ? MemoryLedger.sharedTitle : MemoryLedger.botTitle
+        let current = shared ? sharedMemory : botMemory(botId: botId)
+        let seed = MemoryLedger.isSparse(current) ? MemoryLedger.template(shared: shared) : current
+        let written = MemoryLedger.upsert(content: seed, fact: text, title: title, pin: pin)
+        guard written.result != .rejectedSecret, written.result != .empty else { return written.result }
+        if shared {
+            replaceMemoryDocument(scope: "workspace", botId: nil, path: MemoryFiles.sharedFileName, content: written.text)
+            MemoryFiles.write(MemoryFiles.sharedURL(root: userPersistence.root), content: written.text)
         } else {
-            memory.append(
-                MemoryDocument(
-                    id: Ids.new(),
-                    scope: "bot",
-                    botId: botId,
-                    path: "MEMORY.md",
-                    content: "# Memory\n\n\(line)"
-                )
+            replaceMemoryDocument(scope: "bot", botId: botId, path: MemoryFiles.botFileName, content: written.text)
+            try? botHome.write(botId: botId, path: MemoryFiles.botFileName, content: written.text)
+        }
+        save()
+        return written.result
+    }
+
+    @discardableResult
+    private func forgetFacts(botId: String, query: String, shared: Bool) -> [String] {
+        let current = shared ? sharedMemory : botMemory(botId: botId)
+        let result = MemoryLedger.forget(content: current, query: query)
+        guard !result.removed.isEmpty else { return [] }
+        if shared {
+            replaceMemoryDocument(scope: "workspace", botId: nil, path: MemoryFiles.sharedFileName, content: result.text)
+            MemoryFiles.write(MemoryFiles.sharedURL(root: userPersistence.root), content: result.text)
+        } else {
+            replaceMemoryDocument(scope: "bot", botId: botId, path: MemoryFiles.botFileName, content: result.text)
+            try? botHome.write(botId: botId, path: MemoryFiles.botFileName, content: result.text)
+        }
+        save()
+        return result.removed
+    }
+
+    private func hydrateMemoryFiles() {
+        let sharedURL = MemoryFiles.sharedURL(root: userPersistence.root)
+        let jsonShared = memory.first(where: { $0.scope == "workspace" && $0.path == MemoryFiles.sharedFileName })?.content ?? ""
+        let diskShared = MemoryFiles.read(sharedURL) ?? ""
+        let sharedText: String
+        if !MemoryLedger.isSparse(diskShared) {
+            sharedText = diskShared
+        } else if !MemoryLedger.isSparse(jsonShared) {
+            sharedText = jsonShared
+        } else {
+            sharedText = MemoryLedger.sharedTemplate
+        }
+        replaceMemoryDocument(scope: "workspace", botId: nil, path: MemoryFiles.sharedFileName, content: sharedText)
+        MemoryFiles.write(sharedURL, content: sharedText)
+
+        for bot in bots {
+            let json = memory.first(where: { $0.botId == bot.id && $0.path == MemoryFiles.botFileName })?.content ?? ""
+            let disk = (try? botHome.read(botId: bot.id, path: MemoryFiles.botFileName)) ?? ""
+            let text: String
+            if !MemoryLedger.isSparse(disk) {
+                text = disk
+            } else if !MemoryLedger.isSparse(json) {
+                text = json
+            } else {
+                text = MemoryLedger.botTemplate
+            }
+            replaceMemoryDocument(scope: "bot", botId: bot.id, path: MemoryFiles.botFileName, content: text)
+            try? botHome.write(botId: bot.id, path: MemoryFiles.botFileName, content: text)
+        }
+    }
+
+    private func persistMemoryFiles() {
+        let shared = sharedMemory.isEmpty ? MemoryLedger.sharedTemplate : sharedMemory
+        MemoryFiles.write(MemoryFiles.sharedURL(root: userPersistence.root), content: shared)
+        for bot in bots {
+            let text = botMemory(botId: bot.id)
+            try? botHome.write(
+                botId: bot.id,
+                path: MemoryFiles.botFileName,
+                content: text.isEmpty ? MemoryLedger.botTemplate : text
             )
         }
     }
 
-    private func upsertSharedMemory(text: String) {
-        let line = "- \(text)\n"
-        if let idx = memory.firstIndex(where: { $0.scope == "workspace" && $0.path == "SHARED.md" }) {
-            var doc = memory[idx]
-            if !doc.content.contains("# Shared memory") {
-                doc.content = "# Shared memory\n\n" + doc.content
-            }
-            doc.content += line
-            doc.revision += 1
-            doc.updatedAt = .now
-            memory[idx] = doc
+    private func ingestMemoryFileIfNeeded(botId: String, path: String) {
+        guard URL(fileURLWithPath: path).lastPathComponent == MemoryFiles.botFileName else { return }
+        let text = (try? botHome.read(botId: botId, path: MemoryFiles.botFileName)) ?? MemoryLedger.botTemplate
+        replaceMemoryDocument(scope: "bot", botId: botId, path: MemoryFiles.botFileName, content: text)
+    }
+
+    private func replaceMemoryDocument(scope: String, botId: String?, path: String, content: String) {
+        let idx: Int?
+        if path == MemoryFiles.sharedFileName {
+            idx = memory.firstIndex(where: { $0.scope == "workspace" && $0.path == path })
+        } else {
+            idx = memory.firstIndex(where: { $0.botId == botId && $0.path == path })
+        }
+        if let idx {
+            memory[idx].content = content
+            memory[idx].revision += 1
+            memory[idx].updatedAt = .now
+            if memory[idx].scope.isEmpty { memory[idx].scope = scope }
+            if memory[idx].botId == nil { memory[idx].botId = botId }
         } else {
             memory.append(
                 MemoryDocument(
                     id: Ids.new(),
-                    scope: "workspace",
-                    path: "SHARED.md",
-                    content: "# Shared memory\n\n\(line)"
+                    scope: scope,
+                    botId: botId,
+                    path: path,
+                    content: content
                 )
             )
         }
@@ -2002,20 +2403,9 @@ public final class AppStore {
 
     public func setSharedMemory(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let idx = memory.firstIndex(where: { $0.scope == "workspace" && $0.path == "SHARED.md" }) {
-            memory[idx].content = trimmed
-            memory[idx].revision += 1
-            memory[idx].updatedAt = .now
-        } else if !trimmed.isEmpty {
-            memory.append(
-                MemoryDocument(
-                    id: Ids.new(),
-                    scope: "workspace",
-                    path: "SHARED.md",
-                    content: trimmed
-                )
-            )
-        }
+        let content = trimmed.isEmpty ? MemoryLedger.sharedTemplate : text
+        replaceMemoryDocument(scope: "workspace", botId: nil, path: MemoryFiles.sharedFileName, content: content)
+        MemoryFiles.write(MemoryFiles.sharedURL(root: userPersistence.root), content: content)
         save()
     }
 
@@ -2024,7 +2414,7 @@ public final class AppStore {
     }
 
     public func reloadSkills() {
-        skills = SkillLibrary.load(root: persistence.root)
+        skills = SkillLibrary.load(root: userPersistence.root)
     }
 
     public func setBotSkill(_ botId: String, skillId: String, enabled: Bool) {
@@ -2042,7 +2432,7 @@ public final class AppStore {
             body: body,
             source: .user
         )
-        try SkillLibrary.saveUserSkill(skill, root: persistence.root)
+        try SkillLibrary.saveUserSkill(skill, root: userPersistence.root)
         reloadSkills()
         for i in bots.indices where !bots[i].enabledSkills.contains(skill.id) {
             bots[i].enabledSkills.append(skill.id)
@@ -2051,7 +2441,7 @@ public final class AppStore {
     }
 
     public func deleteUserSkill(_ id: String) throws {
-        try SkillLibrary.deleteUserSkill(id: id, root: persistence.root)
+        try SkillLibrary.deleteUserSkill(id: id, root: userPersistence.root)
         reloadSkills()
         for i in bots.indices {
             bots[i].enabledSkills.removeAll { $0 == id }
@@ -2344,7 +2734,11 @@ public final class AppStore {
 
     public func runNow(botId: String) {
         let list = routines[botId] ?? []
-        guard let routine = list.first else {
+        let now = Date.now
+        guard let routine = list.first(where: { $0.active && ($0.nextRunAt.map { $0 <= now } ?? true) })
+            ?? list.first(where: \.active)
+            ?? list.first
+        else {
             openNewRoutine()
             return
         }
@@ -2352,8 +2746,10 @@ public final class AppStore {
     }
 
     private func fireRoutine(botId: String, routine: Routine) {
-        selectBot(botId)
-        showChat()
+        if !headlessRoutineTick {
+            selectBot(botId)
+            showChat()
+        }
         let key = threadKey(for: botId)
         guard var thread = threads[key] ?? threads[botId] else {
             threads[botId] = ThreadData(threadId: bots.first(where: { $0.id == botId })?.threadId ?? Ids.new())
@@ -2365,6 +2761,27 @@ public final class AppStore {
     }
 
     private func appendRoutineRun(botId: String, routine: Routine, thread: inout ThreadData, threadKey: String) {
+        let bot = bots.first(where: { $0.id == botId })
+        if let bot, let reason = RoutineTickPolicy.skipReason(canRunLLM: canRunLLM(for: bot)) {
+            let meta = ThreadMessage(
+                id: Ids.new(),
+                threadId: thread.threadId,
+                seq: thread.nextSeq,
+                role: .system,
+                blocks: [.meta("Routine '\(routine.name)' skipped — no model connected")]
+            )
+            thread.messages.append(meta)
+            thread.cursor = meta.seq
+            threads[threadKey] = thread
+            if let idx = routines[botId]?.firstIndex(where: { $0.id == routine.id }) {
+                routines[botId]?[idx].lastRunAt = .now
+                routines[botId]?[idx].nextRunAt = Cron.nextDate(routine.cron, from: .now)
+            }
+            appendRunLog(botId: botId, kind: "routine", text: reason)
+            save()
+            return
+        }
+
         let meta = ThreadMessage(
             id: Ids.new(),
             threadId: thread.threadId,
@@ -2682,17 +3099,31 @@ public final class AppStore {
         }
     }
 
+    private func resolvedComputerMode(for bot: Bot) -> ComputerMode {
+        if bot.computerMode != .auto { return bot.computerMode }
+        if appConfig.defaultComputerMode != .auto { return appConfig.defaultComputerMode }
+        return deployment.normalizedHost == .thisMac ? .thisMac : .inAppBrowser
+    }
+
+    private func computerBlockedIfHeadless(bot: Bot) -> AgentToolCallResult? {
+        guard headlessRoutineTick else { return nil }
+        guard resolvedComputerMode(for: bot) == .thisMac else { return nil }
+        return AgentToolCallResult(
+            output: "This Mac computer is unavailable during a background routine tick. Screen Recording and Accessibility need GrizzyBot in the foreground. Open the app to run computer tools, or switch this bot to In-app browser."
+        )
+    }
+
     private func computerNote(for bot: Bot) -> String {
-        let mode = bot.computerMode == .auto ? appConfig.defaultComputerMode : bot.computerMode
+        let mode = resolvedComputerMode(for: bot)
         switch mode {
         case .thisMac:
             return "This Mac desktop via Accessibility. Needs Screen Recording and Accessibility permission. Not a cloud VM."
         case .off:
             return "Computer is off for this bot."
-        case .cloud:
-            return "Cloud desktop is a local stub in GrizzyBot — not a remote VM."
+        case .inAppBrowser:
+            return "Persistent in-app browser for this bot. Cookies survive relaunch."
         default:
-            return "Persistent in-app browser for this bot. Cookies survive relaunch. This is not a signed-in cloud VM."
+            return "Follows workspace default computer mode."
         }
     }
 
@@ -2727,13 +3158,25 @@ public final class AppStore {
 
     public func tickDueRoutines() {
         let now = Date.now
+        var activeRoutineRuns = 0
+        for (botId, _) in routines {
+            let run = threads[threadKey(for: botId)]?.run
+            if run?.status.isActive == true, run?.trigger == "routine" {
+                activeRoutineRuns += 1
+            }
+        }
+        var due: [(botId: String, routine: Routine)] = []
         for (botId, list) in routines {
             let key = threadKey(for: botId)
             if threads[key]?.run?.status.isActive == true { continue }
-            for routine in list where routine.active {
-                guard let next = routine.nextRunAt, next <= now else { continue }
-                fireRoutine(botId: botId, routine: routine)
-            }
+            guard let routine = list.first(where: { item in
+                item.active && (item.nextRunAt.map { $0 <= now } ?? false)
+            }) else { continue }
+            due.append((botId, routine))
+        }
+        let slots = RoutineTickPolicy.admit(dueCount: due.count, activeRoutineRuns: activeRoutineRuns)
+        for item in due.prefix(slots) {
+            fireRoutine(botId: item.botId, routine: item.routine)
         }
     }
 
@@ -2749,7 +3192,7 @@ public final class AppStore {
         )
     }
 
-    public func exportManifest(botId: String) -> ExportManifest? {
+    public func exportManifest(botId: String, redacted: Bool = false) -> ExportManifest? {
         guard let bot = bots.first(where: { $0.id == botId }) else { return nil }
         let mem = memory.filter { $0.botId == botId }.map {
             ExportManifest.MemoryEntry(path: $0.path, content: $0.content)
@@ -2759,7 +3202,7 @@ public final class AppStore {
         }
         let fileEntries = files.map { ExportManifest.FileEntry(path: $0[0], content: $0.count > 1 ? $0[1] : "") }
         let history = threads[botId]?.messages ?? []
-        return ExportManifest(
+        let manifest = ExportManifest(
             bot: .init(
                 name: bot.name,
                 title: bot.title,
@@ -2771,10 +3214,11 @@ public final class AppStore {
             files: fileEntries,
             history: history
         )
+        return redacted ? manifest.redacted() : manifest
     }
 
     public func setComputerHost(_ host: String) {
-        deployment.computerHost = host
+        deployment.computerHost = ComputerHost.normalize(host)?.rawValue ?? ComputerHost.inAppBrowser.rawValue
         showHostPrompt = false
         save()
     }
@@ -2860,7 +3304,7 @@ public final class AppStore {
 
     public func exportActiveChatJSON() -> Data? {
         guard let export = exportActiveChat() else { return nil }
-        return try? persistence.encodeJSON(export)
+        return try? userPersistence.encodeJSON(export)
     }
 
     public func exportActiveChatMarkdown() -> String {
@@ -2918,22 +3362,27 @@ public final class AppStore {
             botCount: ws.bots.count,
             messageCount: messageCount
         )
-        persistence.saveSnapshot(WorkspaceSnapshot(meta: meta, workspace: ws), userId: userId)
+        let stripped = WorkspaceSecrets.from(workspace: ws).stripped(from: ws)
+        userPersistence.saveSnapshot(WorkspaceSnapshot(meta: meta, workspace: stripped), userId: userId)
         return meta
     }
 
     public func listWorkspaceSnapshots() -> [WorkspaceSnapshotMeta] {
         guard let userId = session?.userId else { return [] }
-        return persistence.listSnapshots(userId: userId)
+        return userPersistence.listSnapshots(userId: userId)
     }
 
     @discardableResult
     public func restoreWorkspaceSnapshot(_ id: String) -> Bool {
         guard let userId = session?.userId,
-              let snapshot = persistence.loadSnapshot(id: id, userId: userId) else { return false }
+              let snapshot = userPersistence.loadSnapshot(id: id, userId: userId) else { return false }
         for (_, task) in runTasks { task.cancel() }
         runTasks.removeAll()
-        applyWorkspace(snapshot.workspace)
+        var ws = snapshot.workspace
+        if let secrets = SecretStore.load(userId: userId) {
+            ws = secrets.applying(to: ws)
+        }
+        applyWorkspace(ws)
         route = bots.isEmpty ? .onboarding : .shell
         save()
         return true
@@ -2941,11 +3390,14 @@ public final class AppStore {
 
     public func deleteWorkspaceSnapshot(_ id: String) {
         guard let userId = session?.userId else { return }
-        persistence.deleteSnapshot(id: id, userId: userId)
+        userPersistence.deleteSnapshot(id: id, userId: userId)
     }
 
     public func exportWorkspaceJSON() -> Data? {
-        try? persistence.encodeJSON(currentWorkspace())
+        guard session?.userId != nil else { return nil }
+        let stripped = WorkspaceSecrets.from(workspace: currentWorkspace())
+            .stripped(from: currentWorkspace())
+        return try? userPersistence.encodeJSON(stripped)
     }
 
     public func workspaceExportFilename() -> String {
@@ -3692,6 +4144,77 @@ public final class AppStore {
         return ChatSearch.hits(query: query, bots: bots, groups: groups, threads: threads, scope: scope)
     }
 
+    /// When set, routine ticks skip UI navigation and the app may terminate after background runs finish.
+    public var headlessRoutineTick = false
+
+    public func waitForPluginTasks() async {
+        let tasks = Array(pluginTasks.values)
+        for task in tasks {
+            _ = await task.result
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+    }
+
+    public func waitForRunStatus(botId: String, status: RunStatus, timeout: TimeInterval = 15) async -> Bool {
+        let key = threadKey(for: botId)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if threads[key]?.run?.status == status { return true }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return threads[key]?.run?.status == status
+    }
+
+    public func waitForPendingTool(botId: String, timeout: TimeInterval = 15) async -> Bool {
+        let key = threadKey(for: botId)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if threads[key]?.pendingTool != nil { return true }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return threads[key]?.pendingTool != nil
+    }
+
+    public func waitForRunCompletion(botId: String, timeout: TimeInterval = 15) async -> Bool {
+        let key = threadKey(for: botId)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let run = threads[key]?.run {
+                if !run.status.isActive {
+                    return run.status == .completed
+                }
+            } else {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return threads[key]?.run?.status == .completed
+    }
+
+    public func waitForComputerState(botId: String, state: ComputerState, timeout: TimeInterval = 10) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if computers[botId]?.state == state { return true }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return computers[botId]?.state == state
+    }
+
+    public func waitForActiveRuns(timeout: TimeInterval = 120) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let tasks = Array(runTasks.values)
+            if tasks.isEmpty {
+                let anyActive = threads.values.contains { $0.run?.status.isActive == true }
+                if !anyActive { return }
+            }
+            for task in tasks {
+                _ = await task.result
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+    }
+
     public func appendRunLog(botId: String, kind: String, text: String) {
         runLog = RunLog.appending(runLog, botId: botId, kind: kind, text: text)
     }
@@ -3714,7 +4237,34 @@ public final class AppStore {
 
     @discardableResult
     public func importWorkspaceJSON(_ data: Data) -> Bool {
-        guard let ws = try? persistence.decodeJSON(UserWorkspace.self, from: data) else { return false }
+        guard var ws = try? userPersistence.decodeJSON(UserWorkspace.self, from: data) else { return false }
+        if let userId = session?.userId {
+            let imported = WorkspaceSecrets.from(workspace: ws)
+            if !imported.isEmpty {
+                if var existing = SecretStore.load(userId: userId) {
+                    if imported.apiKey != nil { existing.apiKey = imported.apiKey }
+                    if imported.oauthJSON != nil { existing.oauthJSON = imported.oauthJSON }
+                    if !imported.providerCredentials.isEmpty {
+                        existing.providerCredentials.merge(imported.providerCredentials) { _, n in n }
+                    }
+                    if !imported.connectionSecrets.isEmpty {
+                        existing.connectionSecrets.merge(imported.connectionSecrets) { _, n in n }
+                    }
+                    if imported.composioConnectKey != nil { existing.composioConnectKey = imported.composioConnectKey }
+                    if imported.composioApiKey != nil { existing.composioApiKey = imported.composioApiKey }
+                    if imported.boxToken != nil { existing.boxToken = imported.boxToken }
+                    if imported.ttsKey != nil { existing.ttsKey = imported.ttsKey }
+                    if imported.sentryDSN != nil { existing.sentryDSN = imported.sentryDSN }
+                    if imported.braveSearchKey != nil { existing.braveSearchKey = imported.braveSearchKey }
+                    try? SecretStore.save(existing, userId: userId)
+                } else {
+                    try? SecretStore.save(imported, userId: userId)
+                }
+                ws = imported.stripped(from: ws)
+            } else if let existing = SecretStore.load(userId: userId) {
+                ws = existing.applying(to: ws)
+            }
+        }
         for (_, task) in runTasks { task.cancel() }
         runTasks.removeAll()
         applyWorkspace(ws)
@@ -3739,7 +4289,7 @@ public final class AppStore {
     }
 
     public func diagnosticsDirectory() -> URL {
-        persistence.diagnosticsDirectory
+        userPersistence.diagnosticsDirectory
     }
 
     public func deleteGroup(_ groupId: String) {

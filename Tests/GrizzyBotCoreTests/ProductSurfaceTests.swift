@@ -130,6 +130,58 @@ struct BotCapabilityTests {
         #expect(!ModelCatalog.deviceCodeProviders.isEmpty)
         #expect(ModelCatalog.deviceCodeProviders.allSatisfy { $0.signIn == .deviceCode })
     }
+
+    @Test("composer choices include fetched LAN models and show the active name")
+    func composerChoicesIncludeFetched() {
+        var bot = Bot(id: "b", name: "Scout", color: "#3EC5A8", threadId: "t")
+        let fetched = [LocalModelRef(id: "qwen3-coder-next-mlx", label: "Qwen3 Coder")]
+        let choices = BotModelChoice.choices(
+            workspaceProvider: "lmstudio",
+            workspaceModel: "qwen3-coder-next-mlx",
+            fetched: fetched
+        )
+        #expect(choices.contains(.workspaceDefault))
+        #expect(choices.contains(where: {
+            if case .catalog("lmstudio", "qwen3-coder-next-mlx", _) = $0 { return true }
+            return false
+        }))
+        #expect(BotModelChoice.activeLabel(bot: bot, workspaceModel: "qwen3-coder-next-mlx") == "qwen3-coder-next-mlx")
+        bot.modelProvider = "lmstudio"
+        bot.modelId = "qwen3-coder-next-mlx"
+        #expect(BotModelChoice.activeLabel(bot: bot, workspaceModel: "other") == "qwen3-coder-next-mlx")
+    }
+
+    @Test("composer lists models from every enabled provider and skips disabled ones")
+    func composerChoicesFromEnabledProviders() {
+        let choices = BotModelChoice.choices(
+            workspaceProvider: "lmstudio",
+            workspaceModel: "qwen-local",
+            enabledProviders: [
+                EnabledProviderModels(
+                    provider: "lmstudio",
+                    providerName: "LM Studio",
+                    fetched: [LocalModelRef(id: "qwen-local", label: "Qwen Local")]
+                ),
+                EnabledProviderModels(
+                    provider: "openai-compatible",
+                    providerName: "OpenAI Compatible",
+                    fetched: [LocalModelRef(id: "gpt-oss", label: "GPT OSS")]
+                ),
+            ]
+        )
+        #expect(choices.contains(where: {
+            if case .catalog("lmstudio", "qwen-local", _) = $0 { return true }
+            return false
+        }))
+        #expect(choices.contains(where: {
+            if case .catalog("openai-compatible", "gpt-oss", _) = $0 { return true }
+            return false
+        }))
+        #expect(!choices.contains(where: {
+            if case .catalog("openrouter", _, _) = $0 { return true }
+            return false
+        }))
+    }
 }
 
 @Suite("Run log")
@@ -178,38 +230,6 @@ struct WorkspaceBackupTests {
         #expect(dir.path.contains("Documents/Backups") || dir.path.hasSuffix("Documents/Backups"))
         #expect(dir.path.hasPrefix(container.path))
         #expect(WorkspaceBackup.ubiquityContainerIdentifier == "iCloud.com.grizzybot.app")
-    }
-}
-
-@Suite("Sparkle appcast")
-struct AppcastXMLTests {
-    @Test("inserts a signed enclosure as the first channel item")
-    func insertItem() throws {
-        let empty = """
-        <?xml version="1.0" encoding="utf-8"?>
-        <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-          <channel>
-            <title>GrizzyBot</title>
-          </channel>
-        </rss>
-        """
-        let item = AppcastItem(
-            title: "Version 1.2",
-            version: "3",
-            shortVersion: "1.2",
-            pubDate: "Tue, 18 Aug 2026 12:00:00 +0000",
-            enclosureURL: "https://github.com/Foscoe63/GrizzyBot/releases/download/v1.2/GrizzyBot.dmg",
-            edSignature: "abc+signature==",
-            length: 42,
-            notesHTML: "<p>Ship it</p>"
-        )
-        let xml = try AppcastXML.inserting(item, into: empty)
-        #expect(xml.contains("<sparkle:version>3</sparkle:version>"))
-        #expect(xml.contains("sparkle:edSignature=\"abc+signature==\""))
-        #expect(xml.contains("length=\"42\""))
-        #expect(AppcastXML.buildNumbers(in: xml) == ["3"])
-        let again = try AppcastXML.inserting(item, into: xml)
-        #expect(AppcastXML.buildNumbers(in: again) == ["3"])
     }
 }
 

@@ -157,7 +157,7 @@ struct AbilityStoreTests {
             ChatCompletionResponse(text: "loaded the research skill.", inputTokens: 4, outputTokens: 3),
         ])
         store.send(botId: bot.id, text: "use the research skill")
-        try? await Task.sleep(for: .milliseconds(800))
+        #expect(await store.waitForRunCompletion(botId: bot.id))
         #expect(store.sharedMemory.contains("Prefer primary sources"))
         let system = store.threads[bot.id]?.llmMessages
         _ = system

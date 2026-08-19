@@ -1,0 +1,19 @@
+{
+  "" : {
+    "diagnostics" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper-primary.dia",
+    "emit-module-dependencies" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper-primary-emit-module.dia",
+    "pch" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper-primary.swiftdeps"
+  },
+  "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/Sources/SentryCppHelper/SentryCppHelper.swift" : {
+    "const-values" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper.swiftconstvalues",
+    "dependencies" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper.d",
+    "diagnostics" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper.dia",
+    "index-unit-output-path" : "/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper.o",
+    "llvm-bc" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper.bc",
+    "object" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper.o",
+    "swift-dependencies" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper.swiftdeps",
+    "swiftmodule" : "/Users/ewg/Library/Developer/Xcode/DerivedData/GrizzyBot-bupexptrvjjbswayvseiwfdvqbes/SourcePackages/checkouts/sentry-cocoa/build/Sentry.build/Debug/SentryCppHelper-t.build/Objects-normal/x86_64/SentryCppHelper~partial.swiftmodule"
+  }
+}

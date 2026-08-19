@@ -4,10 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-swift build -c release
+swift build -c release --product GrizzyBot --product GrizzyBotRoutineAgent
 
 APP="$ROOT/GrizzyBot.app"
 BIN="$ROOT/.build/release/GrizzyBot"
+AGENT_BIN="$ROOT/.build/release/GrizzyBotRoutineAgent"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -50,12 +51,12 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 	<string>GrizzyBot captures the screen so a bot can see this Mac when computer mode is This Mac.</string>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>GrizzyBot uses Accessibility so a bot can see and control this Mac when computer mode is This Mac.</string>
-	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/Foscoe63/GrizzyBot/main/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>FnNhiAPohUZfHb8up9IGyhBc7BgOqZ4X+P+SHDe/9v0=</string>
-	<key>SUEnableInstallerLauncherService</key>
-	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>GrizzyBot talks to local and LAN model servers (Ollama, LM Studio, vMLX, oMLX) on this network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
 	<key>SentryDSN</key>
 	<string></string>
 </dict>
@@ -88,7 +89,6 @@ else
   ENTITLEMENTS="$ROOT/Sources/GrizzyBot/GrizzyBot.entitlements"
 fi
 
-embed_framework Sparkle
 embed_framework Sentry
 
 ICON="$ROOT/Sources/GrizzyBot/Resources/AppIcon.icns"
@@ -106,6 +106,17 @@ codesign --force --sign "$CODE_SIGN_IDENTITY" $CODE_SIGN_TIMESTAMP \
   --entitlements "$ENTITLEMENTS" \
   --options runtime \
   "$APP"
+
+if [[ -f "$AGENT_BIN" ]]; then
+  "$ROOT/Scripts/embed-routine-agent.sh" "$APP" "$AGENT_BIN"
+  codesign --force --sign "$CODE_SIGN_IDENTITY" $CODE_SIGN_TIMESTAMP \
+    --options runtime \
+    "$APP/Contents/MacOS/GrizzyBotRoutineAgent"
+  codesign --force --sign "$CODE_SIGN_IDENTITY" $CODE_SIGN_TIMESTAMP \
+    --entitlements "$ENTITLEMENTS" \
+    --options runtime \
+    "$APP"
+fi
 
 echo "Built $APP (signed with $CODE_SIGN_IDENTITY)"
 open "$APP"

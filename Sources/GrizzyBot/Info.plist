@@ -31,6 +31,12 @@
 	<string>GrizzyBot agents can open URLs and control this Mac when a bot’s computer mode is This Mac.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>GrizzyBot talks to local and LAN model servers (Ollama, LM Studio, vMLX, oMLX) on this network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>GrizzyBot uses the microphone so you can dictate messages to a bot.</string>
 	<key>NSPrincipalClass</key>
@@ -39,12 +45,6 @@
 	<string>GrizzyBot captures the screen so a bot can see this Mac when computer mode is This Mac.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>GrizzyBot uses on-device speech recognition to turn dictation into chat text.</string>
-	<key>SUEnableInstallerLauncherService</key>
-	<true/>
-	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/Foscoe63/GrizzyBot/main/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>FnNhiAPohUZfHb8up9IGyhBc7BgOqZ4X+P+SHDe/9v0=</string>
 	<key>SentryDSN</key>
 	<string>$(SENTRY_DSN)</string>
 </dict>

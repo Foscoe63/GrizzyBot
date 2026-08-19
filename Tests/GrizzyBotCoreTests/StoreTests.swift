@@ -67,8 +67,7 @@ struct StoreTests {
         store.openComputerOverlay()
         #expect(store.computerOpen)
         #expect(store.computers[bot.id]?.controlHolder == .user)
-        try? await Task.sleep(for: .milliseconds(200))
-        #expect(store.computers[bot.id]?.state == .running)
+        #expect(await store.waitForComputerState(botId: bot.id, state: .running))
         store.release(botId: bot.id)
         #expect(store.computers[bot.id]?.controlHolder == .bot)
         #expect(!store.computerOpen)
@@ -80,8 +79,7 @@ struct StoreTests {
         #expect(store.signUp(name: "A", email: "send@b.com", password: "password1") == nil)
         let bot = store.createBot(name: "Agent", title: "helper")
         store.send(botId: bot.id, text: "hello there")
-        // Wait for scripted agent (~1.6s * 0.01 = ~16ms, give headroom)
-        try? await Task.sleep(for: .milliseconds(400))
+        #expect(await store.waitForRunCompletion(botId: bot.id))
         let msgs = store.messages(for: bot.id)
         #expect(msgs.contains(where: { $0.role == .user }))
         #expect(msgs.contains(where: { $0.role == .bot && $0.firstText.contains("on it.") }))
@@ -109,7 +107,7 @@ struct StoreTests {
             ChatCompletionResponse(text: "saved it in your files.", inputTokens: 8, outputTokens: 5),
         ])
         store.send(botId: bot.id, text: "write notes/result.txt")
-        try? await Task.sleep(for: .milliseconds(800))
+        #expect(await store.waitForRunCompletion(botId: bot.id))
         let msgs = store.messages(for: bot.id)
         #expect(msgs.contains(where: { $0.role == .bot && $0.firstText.contains("saved it") }))
         #expect(store.readBotHomeFile(botId: bot.id, path: "notes/result.txt") == "agent-ok")
@@ -141,7 +139,7 @@ struct StoreTests {
             cron: "0 9 * * *"
         )
         store.runNow(botId: bot.id)
-        try? await Task.sleep(for: .milliseconds(400))
+        #expect(await store.waitForRunCompletion(botId: bot.id, timeout: 5))
         let msgs = store.messages(for: bot.id)
         #expect(msgs.contains(where: { msg in
             msg.blocks.contains { if case .meta(let t) = $0 { return t.contains("Morning") }; return false }
@@ -155,8 +153,7 @@ struct StoreTests {
         let bot = store.createBot(name: "Agent", title: "helper")
         store.boot(botId: bot.id, force: true)
         #expect(store.computers[bot.id]?.state == .booting)
-        try? await Task.sleep(for: .milliseconds(200))
-        #expect(store.computers[bot.id]?.state == .running)
+        #expect(await store.waitForComputerState(botId: bot.id, state: .running))
         store.takeControl(botId: bot.id)
         #expect(store.computers[bot.id]?.controlHolder == .user)
         store.release(botId: bot.id)
@@ -168,10 +165,10 @@ struct StoreTests {
         let store = tempStore()
         #expect(store.signUp(name: "A", email: "plug@b.com", password: "password1") == nil)
         store.connect(slug: "gmail", token: "test-token")
-        try? await Task.sleep(for: .milliseconds(100))
+        await store.waitForPluginTasks()
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == true)
         store.revoke(slug: "gmail")
-        try? await Task.sleep(for: .milliseconds(100))
+        await store.waitForPluginTasks()
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == false)
     }
 
@@ -191,16 +188,79 @@ struct StoreTests {
         let composio = ImmediateComposio()
         store.composioClient = composio
         store.connect(slug: "gmail")
-        try? await Task.sleep(for: .milliseconds(250))
+        await store.waitForPluginTasks()
         #expect(composio.lastAuthorize == "gmail")
         let gmail = store.connections.first(where: { $0.slug == "gmail" })
         #expect(gmail?.connected == true)
         #expect(gmail?.viaComposio == true)
         #expect(store.connectingSlug == nil)
         store.revoke(slug: "gmail")
-        try? await Task.sleep(for: .milliseconds(80))
+        await store.waitForPluginTasks()
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == false)
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.viaComposio == false)
+    }
+
+    @Test("bot memory is a file, upserts similar facts, and forgets")
+    func memoryFilesAndUpsert() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "memfile@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Keeper", title: "facts")
+        if let idx = store.bots.firstIndex(where: { $0.id == bot.id }) {
+            store.bots[idx].autoApprove = true
+        }
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [
+                LLMToolCall(id: "1", name: "remember", arguments: "{\"content\":\"Favorite color is blue\"}"),
+            ]),
+            ChatCompletionResponse(text: "ok"),
+        ])
+        store.send(botId: bot.id, text: "remember color")
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        #expect(store.botMemory(botId: bot.id).contains("blue"))
+        #expect(store.readBotHomeFile(botId: bot.id, path: "MEMORY.md")?.contains("blue") == true)
+
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [
+                LLMToolCall(id: "1", name: "remember", arguments: "{\"content\":\"Favorite color is red\"}"),
+            ]),
+            ChatCompletionResponse(text: "ok"),
+        ])
+        store.send(botId: bot.id, text: "remember color again")
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        let after = store.botMemory(botId: bot.id)
+        #expect(after.contains("red"))
+        #expect(!after.contains("blue"))
+
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [
+                LLMToolCall(id: "1", name: "forget", arguments: "{\"query\":\"favorite color\"}"),
+            ]),
+            ChatCompletionResponse(text: "ok"),
+        ])
+        store.send(botId: bot.id, text: "forget the color")
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        #expect(!store.botMemory(botId: bot.id).contains("red"))
+    }
+
+    @Test("remember pin:true writes ## Pin")
+    func rememberPin() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "pin@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Pinbot", title: "facts")
+        if let idx = store.bots.firstIndex(where: { $0.id == bot.id }) {
+            store.bots[idx].autoApprove = true
+        }
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [
+                LLMToolCall(id: "1", name: "remember", arguments: "{\"content\":\"Always be terse\",\"pin\":\"true\"}"),
+            ]),
+            ChatCompletionResponse(text: "ok"),
+        ])
+        store.send(botId: bot.id, text: "pin that")
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        let memory = store.botMemory(botId: bot.id)
+        let pinSection = memory.components(separatedBy: "## Facts").first ?? ""
+        #expect(pinSection.contains("Always be terse"))
     }
 
     @Test("weeklySummary math")
@@ -223,7 +283,7 @@ struct StoreTests {
         #expect(store.signUp(name: "A", email: "sess@b.com", password: "password1") == nil)
         let bot = store.createBot(name: "Agent", title: "helper")
         store.send(botId: bot.id, text: "hello there")
-        try? await Task.sleep(for: .milliseconds(400))
+        #expect(await store.waitForRunCompletion(botId: bot.id))
         #expect(store.activeSessionMessageCount > 0)
 
         let export = store.exportActiveChat()

@@ -339,11 +339,26 @@ public struct Run: Codable, Sendable, Hashable, Identifiable {
 
 // MARK: - Computer (rakazo `ComputerStatusSchema` / `SandboxKind`)
 
-public enum SandboxKind: String, Codable, Sendable {
-    case docker
-    case e2b
+public enum SandboxKind: String, Sendable {
+    case browser
     case desktop
-    case fake
+    case none
+}
+
+extension SandboxKind: Codable {
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        switch raw {
+        case "desktop", "local": self = .desktop
+        case "none", "off", "fake": self = .none
+        default: self = .browser
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 public enum ComputerState: String, Codable, Sendable {
@@ -370,7 +385,7 @@ public struct ComputerStatus: Codable, Sendable, Hashable {
 
     public init(
         botId: String,
-        kind: SandboxKind = .docker,
+        kind: SandboxKind = .browser,
         state: ComputerState = .stopped,
         controlHolder: ControlHolder = .none,
         screenAvailable: Bool = false,
@@ -582,11 +597,23 @@ public struct ExportManifest: Codable, Sendable {
         public var title: String
         public var description: String
         public var instructions: String
+
+        public init(name: String, title: String, description: String, instructions: String) {
+            self.name = name
+            self.title = title
+            self.description = description
+            self.instructions = instructions
+        }
     }
 
     public struct MemoryEntry: Codable, Sendable {
         public var path: String
         public var content: String
+
+        public init(path: String, content: String) {
+            self.path = path
+            self.content = content
+        }
     }
 
     public struct RoutineExport: Codable, Sendable {
@@ -594,11 +621,35 @@ public struct ExportManifest: Codable, Sendable {
         public var prompt: String
         public var cron: String
         public var timezone: String
+
+        public init(name: String, prompt: String, cron: String, timezone: String) {
+            self.name = name
+            self.prompt = prompt
+            self.cron = cron
+            self.timezone = timezone
+        }
     }
 
     public struct FileEntry: Codable, Sendable {
         public var path: String
         public var content: String
+
+        public init(path: String, content: String) {
+            self.path = path
+            self.content = content
+        }
+    }
+
+    public func redacted() -> ExportManifest {
+        ExportManifest(
+            version: version,
+            exportedAt: exportedAt,
+            bot: bot,
+            memory: memory.map { MemoryEntry(path: $0.path, content: DiagnosticScrubber.redact($0.content)) },
+            routines: routines,
+            files: files.map { FileEntry(path: $0.path, content: DiagnosticScrubber.redact($0.content)) },
+            history: []
+        )
     }
 
     public init(
@@ -691,16 +742,37 @@ public struct UserAccount: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var email: String
     public var name: String
-    /// SHA-256 hex digest of the password. Never stored in plaintext.
-    public var passwordHash: String
     public var createdAt: Date
 
-    public init(id: String, email: String, name: String, passwordHash: String, createdAt: Date = .now) {
+    public init(id: String, email: String, name: String, createdAt: Date = .now) {
         self.id = id
         self.email = email
         self.name = name
-        self.passwordHash = passwordHash
         self.createdAt = createdAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, email, name, createdAt, passwordHash
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        email = try c.decode(String.self, forKey: .email)
+        name = try c.decode(String.self, forKey: .name)
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? .now
+        if let legacyHash = try c.decodeIfPresent(String.self, forKey: .passwordHash),
+           !legacyHash.isEmpty {
+            try? AccountCredentialStore.save(userId: id, passwordHash: legacyHash)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(email, forKey: .email)
+        try c.encode(name, forKey: .name)
+        try c.encode(createdAt, forKey: .createdAt)
     }
 }
 
@@ -724,7 +796,8 @@ public struct Session: Codable, Sendable {
 // MARK: - Deployment settings (rakazo `DeploymentSettingsSchema`)
 
 public struct DeploymentSettings: Codable, Sendable {
-    public var computerHost: String? // "docker" | "this-mac" | nil
+    /// `in-app-browser` (persistent WKWebView) or `this-mac`. Legacy `docker` maps to in-app browser.
+    public var computerHost: String?
     public var canChooseHostComputer: Bool
 
     public init(computerHost: String? = nil, canChooseHostComputer: Bool = true) {
@@ -732,8 +805,12 @@ public struct DeploymentSettings: Codable, Sendable {
         self.canChooseHostComputer = canChooseHostComputer
     }
 
+    public var normalizedHost: ComputerHost? {
+        ComputerHost.normalize(computerHost)
+    }
+
     public var sandboxKind: SandboxKind {
-        computerHost == "this-mac" ? .desktop : .docker
+        normalizedHost == .thisMac ? .desktop : .browser
     }
 }
 

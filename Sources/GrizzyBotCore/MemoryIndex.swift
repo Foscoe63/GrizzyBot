@@ -4,9 +4,9 @@ public struct MemoryHit: Sendable, Equatable {
     public var path: String
     public var scope: String
     public var snippet: String
-    public var score: Int
+    public var score: Double
 
-    public init(path: String, scope: String, snippet: String, score: Int) {
+    public init(path: String, scope: String, snippet: String, score: Double) {
         self.path = path
         self.scope = scope
         self.snippet = snippet
@@ -14,45 +14,83 @@ public struct MemoryHit: Sendable, Equatable {
     }
 }
 
+struct MemoryChunk: Sendable {
+    var document: MemoryDocument
+    var text: String
+    var tokens: [String]
+}
+
 /// Keyword retrieval over bot + shared memory. The prompt only gets an excerpt;
 /// agents call `search_memory` for the rest.
 public enum MemoryIndex {
     public static func excerpt(_ content: String, maxChars: Int = 1_200) -> String {
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count > maxChars else { return trimmed }
-        let head = String(trimmed.prefix(maxChars))
-        return head + "\n…[truncated \(trimmed.count - maxChars) chars — use search_memory]"
+        MemoryLedger.workingSet(content, maxChars: maxChars)
+    }
+
+    public static func scopedDocuments(_ documents: [MemoryDocument], botId: String?) -> [MemoryDocument] {
+        guard let botId, !botId.isEmpty else { return documents }
+        return documents.filter { doc in
+            if doc.scope == "workspace" || doc.path == "SHARED.md" { return true }
+            return doc.botId == botId
+        }
     }
 
     public static func search(
         documents: [MemoryDocument],
         query: String,
-        limit: Int = 8
+        limit: Int = 8,
+        botId: String? = nil,
+        now: Date = .now
     ) -> [MemoryHit] {
         let tokens = tokenize(query)
         guard !tokens.isEmpty else { return [] }
-        var hits: [MemoryHit] = []
-        for doc in documents {
-            let lines = doc.content.split(whereSeparator: \.isNewline).map(String.init)
-            for line in lines {
-                let lowered = line.lowercased()
-                let score = tokens.reduce(0) { $0 + (lowered.contains($1) ? 1 : 0) }
-                guard score > 0 else { continue }
-                let snippet = line.trimmingCharacters(in: .whitespaces)
-                guard !snippet.isEmpty, snippet != "# Memory", snippet != "# Shared memory" else { continue }
-                hits.append(
-                    MemoryHit(
-                        path: doc.path,
-                        scope: doc.scope,
-                        snippet: String(snippet.prefix(280)),
-                        score: score
-                    )
-                )
+        let scoped = scopedDocuments(documents, botId: botId)
+        let chunks = scoped.flatMap(chunk)
+        guard !chunks.isEmpty else { return [] }
+
+        var df: [String: Int] = [:]
+        for chunk in chunks {
+            for term in Set(chunk.tokens) {
+                df[term, default: 0] += 1
             }
+        }
+        let avgdl = chunks.map { Double($0.tokens.count) }.reduce(0, +) / Double(max(1, chunks.count))
+        let n = Double(chunks.count)
+        let k1 = 1.5
+        let b = 0.75
+
+        var hits: [MemoryHit] = []
+        for chunk in chunks {
+            var bm25 = 0.0
+            var tf: [String: Int] = [:]
+            for term in chunk.tokens { tf[term, default: 0] += 1 }
+            for term in tokens {
+                let freq = Double(tf[term] ?? 0)
+                guard freq > 0 else { continue }
+                let docsWith = Double(df[term] ?? 0)
+                let idf = log((n - docsWith + 0.5) / (docsWith + 0.5) + 1)
+                let dl = Double(max(1, chunk.tokens.count))
+                let denom = freq + k1 * (1 - b + b * dl / max(avgdl, 1))
+                bm25 += idf * (freq * (k1 + 1)) / denom
+            }
+            guard bm25 > 0 else { continue }
+            let age = max(0, now.timeIntervalSince(chunk.document.updatedAt))
+            let recency = 1.0 / (1.0 + age / (60 * 60 * 24 * 30))
+            let score = bm25 * (0.85 + 0.15 * recency)
+            let snippet = String(chunk.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(280))
+            guard !snippet.isEmpty, snippet != "# Memory", snippet != "# Shared memory" else { continue }
+            hits.append(
+                MemoryHit(
+                    path: chunk.document.path,
+                    scope: chunk.document.scope,
+                    snippet: snippet,
+                    score: score
+                )
+            )
         }
         return Array(
             hits.sorted { lhs, rhs in
-                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                if abs(lhs.score - rhs.score) > 0.0001 { return lhs.score > rhs.score }
                 return lhs.snippet < rhs.snippet
             }
             .prefix(limit)
@@ -64,6 +102,44 @@ public enum MemoryIndex {
             .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
             .filter { $0.count >= 2 }
+    }
+
+    static func chunk(_ document: MemoryDocument) -> [MemoryChunk] {
+        let paragraphs = document.content
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let pieces: [String]
+        if paragraphs.count <= 1 {
+            pieces = slidingLines(document.content)
+        } else {
+            pieces = paragraphs.flatMap { paragraph -> [String] in
+                if paragraph.count > 900 { return slidingLines(paragraph) }
+                return [paragraph]
+            }
+        }
+        return pieces.map { text in
+            MemoryChunk(document: document, text: text, tokens: tokenize(text))
+        }
+        .filter { !$0.tokens.isEmpty }
+    }
+
+    private static func slidingLines(_ text: String, window: Int = 4, overlap: Int = 1) -> [String] {
+        let lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && $0 != "#" && $0 != "# Memory" && $0 != "# Shared memory" }
+        guard !lines.isEmpty else { return [] }
+        if lines.count <= window { return [lines.joined(separator: "\n")] }
+        var out: [String] = []
+        var start = 0
+        while start < lines.count {
+            let end = min(lines.count, start + window)
+            out.append(lines[start..<end].joined(separator: "\n"))
+            if end == lines.count { break }
+            start += max(1, window - overlap)
+        }
+        return out
     }
 }
 

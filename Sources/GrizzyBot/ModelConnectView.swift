@@ -27,8 +27,11 @@ struct ModelConnectView: View {
     @State private var userCode: String?
     @State private var waitingSignIn = false
     @State private var deviceURI: String?
+    @State private var refreshTask: Task<Void, Never>?
 
     private var isLocal: Bool { LocalProviders.isLocal(selectedProvider) }
+    private var isCompatible: Bool { selectedProvider == ModelCatalog.openaiCompatibleProvider }
+    private var usesCustomBase: Bool { ModelCatalog.usesCustomBase(selectedProvider) }
 
     private var filteredProviders: [CatalogEntry] {
         let q = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -55,7 +58,7 @@ struct ModelConnectView: View {
     private var modelsForProvider: [CatalogEntry] {
         var byId: [String: CatalogEntry] = [:]
         for entry in ModelCatalog.models(forProvider: selectedProvider) {
-            if isLocal && entry.id.hasSuffix("/default") { continue }
+            if (isLocal || isCompatible) && entry.id.hasSuffix("/default") { continue }
             byId[entry.id] = entry
         }
         for model in customModels {
@@ -86,7 +89,7 @@ struct ModelConnectView: View {
                 .font(.system(size: 32, weight: .medium))
                 .foregroundStyle(Theme.textBrightAlt)
 
-            Text("Paste an API key, sign in with ChatGPT / Copilot / SuperGrok, or point at a local provider (Ollama, LM Studio, vMLX, oMLX) on this machine or another host on your LAN.")
+            Text("Paste an API key, sign in with ChatGPT / Copilot / SuperGrok, point at a local provider, or use OpenAI Compatible with any /v1 host. Enable a provider to include its models in the chat picker.")
                 .font(.system(size: 14.5))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.top, 10)
@@ -109,7 +112,7 @@ struct ModelConnectView: View {
             providerRail
                 .padding(.top, 12)
 
-            if isLocal || providerEntry?.supportsBaseUrl == true || providerEntry?.kind == .local {
+            if isLocal || isCompatible || providerEntry?.supportsBaseUrl == true || providerEntry?.kind == .local {
                 localConfig
                     .padding(.top, 16)
             }
@@ -127,7 +130,7 @@ struct ModelConnectView: View {
                     deviceCodeSection(entry)
                 }
 
-                if isLocal {
+                if isLocal || isCompatible {
                     GrizzyField(
                         label: "API key (optional)",
                         placeholder: "Usually not required",
@@ -233,28 +236,45 @@ struct ModelConnectView: View {
         ScrollView {
             VStack(spacing: 0) {
                 ForEach(Array(filteredProviders.enumerated()), id: \.element.provider) { index, entry in
-                    Button {
-                        selectProvider(entry)
-                    } label: {
-                        HStack {
-                            Text(entry.providerName ?? entry.provider)
-                                .font(.system(size: 15))
-                                .foregroundStyle(Theme.textBright)
-                            Spacer()
-                            Text(ModelCatalog.hint(for: entry))
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.textSecondary)
+                    HStack(spacing: 8) {
+                        Button {
+                            selectProvider(entry)
+                        } label: {
+                            HStack {
+                                Text(entry.providerName ?? entry.provider)
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(Theme.textBright)
+                                Spacer()
+                                Text(ModelCatalog.hint(for: entry))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textSecondary)
+                            }
+                            .padding(.leading, 14)
+                            .padding(.vertical, 10)
+                            .contentShape(Rectangle())
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(
-                            selectedProvider == entry.provider
-                                ? Theme.bgSelectedRow
-                                : Color.clear
+                        .buttonStyle(.plain)
+
+                        Toggle(
+                            "Enabled",
+                            isOn: Binding(
+                                get: { store.isProviderEnabled(entry.provider) },
+                                set: { store.setProviderEnabled(entry.provider, enabled: $0) }
+                            )
                         )
-                        .contentShape(Rectangle())
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .labelsHidden()
+                        .help(store.isProviderEnabled(entry.provider)
+                              ? "Included in the chat model list"
+                              : "Enable to include this provider’s models in chat")
+                        .padding(.trailing, 10)
                     }
-                    .buttonStyle(.plain)
+                    .background(
+                        selectedProvider == entry.provider
+                            ? Theme.bgSelectedRow
+                            : Color.clear
+                    )
                     if index < filteredProviders.count - 1 {
                         Divider().background(Theme.borderListRows)
                     }
@@ -290,14 +310,17 @@ struct ModelConnectView: View {
             }
             .padding(.top, 8)
 
-            Text("Use 127.0.0.1 for this machine, or a LAN IP like 192.168.1.40 for another computer. The server must listen on 0.0.0.0 (not only localhost).")
+            Text(isCompatible
+                 ? "Any OpenAI-compatible host. Use https for public APIs, or a LAN IP for a local server. Refresh models after setting the URL."
+                 : "Use 127.0.0.1 for this machine, or a LAN IP like 192.168.1.40 for another computer. The server must listen on 0.0.0.0 (not only localhost).")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.top, 8)
 
             HStack(spacing: 8) {
                 Button {
-                    Task { await refreshModels() }
+                    refreshTask?.cancel()
+                    refreshTask = Task { await refreshModels() }
                 } label: {
                     Text(probing ? "Loading models…" : "Refresh models")
                         .font(.system(size: 14))
@@ -368,7 +391,7 @@ struct ModelConnectView: View {
                 .foregroundStyle(Theme.textSecondary)
 
             if modelsForProvider.isEmpty {
-                Text(isLocal ? "Refresh models or add one below" : "No models listed")
+                Text(usesCustomBase ? "Refresh models or add one below" : "No models listed")
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.textSecondary)
                     .padding(.horizontal, 14)
@@ -384,11 +407,19 @@ struct ModelConnectView: View {
                     options: modelsForProvider.map(\.id),
                     selection: $selectedModelId,
                     style: .field,
+                    searchable: true,
                     label: { id in
                         modelsForProvider.first(where: { $0.id == id })?.label ?? id
                     }
                 )
                 .padding(.top, 8)
+
+                if !customModels.isEmpty {
+                    Text("\(customModels.count) model\(customModels.count == 1 ? "" : "s") loaded")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textMuted)
+                        .padding(.top, 6)
+                }
             }
 
             HStack(spacing: 8) {
@@ -477,30 +508,57 @@ struct ModelConnectView: View {
         if let provider = store.modelProvider {
             selectedProvider = provider
         }
-        if let modelId = store.modelId {
+        applyProviderSettings(store.modelProviderSettings(for: selectedProvider))
+        lanHints = LocalProviders.listLocalLanIPv4Addresses()
+        if lanHost.isEmpty,
+           let host = URL(string: baseUrl)?.host,
+           LocalProviders.isPrivateOrLoopbackIP(host),
+           host != "127.0.0.1",
+           host != "localhost" {
+            lanHost = host
+        }
+    }
+
+    private func applyProviderSettings(_ settings: ModelProviderSettings) {
+        if let modelId = settings.modelId, !modelId.isEmpty {
             selectedModelId = modelId
         }
-        apiKey = store.apiKey ?? ""
-        if let url = store.modelBaseUrl {
+        apiKey = settings.apiKey ?? ""
+        if let url = settings.baseUrl, !url.isEmpty {
             baseUrl = url
         } else if let def = LocalProviders.def(for: selectedProvider) {
             baseUrl = def.defaultBaseUrl
+        } else if let entry = providerEntry {
+            baseUrl = entry.defaultBaseUrl ?? ""
+        } else {
+            baseUrl = ""
         }
-        customModels = store.fetchedModels
-        lanHints = LocalProviders.listLocalLanIPv4Addresses()
+        customModels = settings.fetchedModels
+        if selectedModelId.isEmpty {
+            let first = ModelCatalog.models(forProvider: selectedProvider)
+                .first(where: { !(isLocal && $0.id.hasSuffix("/default")) })
+            selectedModelId = first?.id ?? customModels.first?.id ?? ""
+        }
+    }
+
+    private func stashCurrentProviderDraft() {
+        store.updateModelProviderDraft(
+            provider: selectedProvider,
+            modelId: selectedModelId.isEmpty ? nil : selectedModelId,
+            apiKey: apiKey.isEmpty ? nil : apiKey,
+            baseUrl: baseUrl.isEmpty ? nil : baseUrl,
+            models: customModels
+        )
     }
 
     private func selectProvider(_ entry: CatalogEntry) {
+        stashCurrentProviderDraft()
         selectedProvider = entry.provider
         userCode = nil
         waitingSignIn = false
         modelError = nil
-        customModels = []
         manualModel = ""
-        baseUrl = entry.defaultBaseUrl ?? LocalProviders.def(for: entry.provider)?.defaultBaseUrl ?? ""
-        let first = ModelCatalog.models(forProvider: entry.provider)
-            .first(where: { !(entry.kind == .local && $0.id.hasSuffix("/default")) })
-        selectedModelId = first?.id ?? ""
+        applyProviderSettings(store.modelProviderSettings(for: entry.provider))
     }
 
     private func addManualModel() {
@@ -516,7 +574,10 @@ struct ModelConnectView: View {
     private func refreshModels() async {
         modelError = nil
         probing = true
-        defer { probing = false }
+        defer {
+            probing = false
+            refreshTask = nil
+        }
         do {
             let url = baseUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? (providerEntry?.defaultBaseUrl ?? "")
@@ -525,18 +586,27 @@ struct ModelConnectView: View {
                 modelError = "Set a base URL first."
                 return
             }
+            if Task.isCancelled { return }
             let result = try await LocalProviders.probeModels(
                 baseUrl: url,
-                apiKey: apiKey.isEmpty ? nil : apiKey
+                provider: selectedProvider,
+                apiKey: apiKey.isEmpty ? nil : apiKey,
+                requirePrivateHost: isLocal
             )
+            if Task.isCancelled { return }
             baseUrl = result.baseUrl
+            let previous = selectedModelId
             customModels = result.models
-            if let first = result.models.first {
+            if result.models.contains(where: { $0.id == previous }) {
+                selectedModelId = previous
+            } else if let first = result.models.first {
                 selectedModelId = first.id
             } else {
                 modelError = "Reachable, but no models were listed. Add a model id below."
             }
+            stashCurrentProviderDraft()
         } catch {
+            if Task.isCancelled { return }
             modelError = (error as? LocalProviderError)?.message ?? error.localizedDescription
         }
     }
@@ -618,7 +688,7 @@ struct ModelConnectView: View {
     }
 
     private func continueModel() {
-        if isLocal {
+        if usesCustomBase {
             let model = selectedModelId.trimmingCharacters(in: .whitespacesAndNewlines)
             if model.isEmpty && customModels.isEmpty {
                 modelError = "Select or add a model id for this endpoint."

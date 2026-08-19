@@ -168,6 +168,23 @@ public struct BotHomeStore: Sendable {
         (try? resolveExisting(botId: botId, relative: path, mustBeDirectory: nil)) != nil
     }
 
+    public enum ShellTimeout {
+        public static let `default`: TimeInterval = 120
+        public static let min: TimeInterval = 5
+        public static let max: TimeInterval = 300
+
+        public static func clamp(_ seconds: TimeInterval?) -> TimeInterval {
+            guard let seconds, seconds > 0 else { return `default` }
+            return Swift.min(max, Swift.max(min, seconds))
+        }
+
+        public static func parse(_ raw: String) -> TimeInterval {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, let value = Double(trimmed) else { return `default` }
+            return clamp(value)
+        }
+    }
+
     public struct ShellResult: Sendable, Equatable {
         public var exitCode: Int
         public var stdout: String
@@ -198,7 +215,7 @@ public struct BotHomeStore: Sendable {
         botId: String,
         command: String,
         cwd: String = "",
-        timeout: TimeInterval = 30
+        timeout: TimeInterval = ShellTimeout.default
     ) async throws -> ShellResult {
         let home = try homeURL(botId: botId)
         let directory = try containedURL(home: home, relative: cwd)

@@ -18,6 +18,7 @@ struct RightPanelView: View {
     @State private var deleting = false
     @State private var settingsError: String?
     @State private var settingsLoadedFor: String?
+    @State private var redactedExport = true
 
     var body: some View {
         Group {
@@ -175,7 +176,7 @@ struct RightPanelView: View {
                         .padding(.vertical, 10)
                 }
                 .buttonStyle(.plain)
-                .help("Run the first routine")
+                .help("Run the next due routine")
 
                 Button {
                     store.openNewRoutine()
@@ -368,6 +369,21 @@ struct RightPanelView: View {
                     lineLimit: 4...8
                 )
                 .padding(.top, 12)
+                GrizzyField(
+                    label: "Memory",
+                    placeholder: "Facts this bot should keep. Standing rules go under ## Pin.",
+                    text: Binding(
+                        get: { store.botMemory(botId: bot.id) },
+                        set: { store.setBotMemory(botId: bot.id, text: $0) }
+                    ),
+                    axis: .vertical,
+                    lineLimit: 6...16
+                )
+                .padding(.top, 12)
+                Text("Saved as MEMORY.md in this bot’s home. Newest facts are what the model sees first; search_memory can recall the rest.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 6)
 
                 Text("Model")
                     .font(.system(size: 13))
@@ -447,7 +463,7 @@ struct RightPanelView: View {
                     .foregroundStyle(Theme.textSecondary)
                     .padding(.top, 16)
                 GrizzySelect(
-                    options: ComputerMode.allCases,
+                    options: ComputerMode.selectableCases,
                     selection: Binding(
                         get: { bot.computerMode },
                         set: { store.patchBot(bot.id, computerMode: $0) }
@@ -485,6 +501,12 @@ struct RightPanelView: View {
                             .foregroundStyle(Theme.textSecondary)
                     }
                     .buttonStyle(.plain)
+
+                    Toggle("Redact chat history (share-safe)", isOn: $redactedExport)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textSecondary)
+                        .toggleStyle(.checkbox)
+                        .padding(.top, 4)
 
                     if confirmDelete {
                         VStack(alignment: .leading, spacing: 0) {
@@ -602,7 +624,13 @@ struct RightPanelView: View {
     }
 
     private func modelChoices(for bot: Bot) -> [BotModelChoice] {
-        var options = BotModelChoice.choices(workspaceModel: store.modelId)
+        var options = BotModelChoice.choices(
+            workspaceProvider: store.modelProvider,
+            workspaceModel: store.modelId,
+            fetched: store.fetchedModels(for: store.modelProvider ?? ModelCatalog.defaultProvider),
+            includeFullCatalog: true,
+            enabledProviders: store.enabledModelSources()
+        )
         let current = BotModelChoice.current(bot: bot)
         if !options.contains(current) {
             options.insert(current, at: 1)
@@ -657,7 +685,7 @@ struct RightPanelView: View {
     }
 
     private func exportBot(_ bot: Bot) {
-        guard let manifest = store.exportManifest(botId: bot.id) else { return }
+        guard let manifest = store.exportManifest(botId: bot.id, redacted: redactedExport) else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = store.exportFilename(for: bot.id)
         panel.allowedContentTypes = [.json]
@@ -714,17 +742,30 @@ struct RightPanelView: View {
                 )
             )
             .padding(.top, 20)
-            GrizzyField(
-                label: "Instruction",
-                labelSize: 14,
-                placeholder: "Instruction",
-                text: Binding(
-                    get: { store.routineDraft.prompt },
-                    set: { store.routineDraft.prompt = $0 }
-                ),
-                axis: .vertical,
-                lineLimit: 4...8
-            )
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Instruction")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textSecondary)
+                TextField(
+                    "Instruction",
+                    text: Binding(
+                        get: { store.routineDraft.prompt },
+                        set: { store.routineDraft.prompt = $0 }
+                    ),
+                    axis: .vertical
+                )
+                .lineLimit(6...)
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.textBright)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(Theme.borderInputsDark, lineWidth: 1)
+                }
+            }
             .padding(.top, 12)
 
             Text("Assign to bot")

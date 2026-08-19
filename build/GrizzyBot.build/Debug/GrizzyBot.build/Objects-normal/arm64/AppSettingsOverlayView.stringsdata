@@ -1,0 +1,304 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/AppSettingsOverlayView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Delete this workspace?",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 53
+        }
+      },
+      {
+        "comment": "",
+        "key": "Session",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 62
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 54
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete everything",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 55
+        }
+      },
+      {
+        "comment": "",
+        "key": "Removes every bot, chat, routine, and file. Your account stays. Snapshots are kept until you delete them.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 60
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 66
+        }
+      },
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 74
+        }
+      },
+      {
+        "comment": "",
+        "key": "✕",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 126
+        }
+      },
+      {
+        "comment": "",
+        "key": "When enabled, GrizzyBot launches to the menu bar. Use Open GrizzyBot to show the main window.",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 178
+        }
+      },
+      {
+        "comment": "",
+        "key": "Launch at login and background routines require a signed Release build. SMAppService rejects ad-hoc Debug bundles.",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 209
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show menu bar extra",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 155
+        }
+      },
+      {
+        "comment": "",
+        "key": "Menu bar only",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 166
+        }
+      },
+      {
+        "comment": "",
+        "key": "Launch at login",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 182
+        }
+      },
+      {
+        "comment": "",
+        "key": "Background routines",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 197
+        }
+      },
+      {
+        "comment": "",
+        "key": "No snapshots yet.",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 279
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete workspace…",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 316
+        }
+      },
+      {
+        "comment": "",
+        "key": "Export workspace…",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 243
+        }
+      },
+      {
+        "comment": "",
+        "key": "Backup to iCloud",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 254
+        }
+      },
+      {
+        "comment": "",
+        "key": "Restore backup…",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 265
+        }
+      },
+      {
+        "comment": "",
+        "key": "Restore",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 296
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 304
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld bots · %lld messages",
+        "location": {
+          "startingColumn": 54,
+          "startingLine": 291
+        }
+      },
+      {
+        "comment": "",
+        "key": "Box.com is an optional developer token for the Box plugin when you are not using Composio Connect. It is not the Composio Connect key.",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 350
+        }
+      },
+      {
+        "comment": "",
+        "key": "Auto follows your host choice (in-app browser or This Mac). In-app browser keeps cookies per bot.",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 376
+        }
+      },
+      {
+        "comment": "",
+        "key": "Transport",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 413
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 471
+        }
+      },
+      {
+        "comment": "",
+        "key": "Edit",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 513
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 519
+        }
+      },
+      {
+        "comment": "",
+        "key": "editing",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 502
+        }
+      },
+      {
+        "comment": "",
+        "key": "Enable all",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 537
+        }
+      },
+      {
+        "comment": "",
+        "key": "Disable all",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 544
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open diagnostics folder",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 614
+        }
+      },
+      {
+        "comment": "",
+        "key": "Copy last crash",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 599
+        }
+      },
+      {
+        "comment": "",
+        "key": "configured",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 680
+        }
+      },
+      {
+        "comment": "",
+        "key": "Clear",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 684
+        }
+      },
+      {
+        "comment": "",
+        "key": "mcp",
+        "location": {
+          "startingColumn": 54,
+          "startingLine": 718
+        }
+      },
+      {
+        "comment": "",
+        "key": "custom",
+        "location": {
+          "startingColumn": 62,
+          "startingLine": 718
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -11,6 +11,10 @@ struct LocalProvidersTests {
         #expect(LocalProviders.isLocal("ollama"))
         #expect(!LocalProviders.isLocal("openrouter"))
         #expect(ModelCatalog.providers.first?.kind == .local)
+        #expect(ModelCatalog.entries.contains(where: { $0.provider == ModelCatalog.openaiCompatibleProvider }))
+        #expect(ModelCatalog.usesCustomBase("openai-compatible"))
+        #expect(ModelCatalog.usesCustomBase("lmstudio"))
+        #expect(!ModelCatalog.usesCustomBase("openrouter"))
     }
 
     @Test("normalizes base URLs to /v1")
@@ -31,6 +35,10 @@ struct LocalProvidersTests {
         }
         #expect(LocalProviders.isPrivateOrLoopbackIP("172.20.1.5"))
         #expect(!LocalProviders.isPrivateOrLoopbackIP("8.8.8.8"))
+        _ = try LocalProviders.assertProviderUrl("https://api.example.com/v1", requirePrivateHost: false)
+        #expect(throws: LocalProviderError.self) {
+            try LocalProviders.assertProviderUrl("https://api.example.com/v1", requirePrivateHost: true)
+        }
     }
 
     @Test("parses OpenAI-compatible model list JSON")
@@ -39,5 +47,21 @@ struct LocalProvidersTests {
         let models = try LocalProviders.parseModelsJSON(json)
         #expect(models.map(\.id) == ["llama3.2", "qwen2.5"])
         #expect(models[1].label == "Qwen 2.5")
+    }
+
+    @Test("skips non-LLM rows and parses LM Studio native v1 models")
+    func lmStudioModels() throws {
+        let json = Data(
+            #"{"data":[{"id":"embed-model","type":"embedding"},{"id":"qwen-local","type":"llm","name":"Qwen Local"}]}"#.utf8
+        )
+        let models = try LocalProviders.parseModelsJSON(json)
+        #expect(models.map(\.id) == ["qwen-local"])
+
+        let native = Data(
+            #"{"models":[{"key":"google/gemma","display_name":"Gemma","type":"llm"},{"key":"nomic-embed","type":"embedding"}]}"#.utf8
+        )
+        let nativeModels = try LocalProviders.parseModelsJSON(native)
+        #expect(nativeModels.map(\.id) == ["google/gemma"])
+        #expect(nativeModels[0].label == "Gemma")
     }
 }

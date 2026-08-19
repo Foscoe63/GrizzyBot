@@ -65,6 +65,15 @@ struct BotHomeTests {
         _ = result
     }
 
+    @Test("shell timeout defaults and clamps")
+    func shellTimeout() {
+        #expect(BotHomeStore.ShellTimeout.default == 120)
+        #expect(BotHomeStore.ShellTimeout.parse("") == 120)
+        #expect(BotHomeStore.ShellTimeout.parse("180") == 180)
+        #expect(BotHomeStore.ShellTimeout.parse("999") == 300)
+        #expect(BotHomeStore.ShellTimeout.parse("2") == 5)
+    }
+
     @Test("reads and lists absolute host paths the user named")
     func hostReadAndList() throws {
         let root = FileManager.default.temporaryDirectory
@@ -150,6 +159,17 @@ struct WebSearchTests {
         let message = WebSearch.fetchFailureMessage(status: 403, bodyPreview: "Forbidden")
         #expect(message.contains("403"))
         #expect(message.contains("Forbidden"))
+    }
+
+    @Test("parses Brave Search JSON")
+    func braveJSON() throws {
+        let json = """
+        {"web":{"results":[{"title":"Otters","url":"https://example.com/otters","description":"Marine mammals"}]}}
+        """.data(using: .utf8)!
+        let results = try WebSearch.parseBraveWebSearch(json, limit: 5)
+        #expect(results.count == 1)
+        #expect(results[0].title == "Otters")
+        #expect(results[0].url.contains("otters"))
     }
 }
 

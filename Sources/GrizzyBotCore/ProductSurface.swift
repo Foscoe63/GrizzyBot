@@ -152,6 +152,7 @@ public enum AppSecret: String, Sendable, CaseIterable {
     case box
     case tts
     case sentry
+    case braveSearch
 }
 
 public enum SecretFieldUpdate {
@@ -180,6 +181,7 @@ extension AppConfig {
         case .box: return boxToken
         case .tts: return ttsKey
         case .sentry: return sentryDSN
+        case .braveSearch: return braveSearchKey
         }
     }
 
@@ -190,6 +192,7 @@ extension AppConfig {
         case .box: boxToken = value
         case .tts: ttsKey = value
         case .sentry: sentryDSN = value
+        case .braveSearch: braveSearchKey = value
         }
     }
 }
@@ -222,6 +225,18 @@ public struct BotCapabilitySummary: Sendable, Equatable {
     }
 }
 
+public struct EnabledProviderModels: Sendable, Hashable {
+    public var provider: String
+    public var providerName: String
+    public var fetched: [LocalModelRef]
+
+    public init(provider: String, providerName: String, fetched: [LocalModelRef] = []) {
+        self.provider = provider
+        self.providerName = providerName
+        self.fetched = fetched
+    }
+}
+
 public enum BotModelChoice: Sendable, Hashable, Identifiable, CustomStringConvertible {
     case workspaceDefault
     case catalog(provider: String, modelId: String, label: String)
@@ -240,20 +255,91 @@ public enum BotModelChoice: Sendable, Hashable, Identifiable, CustomStringConver
         }
     }
 
-    public static func choices(workspaceModel: String?) -> [BotModelChoice] {
+    public func menuLabel(workspaceModel: String?) -> String {
+        switch self {
+        case .workspaceDefault:
+            if let workspaceModel, !workspaceModel.isEmpty {
+                return "Workspace default · \(Self.shortName(workspaceModel))"
+            }
+            return "Workspace default"
+        case .catalog(_, _, let label):
+            return label
+        }
+    }
+
+    public static func shortName(_ id: String) -> String {
+        id.split(separator: "/").last.map(String.init) ?? id
+    }
+
+    public static func activeLabel(bot: Bot, workspaceModel: String?) -> String {
+        if let modelId = bot.modelId?.trimmingCharacters(in: .whitespacesAndNewlines), !modelId.isEmpty {
+            return shortName(modelId)
+        }
+        if let workspaceModel, !workspaceModel.isEmpty {
+            return shortName(workspaceModel)
+        }
+        return "No model"
+    }
+
+    public static func choices(
+        workspaceProvider: String? = nil,
+        workspaceModel: String? = nil,
+        fetched: [LocalModelRef] = [],
+        includeFullCatalog: Bool = false,
+        enabledProviders: [EnabledProviderModels]? = nil
+    ) -> [BotModelChoice] {
         var list: [BotModelChoice] = [.workspaceDefault]
-        var seen = Set<String>()
-        for entry in ModelCatalog.entries {
-            let choice = BotModelChoice.catalog(
-                provider: entry.provider,
-                modelId: entry.id,
-                label: "\(entry.providerName ?? entry.provider) · \(entry.label)"
-            )
+        var seen = Set<String>([BotModelChoice.workspaceDefault.id])
+
+        func add(_ choice: BotModelChoice) {
             if seen.insert(choice.id).inserted {
                 list.append(choice)
             }
         }
-        _ = workspaceModel
+
+        let sources: [EnabledProviderModels]
+        if let enabledProviders {
+            sources = enabledProviders
+        } else {
+            let provider = workspaceProvider ?? ModelCatalog.defaultProvider
+            let name = ModelCatalog.providers.first(where: { $0.provider == provider })?.providerName
+                ?? provider
+            sources = [EnabledProviderModels(provider: provider, providerName: name, fetched: fetched)]
+        }
+
+        for source in sources {
+            for model in source.fetched {
+                add(.catalog(
+                    provider: source.provider,
+                    modelId: model.id,
+                    label: "\(source.providerName) · \(model.label)"
+                ))
+            }
+            if source.provider == workspaceProvider, let workspaceModel, !workspaceModel.isEmpty {
+                add(.catalog(
+                    provider: source.provider,
+                    modelId: workspaceModel,
+                    label: "\(source.providerName) · \(shortName(workspaceModel))"
+                ))
+            }
+            for entry in ModelCatalog.models(forProvider: source.provider) where !entry.id.hasSuffix("/default") {
+                add(.catalog(
+                    provider: entry.provider,
+                    modelId: entry.id,
+                    label: "\(entry.providerName ?? entry.provider) · \(entry.label)"
+                ))
+            }
+        }
+
+        if includeFullCatalog {
+            for entry in ModelCatalog.entries where !entry.id.hasSuffix("/default") {
+                add(.catalog(
+                    provider: entry.provider,
+                    modelId: entry.id,
+                    label: "\(entry.providerName ?? entry.provider) · \(entry.label)"
+                ))
+            }
+        }
         return list
     }
 
@@ -313,98 +399,8 @@ public enum RunLog {
 
     public static func dump(_ lines: [RunLogLine]) -> String {
         if lines.isEmpty { return "No tool or MCP activity recorded in this session yet." }
-        return lines.suffix(200).map(\.formatted).joined(separator: "\n")
+        return lines.suffix(200).map { DiagnosticScrubber.redact($0.formatted) }.joined(separator: "\n")
     }
-}
-
-// MARK: - Sparkle appcast
-
-public struct AppcastItem: Sendable, Equatable {
-    public var title: String
-    public var version: String
-    public var shortVersion: String
-    public var pubDate: String
-    public var enclosureURL: String
-    public var edSignature: String
-    public var length: Int
-    public var minimumSystemVersion: String
-    public var notesHTML: String
-
-    public init(
-        title: String,
-        version: String,
-        shortVersion: String,
-        pubDate: String,
-        enclosureURL: String,
-        edSignature: String,
-        length: Int,
-        minimumSystemVersion: String = "15.0",
-        notesHTML: String = ""
-    ) {
-        self.title = title
-        self.version = version
-        self.shortVersion = shortVersion
-        self.pubDate = pubDate
-        self.enclosureURL = enclosureURL
-        self.edSignature = edSignature
-        self.length = length
-        self.minimumSystemVersion = minimumSystemVersion
-        self.notesHTML = notesHTML
-    }
-
-    public var xmlFragment: String {
-        let notes = notesHTML.isEmpty ? "<p>GrizzyBot \(shortVersion)</p>" : notesHTML
-        return """
-            <item>
-              <title>\(title)</title>
-              <pubDate>\(pubDate)</pubDate>
-              <sparkle:version>\(version)</sparkle:version>
-              <sparkle:shortVersionString>\(shortVersion)</sparkle:shortVersionString>
-              <sparkle:minimumSystemVersion>\(minimumSystemVersion)</sparkle:minimumSystemVersion>
-              <description><![CDATA[\(notes)]]></description>
-              <enclosure url="\(enclosureURL)"
-                         type="application/octet-stream"
-                         sparkle:edSignature="\(edSignature)"
-                         length="\(length)" />
-            </item>
-        """
-    }
-}
-
-public enum AppcastXML {
-    public static func inserting(_ item: AppcastItem, into xml: String) throws -> String {
-        var next = removingItem(version: item.version, from: xml)
-        guard let channel = next.range(of: "<channel>") else {
-            throw AppcastXMLError.missingChannel
-        }
-        next.insert(contentsOf: "\n" + item.xmlFragment, at: channel.upperBound)
-        return next
-    }
-
-    public static func buildNumbers(in xml: String) -> [String] {
-        buildNumberRegex.matches(in: xml, range: NSRange(xml.startIndex..., in: xml)).compactMap { match in
-            guard let range = Range(match.range(at: 1), in: xml) else { return nil }
-            return String(xml[range])
-        }
-    }
-
-    public static func removingItem(version: String, from xml: String) -> String {
-        var result = xml
-        let pattern = "<item>[\\s\\S]*?<sparkle:version>\(NSRegularExpression.escapedPattern(for: version))</sparkle:version>[\\s\\S]*?</item>"
-        if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
-            result = regex.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: "")
-        }
-        return result
-    }
-
-    private static let buildNumberRegex = try! NSRegularExpression(
-        pattern: "<sparkle:version>([^<]+)</sparkle:version>",
-        options: []
-    )
-}
-
-public enum AppcastXMLError: Error, Sendable {
-    case missingChannel
 }
 
 // MARK: - Workspace backup (iCloud container, then iCloud Drive, then Documents)
@@ -462,6 +458,11 @@ public enum WorkspaceBackup {
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         return "grizzybot-backup-\(formatter.string(from: now)).json"
     }
+}
+
+public enum LaunchArguments {
+    public static let tickRoutines = "-grizzybot-tick-routines"
+    public static let uiTest = "-uitest"
 }
 
 // MARK: - ElevenLabs TTS

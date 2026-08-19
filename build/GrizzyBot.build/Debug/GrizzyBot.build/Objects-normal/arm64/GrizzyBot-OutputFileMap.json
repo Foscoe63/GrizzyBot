@@ -1,0 +1,369 @@
+{
+  "" : {
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBot-primary.dia",
+    "emit-module-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBot-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBot-primary-emit-module.dia",
+    "pch" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBot-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBot-primary.swiftdeps"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/AppSettingsOverlayView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AppSettingsOverlayView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AppSettingsOverlayView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AppSettingsOverlayView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AppSettingsOverlayView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AppSettingsOverlayView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AppSettingsOverlayView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AppSettingsOverlayView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AppSettingsOverlayView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/AuthView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AuthView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AuthView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AuthView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AuthView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AuthView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AuthView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AuthView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/AuthView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/BotAvatarView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/BotAvatarView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/BotAvatarView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/BotAvatarView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/BotAvatarView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/BotAvatarView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/BotAvatarView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/BotAvatarView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/BotAvatarView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/ChatView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ChatView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ChatView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ChatView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ChatView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ChatView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ChatView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ChatView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ChatView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/ComputerDesktopView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ComputerDesktopView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ComputerDesktopView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ComputerDesktopView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ComputerDesktopView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ComputerDesktopView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ComputerDesktopView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ComputerDesktopView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ComputerDesktopView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/Controls.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Controls.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Controls.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Controls.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Controls.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Controls.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Controls.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Controls.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Controls~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/CrashReporting.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/CrashReporting.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/CrashReporting.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/CrashReporting.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/CrashReporting.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/CrashReporting.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/CrashReporting.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/CrashReporting.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/CrashReporting~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/GrizzyBotApp.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBotApp.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBotApp.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBotApp.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBotApp.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBotApp.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBotApp.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBotApp.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyBotApp~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/GrizzyThemePalette.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyThemePalette.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyThemePalette.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyThemePalette.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyThemePalette.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyThemePalette.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyThemePalette.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyThemePalette.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GrizzyThemePalette~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/HostComputerPromptView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/HostComputerPromptView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/HostComputerPromptView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/HostComputerPromptView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/HostComputerPromptView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/HostComputerPromptView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/HostComputerPromptView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/HostComputerPromptView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/HostComputerPromptView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/LoginItem.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MacAccessibility.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MainWindowController.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MarkdownText.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MarkdownText.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MarkdownText.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MarkdownText.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MarkdownText.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MarkdownText.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MarkdownText.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MarkdownText.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MarkdownText~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MenuBarView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MenuBarView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MenuBarView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MenuBarView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MenuBarView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MenuBarView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MenuBarView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MenuBarView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MenuBarView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MessageViews.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MessageViews.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MessageViews.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MessageViews.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MessageViews.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MessageViews.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MessageViews.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MessageViews.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MessageViews~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/ModelConnectView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ModelConnectView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ModelConnectView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ModelConnectView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ModelConnectView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ModelConnectView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ModelConnectView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ModelConnectView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ModelConnectView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/OnboardingView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/OnboardingView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/OnboardingView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/OnboardingView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/OnboardingView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/OnboardingView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/OnboardingView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/OnboardingView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/OnboardingView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/PluginsOverlayView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/PluginsOverlayView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/PluginsOverlayView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/PluginsOverlayView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/PluginsOverlayView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/PluginsOverlayView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/PluginsOverlayView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/PluginsOverlayView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/PluginsOverlayView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/RightPanelView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RightPanelView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RightPanelView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RightPanelView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RightPanelView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RightPanelView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RightPanelView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RightPanelView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RightPanelView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/RootView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RootView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RootView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RootView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RootView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RootView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RootView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RootView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RootView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/RoutineScheduleView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutineScheduleView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutineScheduleView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutineScheduleView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutineScheduleView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutineScheduleView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutineScheduleView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutineScheduleView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutineScheduleView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/RoutinesPageView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutinesPageView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutinesPageView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutinesPageView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutinesPageView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutinesPageView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutinesPageView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutinesPageView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/RoutinesPageView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/SentryScrubber.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SentryScrubber.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SentryScrubber.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SentryScrubber.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SentryScrubber.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SentryScrubber.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SentryScrubber.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SentryScrubber.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SentryScrubber~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/ShellView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ShellView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ShellView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ShellView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ShellView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ShellView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ShellView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ShellView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ShellView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/SidebarView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SidebarView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SidebarView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SidebarView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SidebarView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SidebarView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SidebarView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SidebarView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SidebarView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/SkillsOverlayView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SkillsOverlayView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SkillsOverlayView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SkillsOverlayView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SkillsOverlayView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SkillsOverlayView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SkillsOverlayView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SkillsOverlayView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SkillsOverlayView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/SpeechSupport.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SpeechSupport.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SpeechSupport.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SpeechSupport.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SpeechSupport.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SpeechSupport.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SpeechSupport.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SpeechSupport.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/SpeechSupport~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/Theme.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Theme.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Theme.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Theme.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Theme.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Theme.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Theme.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Theme.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/Theme~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/ThemeManager.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemeManager.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemeManager.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemeManager.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemeManager.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemeManager.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemeManager.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemeManager.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemeManager~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/ThemePresets.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemePresets.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemePresets.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemePresets.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemePresets.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemePresets.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemePresets.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemePresets.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemePresets~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/ThemesSettingsView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemesSettingsView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemesSettingsView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemesSettingsView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemesSettingsView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemesSettingsView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemesSettingsView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemesSettingsView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/ThemesSettingsView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/UITestLaunch.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/UITestLaunch.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/UITestLaunch.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/UITestLaunch.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/UITestLaunch.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/UITestLaunch.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/UITestLaunch.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/UITestLaunch.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/UITestLaunch~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/WelcomeView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WelcomeView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WelcomeView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WelcomeView.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WelcomeView.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WelcomeView.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WelcomeView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WelcomeView.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WelcomeView~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/WindowChrome.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WindowChrome.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WindowChrome.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WindowChrome.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WindowChrome.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WindowChrome.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WindowChrome.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WindowChrome.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/WindowChrome~partial.swiftmodule"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/GeneratedAssetSymbols~partial.swiftmodule"
+  }
+}

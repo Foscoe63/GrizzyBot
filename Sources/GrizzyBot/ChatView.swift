@@ -470,6 +470,11 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 28)
             }
+            if let bot {
+                composerModelPicker(bot)
+                    .padding(.horizontal, 28)
+                    .padding(.top, pasteWarning == nil && pendingFiles.isEmpty ? 8 : 0)
+            }
             if !pendingFiles.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(pendingFiles, id: \.path) { url in
@@ -574,7 +579,7 @@ struct ChatView: View {
                 Capsule().stroke(Theme.borderSearch, lineWidth: 1)
             }
             .padding(.horizontal, 24)
-            .padding(.top, pendingFiles.isEmpty ? 12 : 0)
+            .padding(.top, pendingFiles.isEmpty ? 4 : 0)
             .padding(.bottom, 24)
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
@@ -594,6 +599,62 @@ struct ChatView: View {
             }
             return true
         }
+    }
+
+    private func composerModelChoices(for bot: Bot) -> [BotModelChoice] {
+        let workspaceProvider = store.modelProvider ?? ModelCatalog.defaultProvider
+        var options = BotModelChoice.choices(
+            workspaceProvider: workspaceProvider,
+            workspaceModel: store.modelId,
+            fetched: store.fetchedModels(for: workspaceProvider),
+            enabledProviders: store.enabledModelSources()
+        )
+        let current = BotModelChoice.current(bot: bot)
+        if !options.contains(where: { $0.id == current.id }) {
+            options.insert(current, at: 1)
+        }
+        return options
+    }
+
+    private func composerModelPicker(_ bot: Bot) -> some View {
+        let current = BotModelChoice.current(bot: bot)
+        let workspaceModel = store.modelId
+        return Menu {
+            ForEach(composerModelChoices(for: bot)) { choice in
+                Button {
+                    store.setBotModel(bot.id, choice: choice)
+                } label: {
+                    if choice.id == current.id {
+                        Label(choice.menuLabel(workspaceModel: workspaceModel), systemImage: "checkmark")
+                    } else {
+                        Text(choice.menuLabel(workspaceModel: workspaceModel))
+                    }
+                }
+            }
+            Divider()
+            Button("Connect models…") {
+                store.openModelSettings()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "cpu")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.textMuted)
+                Text(BotModelChoice.activeLabel(bot: bot, workspaceModel: workspaceModel))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Theme.textMuted)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Theme.bgCard)
+            .clipShape(Capsule())
+        }
+        .menuStyle(.borderlessButton)
+        .help("Model for this bot")
     }
 
     private func groupInputBar(_ group: GroupRoom) -> some View {

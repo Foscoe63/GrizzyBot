@@ -19,8 +19,12 @@ xcuserdata/
 config.json
 .omo/
 
-# Sparkle EdDSA private key (never commit)
-Scripts/sparkle_eddsa_private.key
-
 # Developer ID team for notarization / iCloud Release entitlements
 Configs/Team.xcconfig
+
+# Sparkle EdDSA private key — never commit
+Scripts/sparkle_eddsa_private.key
+sparkle_eddsa_private.key
+
+# Xcode clang cache inside the generated project
+GrizzyBot.xcodeproj/-Xcc/

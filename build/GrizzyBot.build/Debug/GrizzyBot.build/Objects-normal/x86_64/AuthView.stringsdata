@@ -1,0 +1,80 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/AuthView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Sign in to GrizzyBot",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 46
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create your GrizzyBot",
+        "location": {
+          "startingColumn": 69,
+          "startingLine": 46
+        }
+      },
+      {
+        "comment": "",
+        "key": "Working…",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 87
+        }
+      },
+      {
+        "comment": "",
+        "key": "Continue with email",
+        "location": {
+          "startingColumn": 74,
+          "startingLine": 87
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create account",
+        "location": {
+          "startingColumn": 98,
+          "startingLine": 87
+        }
+      },
+      {
+        "comment": "",
+        "key": "Don't have an account?",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 101
+        }
+      },
+      {
+        "comment": "",
+        "key": "Already have an account?",
+        "location": {
+          "startingColumn": 75,
+          "startingLine": 101
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sign up",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 110
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sign in",
+        "location": {
+          "startingColumn": 64,
+          "startingLine": 110
+        }
+      }
+    ]
+  },
+  "version": 1
+}

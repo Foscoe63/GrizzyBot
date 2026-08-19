@@ -122,6 +122,11 @@ struct AuthView: View {
                 Spacer()
             }
         }
+        .onAppear {
+            if email.isEmpty, !store.pendingAuthEmail.isEmpty {
+                email = store.pendingAuthEmail
+            }
+        }
     }
 
     private func submit() {

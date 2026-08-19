@@ -21,6 +21,111 @@ public enum LLMError: Error, LocalizedError, Sendable, Equatable {
             return "Could not read the model response: \(detail)"
         }
     }
+
+    public static func transport(_ error: Error, url: URL) -> LLMError {
+        .http(-1, ModelTransport.message(for: error, url: url))
+    }
+}
+
+public enum ModelRequestRetry {
+    public static let maxAttempts = 4
+
+    public static func isRetryable(_ error: Error) -> Bool {
+        guard let llm = error as? LLMError else { return false }
+        switch llm {
+        case .http(let code, _):
+            if code == 429 { return true }
+            if (500...599).contains(code) { return true }
+            if code == -1 { return true }
+            return false
+        default:
+            return false
+        }
+    }
+
+    public static func shouldCompactOnRetry(_ error: Error) -> Bool {
+        guard let llm = error as? LLMError else { return false }
+        if case .http(let code, _) = llm {
+            return (500...599).contains(code)
+        }
+        return false
+    }
+
+    public static func backoffNanoseconds(attempt: Int) -> UInt64 {
+        let seconds = min(8.0, pow(2.0, Double(attempt)))
+        return UInt64(seconds * 1_000_000_000)
+    }
+}
+
+public enum ModelTransport {
+    public static func isLocalNetwork(_ url: URL) -> Bool {
+        let host = (url.host ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if host.isEmpty { return false }
+        if host == "localhost" || host.hasSuffix(".local") { return true }
+        return LocalProviders.isPrivateOrLoopbackIP(host)
+    }
+
+    public static func message(for error: Error, url: URL) -> String {
+        let local = isLocalNetwork(url)
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
+                if local {
+                    return "Could not reach \(url.host ?? "the local model"). Grant GrizzyBot Local Network access in System Settings → Privacy & Security → Local Network, and make sure the server is running and listening on 0.0.0.0 (not only localhost)."
+                }
+                return "The Mac looks offline. Check Wi-Fi or Ethernet, or connect a local provider (Ollama, LM Studio) on this machine or LAN."
+            case .timedOut:
+                return local
+                    ? "Timed out reaching \(url.host ?? "the local model"). Check the host and that the server is running."
+                    : error.localizedDescription
+            case .cannotConnectToHost, .cannotFindHost:
+                return local
+                    ? "Nothing answered at \(url.host ?? "the local model"). Check the base URL and that the server is listening."
+                    : error.localizedDescription
+            default:
+                break
+            }
+        }
+        return error.localizedDescription
+    }
+
+    public static func session(for url: URL) -> URLSession {
+        isLocalNetwork(url) ? localSession : cloudSession
+    }
+
+    public static func prepare(_ request: inout URLRequest) {
+        request.allowsConstrainedNetworkAccess = true
+        request.allowsExpensiveNetworkAccess = true
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+    }
+
+    private static let cloudSession: URLSession = {
+        makeSession(bypassProxy: false)
+    }()
+
+    private static let localSession: URLSession = {
+        makeSession(bypassProxy: true)
+    }()
+
+    private static func makeSession(bypassProxy: Bool) -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.waitsForConnectivity = false
+        config.timeoutIntervalForRequest = 120
+        config.timeoutIntervalForResource = 300
+        config.allowsConstrainedNetworkAccess = true
+        config.allowsExpensiveNetworkAccess = true
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        if bypassProxy {
+            // System HTTP proxies make LAN/localhost look "offline" to URLSession.
+            config.connectionProxyDictionary = [
+                "HTTPEnable": 0,
+                "HTTPSEnable": 0,
+                "SOCKSEnable": 0,
+            ]
+        }
+        return URLSession(configuration: config)
+    }
 }
 
 public enum LLMAPIStyle: String, Sendable, Codable {
@@ -221,21 +326,23 @@ public enum LLMRouting {
         }
 
         let trimmedKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let local = LocalProviders.isLocal(providerId)
-        if trimmedKey.isEmpty && !local && (baseUrl == nil || baseUrl?.isEmpty == true) {
+        let customBase = ModelCatalog.usesCustomBase(providerId)
+        if trimmedKey.isEmpty && !customBase && (baseUrl == nil || baseUrl?.isEmpty == true) {
             throw LLMError.notConfigured
         }
 
         let style: LLMAPIStyle = providerId == "anthropic" ? .anthropic : .openAI
         let resolvedBase: String
         if let raw = baseUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
-            if local {
+            if customBase {
                 resolvedBase = (try? LocalProviders.normalizeBaseUrl(raw, provider: providerId)) ?? raw
             } else {
                 resolvedBase = normalizeCloudBase(raw)
             }
-        } else if local, let def = LocalProviders.def(for: providerId) {
+        } else if LocalProviders.isLocal(providerId), let def = LocalProviders.def(for: providerId) {
             resolvedBase = def.defaultBaseUrl
+        } else if providerId == ModelCatalog.openaiCompatibleProvider {
+            throw LLMError.notConfigured
         } else {
             resolvedBase = defaultBaseURL(for: providerId)
         }
@@ -261,6 +368,26 @@ public enum LLMRouting {
         )
     }
 
+    public static func supportsVisionImages(provider: String, model: String) -> Bool {
+        let id = model.lowercased()
+        if id.contains("vl") || id.contains("vision") || id.contains("llava") || id.contains("pixtral") {
+            return true
+        }
+        if ModelCatalog.usesCustomBase(provider) {
+            return id.contains("gemini")
+        }
+        let textOnly = [
+            "gpt-3.5", "o1-mini", "o3-mini",
+            "deepseek-chat", "deepseek-reasoner", "deepseek-coder",
+            "codestral", "mixtral", "mistral-small",
+            "llama-3", "llama3", "qwen3-coder", "qwen2.5-coder",
+            "groq-llama", "compound-mini",
+        ]
+        if textOnly.contains(where: { id.contains($0) }) { return false }
+        if id.contains("coder") && !id.contains("vision") { return false }
+        return true
+    }
+
     public static func canRun(
         provider: String?,
         apiKey: String?,
@@ -271,6 +398,9 @@ public enum LLMRouting {
         let providerId = provider?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if providerId == "scripted" { return false }
         if LocalProviders.isLocal(providerId) { return true }
+        if providerId == ModelCatalog.openaiCompatibleProvider {
+            return !(baseUrl?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        }
         if let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
             return true
         }
@@ -291,6 +421,7 @@ public enum LLMRouting {
         case "google": return "https://generativelanguage.googleapis.com/v1beta/openai"
         case "anthropic": return "https://api.anthropic.com/v1"
         case "github-copilot": return "https://api.githubcopilot.com"
+        case "openai-compatible": return ""
         default:
             return LocalProviders.def(for: provider)?.defaultBaseUrl ?? "https://openrouter.ai/api/v1"
         }
@@ -312,10 +443,14 @@ public enum LLMRouting {
 
 public struct OpenAIChatClient: ChatCompleting {
     public static let shared = OpenAIChatClient()
-    private let session: URLSession
+    private let session: URLSession?
 
-    public init(session: URLSession = .shared) {
+    public init(session: URLSession? = nil) {
         self.session = session
+    }
+
+    private func session(for url: URL) -> URLSession {
+        session ?? ModelTransport.session(for: url)
     }
 
     public func complete(_ request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
@@ -334,7 +469,12 @@ public struct OpenAIChatClient: ChatCompleting {
 
         var body: [String: Any] = [
             "model": request.endpoint.model,
-            "messages": request.messages.map(Self.openAIMessage),
+            "messages": request.messages.map {
+                Self.wireMessage($0, includeImages: LLMRouting.supportsVisionImages(
+                    provider: request.endpoint.provider,
+                    model: request.endpoint.model
+                ))
+            },
         ]
         if !request.tools.isEmpty {
             body["tools"] = request.tools.map { tool in
@@ -381,7 +521,12 @@ public struct OpenAIChatClient: ChatCompleting {
             "model": request.endpoint.model,
             "stream": true,
             "stream_options": ["include_usage": true],
-            "messages": request.messages.map(Self.openAIMessage),
+            "messages": request.messages.map {
+                Self.wireMessage($0, includeImages: LLMRouting.supportsVisionImages(
+                    provider: request.endpoint.provider,
+                    model: request.endpoint.model
+                ))
+            },
         ]
         if !request.tools.isEmpty {
             body["tools"] = request.tools.map { tool in
@@ -407,13 +552,14 @@ public struct OpenAIChatClient: ChatCompleting {
             urlRequest.setValue("Bearer \(request.endpoint.apiKey)", forHTTPHeaderField: "Authorization")
         }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+        ModelTransport.prepare(&urlRequest)
 
         let bytes: URLSession.AsyncBytes
         let response: URLResponse
         do {
-            (bytes, response) = try await session.bytes(for: urlRequest)
+            (bytes, response) = try await session(for: url).bytes(for: urlRequest)
         } catch {
-            throw LLMError.http(-1, error.localizedDescription)
+            throw LLMError.transport(error, url: url)
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(status) {
@@ -529,13 +675,14 @@ public struct OpenAIChatClient: ChatCompleting {
         }
         authorize(&urlRequest)
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+        ModelTransport.prepare(&urlRequest)
 
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: urlRequest)
+            (data, response) = try await session(for: url).data(for: urlRequest)
         } catch {
-            throw LLMError.http(-1, error.localizedDescription)
+            throw LLMError.transport(error, url: url)
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(status) {
@@ -636,7 +783,7 @@ public struct OpenAIChatClient: ChatCompleting {
         )
     }
 
-    private static func openAIMessage(_ message: ChatMessage) -> [String: Any] {
+    public static func wireMessage(_ message: ChatMessage, includeImages: Bool = true) -> [String: Any] {
         var body: [String: Any] = ["role": message.role]
         if let name = message.name { body["name"] = name }
         if let toolCallId = message.toolCallId { body["tool_call_id"] = toolCallId }
@@ -647,16 +794,14 @@ public struct OpenAIChatClient: ChatCompleting {
                     "type": "function",
                     "function": [
                         "name": call.name,
-                        "arguments": call.arguments,
+                        "arguments": ContextCompactor.ensureValidJSONArguments(call.arguments),
                     ],
                 ]
             }
-            if let content = message.content {
-                body["content"] = content
-            } else {
-                body["content"] = NSNull()
-            }
-        } else if let jpeg = message.imageJPEGBase64, !jpeg.isEmpty {
+            body["content"] = message.content ?? ""
+        } else if includeImages,
+                  message.role != "tool",
+                  let jpeg = message.imageJPEGBase64, !jpeg.isEmpty {
             var parts: [[String: Any]] = []
             if let content = message.content, !content.isEmpty {
                 parts.append(["type": "text", "text": content])

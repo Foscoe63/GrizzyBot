@@ -14,35 +14,40 @@ xcodegen generate
 ./Scripts/make-app.sh
 ```
 
-CI (`.github/workflows/ci.yml`): `swift test`, `xcodegen generate`, `xcodebuild`.
+CI (`.github/workflows/ci.yml`): `swift test`, `xcodegen generate`, `xcodebuild` (app + overlay golden tests + UI tests).
 
-## Architecture (do not re-implement)
+Release (`.github/workflows/release.yml`): import Developer ID P12, Release build, notarize app + DMG, GitHub release. Needs repo secrets (see README).
+
+## Architecture
 
 | Target | Role |
 |---|---|
-| `GrizzyBotCore` | Models, store, agent loop, MCP, Composio, persistence, search, backup, TTS request builder |
-| `GrizzyBot` | SwiftUI shell, Sparkle, ElevenLabs playback, crash dump, overlays |
-| `GrizzyBotCoreTests` | Swift Testing — including ProductSurfaceTests for chat search, paste guard, composer Return, catalog filter, secrets, undo/edit/branch |
+| `GrizzyBotCore` | Models, store, agent loop, MCP, Composio, Keychain secrets, PBKDF2 auth, persistence, backup, diagnostics scrubber |
+| `GrizzyBot` | SwiftUI shell, TTS, Sentry + scrubber, Mac Accessibility computer-use, overlays |
+| `GrizzyBotRoutineAgent` | LaunchAgent helper — wakes app with `-grizzybot-tick-routines` when routines are due |
+| `GrizzyBotCoreTests` | Swift Testing (store, agent, security, cron, product surface) |
+| `GrizzyBotAppTests` | Overlay PNG golden regression (`Tests/GrizzyBotAppTests/Goldens/`) |
+| `GrizzyBotUITests` | XCUITest overlays (`-uitest-open-*`) |
 
-`GrizzyBotApp.swift` is the real `@main` app (RootView, menu bar, Sparkle, commands). The agent is `AgentLoop` + tools, with `ScriptedRuntime` only as the offline fallback when no model is connected.
+`GrizzyBotApp.swift` is `@main`. Agent loop: `AgentLoop` + tools; `ScriptedRuntime` when no model is connected.
+
+## Security
+
+- **Secrets:** API keys, Composio, Box, TTS, Sentry DSN, OAuth, connection tokens → Keychain (`SecretStore`). JSON on disk and export/backup/snapshots are stripped.
+- **Passwords:** PBKDF2-HMAC-SHA256 (600k iterations prod; 2k under XCTest). Legacy SHA-256 upgraded on sign-in.
+- **Local account:** Launch uses `local@grizzybot.local` without a password gate. Optional sign-up/sign-in for named accounts.
+- **Diagnostics:** Run logs and crash copy use `DiagnosticScrubber` (keys, tokens, home paths). Sentry `beforeSend` uses the same scrubber.
+- **Computer:** In-app browser (WKWebView, http/https only) or This Mac (AX + Screen Recording). No Docker/cloud VM — UI only offers Auto, In-app browser, This Mac, Off.
 
 ## Product notes
 
-- Per-bot model: right panel Settings → Model. Workspace default vs catalog override (`Bot.modelId` / `modelProvider`).
-- Tool restrictions: disabling Shell or Computer shows a chat banner; the model does not get those tools.
-- TTS: ElevenLabs when a key is saved; otherwise macOS `AVSpeechSynthesizer`.
-- Device-code OAuth is the first card on Connect (ChatGPT / Copilot / SuperGrok). Settings → Connections also opens that sheet.
-- Chat: search (⌘F), edit & resend, regenerate, branch to a task, undo send (⌘⇧Z).
-- Keys: Clear on each secret row. Empty save keeps the stored value.
-- Diagnostics: Settings → Diagnostics — copy last run log / last crash. MCP stderr is appended to the run log.
-- Backup: Settings → General → Backup to iCloud. Prefers `iCloud.com.grizzybot.app` when the Release entitlements are used; otherwise `~/Library/Mobile Documents/com~apple~CloudDocs/GrizzyBot Backups`, then Documents.
-- Sparkle: Check for Updates runs in Debug and Release. `SUFeedURL` → `appcast.xml`. Publish a signed DMG with `Scripts/publish-update.sh`. Private key: `Scripts/sparkle_eddsa_private.key` (gitignored).
-- Signing: Debug is ad-hoc. Release uses `Configs/Team.xcconfig` (from `Team.xcconfig.example`) for Developer ID + iCloud entitlements. `Scripts/notarize.sh` runs notarytool.
-- Crash reporting: Sentry when a DSN is set (Settings → Diagnostics). Local `last-crash.txt` always.
-- UI tests: `GrizzyBotAppTests` snapshots overlays; `GrizzyBotUITests` launches with `-uitest-open-*`.
-- Computer-use: `NSAccessibilityUsageDescription` plus Screen Capture / Apple Events strings. Hardened Runtime entitlements: Apple Events + microphone. iCloud container only on Release entitlements. App is **not** sandboxed.
-- Context: local models use a 24k char budget; huge user pastes are compacted; the composer warns on vault-shaped dumps.
+- **Computer host prompt:** In-app browser vs This Mac (legacy `docker` → in-app browser).
+- **Background routines:** Settings → Background routines registers `SMAppService.agent` (signed Release). Agent runs `open -g -a GrizzyBot --args -grizzybot-tick-routines`; app ticks headlessly (`NSApp.setActivationPolicy(.prohibited)`) and exits when runs finish.
+- **Launch at login:** SMAppService main app; Debug/ad-hoc builds show an honest status message in Settings.
+- **Signing:** Debug ad-hoc. Release: `Configs/Team.xcconfig` + `GrizzyBot.Release.entitlements` (iCloud). `Scripts/notarize.sh`.
+- **iCloud:** Container `iCloud.com.grizzybot.app` — see `Configs/iCloud-setup.md`.
+- **Overlay goldens:** `UPDATE_SNAPSHOTS=1 xcodebuild test -only-testing:GrizzyBotAppTests` to refresh PNGs.
 
 ## Tests
 
-Prefer TDD for store/catalog/MCP. After adding Swift files: `xcodegen generate`. Full suite: `swift test`.
+Prefer TDD for store/catalog/MCP/security. After adding Swift files: `xcodegen generate`. Full suite: `swift test` + Xcode app/UI tests.

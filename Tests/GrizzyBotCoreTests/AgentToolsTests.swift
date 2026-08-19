@@ -71,6 +71,7 @@ struct AgentToolsTests {
         bot.setTool("web_search", enabled: false)
         #expect(!bot.isToolEnabled("web_search"))
         #expect(bot.isToolEnabled("write_file"))
+        #expect(bot.isToolEnabled("forget"))
         bot.setAllTools(enabled: false)
         #expect(bot.noToolsEnabled)
         bot.setAllTools(enabled: true)

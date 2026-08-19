@@ -75,16 +75,98 @@ struct LLMClientTests {
             baseUrl: nil
         )
         #expect(anthropic?.style == .anthropic)
+        let compatible = try? LLMRouting.endpoint(
+            provider: "openai-compatible",
+            modelId: "llama3",
+            apiKey: nil,
+            baseUrl: "https://llm.example.com"
+        )
+        #expect(compatible?.baseURL == "https://llm.example.com/v1")
+        #expect(compatible?.apiKey == "local")
+        #expect(LLMRouting.canRun(
+            provider: "openai-compatible",
+            apiKey: nil,
+            baseUrl: "https://llm.example.com/v1",
+            injectedClient: false
+        ))
+        #expect(!LLMRouting.canRun(
+            provider: "openai-compatible",
+            apiKey: nil,
+            baseUrl: nil,
+            injectedClient: false
+        ))
+    }
+
+    @Test("tool messages never carry image parts")
+    func toolMessageNoImages() {
+        var message = ChatMessage.tool(id: "c1", content: "captured 1024×640")
+        message.imageJPEGBase64 = "AAAA"
+        let wire = OpenAIChatClient.wireMessage(message, includeImages: true)
+        #expect(wire["role"] as? String == "tool")
+        #expect(wire["content"] as? String == "captured 1024×640")
+        #expect(wire["tool_call_id"] as? String == "c1")
+    }
+
+    @Test("local payloads drop image parts that LM Studio rejects")
+    func localDropsImages() {
+        var message = ChatMessage.user("see this")
+        message.imageJPEGBase64 = "AAAA"
+        let wire = OpenAIChatClient.wireMessage(message, includeImages: false)
+        #expect(wire["content"] as? String == "see this")
+        #expect(!LLMRouting.supportsVisionImages(provider: "lmstudio", model: "qwen3-coder-next-mlx"))
+        #expect(LLMRouting.supportsVisionImages(provider: "openai", model: "gpt-4o"))
+        #expect(!LLMRouting.supportsVisionImages(provider: "deepseek", model: "deepseek-chat"))
+        #expect(!LLMRouting.supportsVisionImages(provider: "groq", model: "llama-3.3-70b-versatile"))
+        #expect(LLMRouting.supportsVisionImages(provider: "openai", model: "gpt-4o-mini"))
+    }
+
+    @Test("vision user messages keep image parts")
+    func visionKeepsImages() {
+        var message = ChatMessage.user("see this")
+        message.imageJPEGBase64 = "AAAA"
+        let wire = OpenAIChatClient.wireMessage(message, includeImages: true)
+        let parts = wire["content"] as? [[String: Any]]
+        #expect(parts?.contains(where: { $0["type"] as? String == "image_url" }) == true)
+    }
+
+    @Test("offline URLError for a LAN host is not reported as a generic internet outage")
+    func localOfflineMessage() {
+        let url = URL(string: "http://192.168.1.40:11434/v1/chat/completions")!
+        let error = URLError(.notConnectedToInternet)
+        let mapped = LLMError.transport(error, url: url)
+        guard case .http(-1, let body) = mapped else {
+            Issue.record("expected http(-1)")
+            return
+        }
+        #expect(body.contains("Local Network"))
+        #expect(!body.contains("The Internet connection appears to be offline"))
+        #expect(ModelTransport.isLocalNetwork(url))
+        #expect(!ModelTransport.isLocalNetwork(URL(string: "https://openrouter.ai/api/v1/chat/completions")!))
+    }
+
+    @Test("retries 5xx and transport failures")
+    func retryPolicy() {
+        #expect(ModelRequestRetry.isRetryable(LLMError.http(500, "Internal Server Error")))
+        #expect(ModelRequestRetry.isRetryable(LLMError.http(429, "rate limit")))
+        #expect(ModelRequestRetry.isRetryable(LLMError.http(-1, "timed out")))
+        #expect(!ModelRequestRetry.isRetryable(LLMError.http(401, "unauthorized")))
+        #expect(!ModelRequestRetry.isRetryable(LLMError.notConfigured))
+        #expect(ModelRequestRetry.shouldCompactOnRetry(LLMError.http(502, "bad gateway")))
+        #expect(!ModelRequestRetry.shouldCompactOnRetry(LLMError.http(-1, "offline")))
     }
 }
 
 final class QueueChatClient: ChatCompleting, @unchecked Sendable {
-    var queue: [ChatCompletionResponse]
+    var queue: [Result<ChatCompletionResponse, Error>]
     var requests: [ChatCompletionRequest] = []
     var lastToolName: String = ""
 
     init(_ queue: [ChatCompletionResponse]) {
-        self.queue = queue
+        self.queue = queue.map { .success($0) }
+    }
+
+    init(results: [Result<ChatCompletionResponse, Error>]) {
+        self.queue = results
     }
 
     func complete(_ request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
@@ -92,7 +174,27 @@ final class QueueChatClient: ChatCompleting, @unchecked Sendable {
         if queue.isEmpty {
             return ChatCompletionResponse(text: "done.")
         }
-        return queue.removeFirst()
+        switch queue.removeFirst() {
+        case .success(let response):
+            return response
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+final class FailAfterToolsClient: ChatCompleting, @unchecked Sendable {
+    let first: ChatCompletionResponse
+    var calls = 0
+
+    init(first: ChatCompletionResponse) {
+        self.first = first
+    }
+
+    func complete(_ request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
+        calls += 1
+        if calls == 1 { return first }
+        throw LLMError.http(500, "Internal Server Error")
     }
 }
 
@@ -160,6 +262,67 @@ struct AgentLoopTests {
         #expect(!lastTools.contains("web_search"))
         #expect(!lastTools.contains("web_fetch"))
         #expect(result.text.contains("Box.com") || result.text.contains("could not"))
+    }
+
+    @Test("retries transient model errors then succeeds")
+    func retriesModelErrors() async throws {
+        let client = QueueChatClient(results: [
+            .failure(LLMError.http(500, "Internal Server Error")),
+            .failure(LLMError.http(502, "Bad Gateway")),
+            .success(ChatCompletionResponse(text: "recovered")),
+        ])
+        let endpoint = ModelEndpoint(
+            provider: "openrouter",
+            model: "test",
+            baseURL: "https://example.com/v1",
+            apiKey: "k"
+        )
+        let result = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: endpoint,
+                botName: "Researcher",
+                prompt: "summarize",
+                tools: []
+            )
+        ) { _, _ in
+            AgentToolCallResult(output: "unused")
+        }
+        #expect(result.text == "recovered")
+        #expect(client.requests.count == 3)
+    }
+
+    @Test("returns partial tool progress when the model fails after tools ran")
+    func partialOnModelFailure() async throws {
+        let search = LLMToolCall(id: "1", name: "web_search", arguments: "{\"query\":\"swift agents\"}")
+        let client = FailAfterToolsClient(first: ChatCompletionResponse(toolCalls: [search]))
+        let endpoint = ModelEndpoint(
+            provider: "openrouter",
+            model: "test",
+            baseURL: "https://example.com/v1",
+            apiKey: "k"
+        )
+        let result = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: endpoint,
+                botName: "Researcher",
+                prompt: "find repos",
+                tools: AgentToolCatalog.chatTools(enabledIds: ["web_search"]),
+                maxSteps: 4
+            )
+        ) { _, _ in
+            AgentToolCallResult(
+                output: "https://github.com/example/repo",
+                blocks: [.card(lines: [CardLine(k: "found", v: "repo")])]
+            )
+        }
+        #expect(result.text.contains("stopped responding"))
+        #expect(result.blocks.contains(where: {
+            if case .card = $0 { return true }
+            return false
+        }))
+        #expect(client.calls >= ModelRequestRetry.maxAttempts)
     }
 
     @Test("executes tool calls then returns the follow-up text")
@@ -246,6 +409,37 @@ struct CompactionTests {
         let packed = ContextCompactor.compact(messages, budget: 20_000)
         #expect(packed.compacted)
         #expect(ContextCompactor.encodedSize(packed.messages) <= 20_000)
+    }
+
+    @Test("compacted tool-call arguments stay valid JSON")
+    func compactToolArgumentsStayJSON() throws {
+        let giant = String(repeating: "hello world ", count: 400)
+        let arguments = "{\"path\":\"notes/a.md\",\"content\":\"\(giant)\"}"
+        let compacted = ContextCompactor.compactToolArguments(arguments, limit: 800)
+        #expect(ContextCompactor.isValidJSON(compacted))
+        let data = try #require(compacted.data(using: .utf8))
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["path"] as? String == "notes/a.md")
+        let content = try #require(object["content"] as? String)
+        #expect(content.count < giant.count)
+    }
+
+    @Test("invalid tool-call arguments are wrapped as JSON")
+    func sanitizeBrokenToolArguments() {
+        let broken = "{\"content\":\"hello\n…[summarized 5383 chars]…\nworld\""
+        let fixed = ContextCompactor.ensureValidJSONArguments(broken)
+        #expect(ContextCompactor.isValidJSON(fixed))
+        let wire = OpenAIChatClient.wireMessage(
+            ChatMessage(
+                role: "assistant",
+                content: "writing",
+                toolCalls: [LLMToolCall(id: "1", name: "write_file", arguments: broken)]
+            )
+        )
+        let calls = wire["tool_calls"] as? [[String: Any]]
+        let function = calls?.first?["function"] as? [String: Any]
+        let sent = function?["arguments"] as? String ?? ""
+        #expect(ContextCompactor.isValidJSON(sent))
     }
 }
 

@@ -1,0 +1,40 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/GrizzyBotApp.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "GrizzyBot",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 67
+        }
+      },
+      {
+        "comment": "",
+        "key": "Find in Chats",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 97
+        }
+      },
+      {
+        "comment": "",
+        "key": "Undo Send",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 101
+        }
+      },
+      {
+        "comment": "",
+        "key": "Diagnostics",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 109
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -33,6 +33,26 @@
             "target": "GrizzyBot",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release GrizzyBot"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:GrizzyBot}",
+            "name": "Debug GrizzyBotRoutineAgent",
+            "target": "GrizzyBotRoutineAgent",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug GrizzyBotRoutineAgent"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:GrizzyBot}",
+            "name": "Release GrizzyBotRoutineAgent",
+            "target": "GrizzyBotRoutineAgent",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release GrizzyBotRoutineAgent"
         }
     ]
 }

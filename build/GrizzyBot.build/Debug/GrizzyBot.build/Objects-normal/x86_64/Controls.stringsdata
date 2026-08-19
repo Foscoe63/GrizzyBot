@@ -1,0 +1,16 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/Controls.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Search models",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 223
+        }
+      }
+    ]
+  },
+  "version": 1
+}

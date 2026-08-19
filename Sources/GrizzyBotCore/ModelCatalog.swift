@@ -66,6 +66,11 @@ public struct CatalogEntry: Codable, Sendable, Hashable, Identifiable {
 public enum ModelCatalog {
     public static let defaultProvider = "openrouter"
     public static let defaultModelId = "deepseek/deepseek-v4-flash-0731"
+    public static let openaiCompatibleProvider = "openai-compatible"
+
+    public static func usesCustomBase(_ provider: String) -> Bool {
+        LocalProviders.isLocal(provider) || provider == openaiCompatibleProvider
+    }
 
     public static let entries: [CatalogEntry] = {
         var list: [CatalogEntry] = []
@@ -210,6 +215,19 @@ public enum ModelCatalog {
         )
 
         list.append(contentsOf: LocalProviders.catalogEntries())
+        list.append(
+            CatalogEntry(
+                provider: openaiCompatibleProvider,
+                providerName: "OpenAI Compatible",
+                id: "\(openaiCompatibleProvider)/default",
+                label: "Load models from any OpenAI-compatible endpoint",
+                billing: "Any OpenAI-compatible /v1 endpoint. You pay the host. GrizzyBot does not pay for model usage.",
+                auth: .apiKey,
+                kind: .cloud,
+                defaultBaseUrl: "https://api.example.com/v1",
+                supportsBaseUrl: true
+            )
+        )
         return list
     }()
 
@@ -237,6 +255,7 @@ public enum ModelCatalog {
 
     /// The small hint shown on the right of each provider row.
     public static func hint(for entry: CatalogEntry) -> String {
+        if entry.provider == openaiCompatibleProvider { return "Base URL / key" }
         if entry.kind == .local { return "Local / LAN" }
         if entry.signIn == .deviceCode {
             switch entry.provider {

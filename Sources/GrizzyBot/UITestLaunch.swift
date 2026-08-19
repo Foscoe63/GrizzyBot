@@ -9,6 +9,15 @@ enum OverlayA11y {
 }
 
 enum UITestLaunch {
+    /// xcodebuild injects these before the host app finishes launching.
+    static var isTestHost: Bool {
+        let env = ProcessInfo.processInfo.environment
+        return env["XCTestConfigurationFilePath"] != nil
+            || env["XCTestBundlePath"] != nil
+            || env["XCInjectBundleInto"] != nil
+            || env["XCTestSessionIdentifier"] != nil
+    }
+
     static var isUITest: Bool {
         ProcessInfo.processInfo.arguments.contains("-uitest")
     }

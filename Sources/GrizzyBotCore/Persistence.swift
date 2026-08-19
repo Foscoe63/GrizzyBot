@@ -18,6 +18,7 @@ public struct UserWorkspace: Codable, Sendable {
     public var apiKey: String?
     public var modelBaseUrl: String?
     public var fetchedModels: [LocalModelRef]
+    public var providerProfiles: [String: ModelProviderProfile]
     public var groups: [GroupRoom]
     public var appConfig: AppConfig
     public var customTools: [CustomAgentTool]
@@ -40,6 +41,7 @@ public struct UserWorkspace: Codable, Sendable {
         apiKey: String? = nil,
         modelBaseUrl: String? = nil,
         fetchedModels: [LocalModelRef] = [],
+        providerProfiles: [String: ModelProviderProfile] = [:],
         groups: [GroupRoom] = [],
         appConfig: AppConfig = AppConfig(),
         customTools: [CustomAgentTool] = [],
@@ -61,6 +63,7 @@ public struct UserWorkspace: Codable, Sendable {
         self.apiKey = apiKey
         self.modelBaseUrl = modelBaseUrl
         self.fetchedModels = fetchedModels
+        self.providerProfiles = providerProfiles
         self.groups = groups
         self.appConfig = appConfig
         self.customTools = customTools
@@ -71,7 +74,7 @@ public struct UserWorkspace: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case bots, threads, routines, computers, connections, usage, memory, files
-        case deployment, modelProvider, modelId, apiKey, modelBaseUrl, fetchedModels
+        case deployment, modelProvider, modelId, apiKey, modelBaseUrl, fetchedModels, providerProfiles
         case groups, appConfig, customTools, mcpServers, oauthJSON, connectionSecrets
     }
 
@@ -91,6 +94,7 @@ public struct UserWorkspace: Codable, Sendable {
         apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey)
         modelBaseUrl = try c.decodeIfPresent(String.self, forKey: .modelBaseUrl)
         fetchedModels = try c.decodeIfPresent([LocalModelRef].self, forKey: .fetchedModels) ?? []
+        providerProfiles = try c.decodeIfPresent([String: ModelProviderProfile].self, forKey: .providerProfiles) ?? [:]
         groups = try c.decodeIfPresent([GroupRoom].self, forKey: .groups) ?? []
         appConfig = try c.decodeIfPresent(AppConfig.self, forKey: .appConfig) ?? AppConfig()
         customTools = try c.decodeIfPresent([CustomAgentTool].self, forKey: .customTools) ?? []
@@ -155,17 +159,20 @@ public struct Persistence: Sendable {
         if let root {
             self.root = root
         } else {
-            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            self.root = appSupport.appendingPathComponent("GrizzyBot", isDirectory: true)
+            self.root = AccountLayout.defaultGlobalRoot()
         }
         try? FileManager.default.createDirectory(at: self.root, withIntermediateDirectories: true)
     }
 
-    // MARK: - Password hashing
+    public static func defaultGlobalRoot() -> URL {
+        AccountLayout.defaultGlobalRoot()
+    }
 
+    // MARK: - Password hashing (legacy — prefer PasswordHasher)
+
+    @available(*, deprecated, message: "Use PasswordHasher.hash")
     public static func hashPassword(_ password: String) -> String {
-        let digest = SHA256.hash(data: Data(password.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
+        PasswordHasher.hash(password)
     }
 
     // MARK: - Users / session
@@ -193,12 +200,29 @@ public struct Persistence: Sendable {
 
     // MARK: - Workspace
 
-    public func loadWorkspace(userId: String) -> UserWorkspace {
-        load(UserWorkspace.self, from: "user-\(userId).json") ?? UserWorkspace()
+    public func saveWorkspace(_ workspace: UserWorkspace, userId: String, providerCredentials: [String: ProviderCredential] = [:]) {
+        let disk = WorkspaceSecrets.from(workspace: workspace).stripped(from: workspace)
+        save(disk, to: "workspace.json")
+        var secrets = WorkspaceSecrets.from(workspace: workspace)
+        secrets.providerCredentials = providerCredentials
+        if !secrets.isEmpty {
+            try? SecretStore.save(secrets, userId: userId)
+        }
     }
 
-    public func saveWorkspace(_ workspace: UserWorkspace, userId: String) {
-        save(workspace, to: "user-\(userId).json")
+    public func loadWorkspace(userId: String) -> UserWorkspace {
+        loadWorkspaceMerged(userId: userId)
+    }
+
+    public func loadWorkspaceMerged(userId: String) -> UserWorkspace {
+        var ws = load(UserWorkspace.self, from: "workspace.json")
+            ?? load(UserWorkspace.self, from: "user-\(userId).json")
+            ?? UserWorkspace()
+        ws = SecretStore.migrateInlineSecretsIfNeeded(ws, userId: userId)
+        if let secrets = SecretStore.load(userId: userId) {
+            ws = secrets.applying(to: ws)
+        }
+        return ws
     }
 
     public func encodeJSON<T: Encodable>(_ value: T) throws -> Data {
@@ -218,7 +242,7 @@ public struct Persistence: Sendable {
     // MARK: - Workspace snapshots
 
     public func snapshotDirectory(userId: String) -> URL {
-        let dir = root.appendingPathComponent("snapshots/\(userId)", isDirectory: true)
+        let dir = root.appendingPathComponent("snapshots", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -269,12 +293,22 @@ public struct Persistence: Sendable {
         let tmp = url.appendingPathExtension("tmp")
         do {
             try data.write(to: tmp, options: .atomic)
+            Self.applyFileProtection(to: tmp)
             if FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
             }
             try FileManager.default.moveItem(at: tmp, to: url)
+            Self.applyFileProtection(to: url)
         } catch {
             try? data.write(to: url, options: .atomic)
+            Self.applyFileProtection(to: url)
         }
+    }
+
+    private static func applyFileProtection(to url: URL) {
+        try? FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: url.path
+        )
     }
 }

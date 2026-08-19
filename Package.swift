@@ -7,7 +7,6 @@ let package = Package(
         .macOS(.v15)
     ],
     dependencies: [
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.7.0"),
         .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.24.0"),
     ],
     targets: [
@@ -22,7 +21,6 @@ let package = Package(
             name: "GrizzyBot",
             dependencies: [
                 "GrizzyBotCore",
-                .product(name: "Sparkle", package: "Sparkle"),
                 .product(name: "Sentry", package: "sentry-cocoa"),
             ],
             path: "Sources/GrizzyBot",
@@ -35,6 +33,15 @@ let package = Package(
             name: "GrizzyBotCoreTests",
             dependencies: ["GrizzyBotCore"],
             path: "Tests/GrizzyBotCoreTests"
+        ),
+        .executableTarget(
+            name: "GrizzyBotRoutineAgent",
+            dependencies: ["GrizzyBotCore"],
+            path: "Sources/GrizzyBotRoutineAgent",
+            exclude: ["com.grizzybot.routine-agent.plist"],
+            linkerSettings: [
+                .linkedFramework("AppKit"),
+            ]
         ),
     ]
 )

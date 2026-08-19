@@ -3,7 +3,7 @@ import GrizzyBotCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// OpenMausBot-style app settings modal: General / Connections / Local VM / Voice.
+/// App settings modal: General / Connections / Computer / Voice.
 struct AppSettingsOverlayView: View {
     @Environment(AppStore.self) private var store
     @State private var profileName = ""
@@ -11,6 +11,7 @@ struct AppSettingsOverlayView: View {
     @State private var composioConnect = ""
     @State private var composioApi = ""
     @State private var boxToken = ""
+    @State private var braveSearchKey = ""
     @State private var ttsKey = ""
     @State private var sentryDSN = ""
     @State private var ttsVoice = "Rachel"
@@ -37,7 +38,7 @@ struct AppSettingsOverlayView: View {
                 nav
                 content
             }
-            .frame(width: 860, height: 560)
+            .frame(width: 860, height: store.appSettingsSection == .themes ? 620 : 560)
             .background(Theme.bgRightPanel)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
@@ -150,40 +151,73 @@ struct AppSettingsOverlayView: View {
 
                         settingsCard(
                             title: "Background",
-                            subtitle: "Routines keep firing while GrizzyBot is open. Launch at login needs approval in System Settings → Login Items (release builds)."
+                            subtitle: "Routines run on a timer while GrizzyBot is open. Enable background routines to wake the app via a LaunchAgent (signed Release builds)."
                         ) {
                             Toggle("Show menu bar extra", isOn: Binding(
                                 get: { store.appConfig.showMenuBar },
                                 set: { value in
                                     var config = store.appConfig
                                     config.showMenuBar = value
+                                    if !value { config.menuBarOnly = false }
                                     store.saveAppConfig(config)
+                                    if !value { MainWindowController.applyMenuBarOnly(false) }
                                 }
                             ))
                             .toggleStyle(.switch)
+                            Toggle("Menu bar only", isOn: Binding(
+                                get: { store.appConfig.menuBarOnly },
+                                set: { value in
+                                    var config = store.appConfig
+                                    config.menuBarOnly = value
+                                    if value { config.showMenuBar = true }
+                                    store.saveAppConfig(config)
+                                    MainWindowController.applyMenuBarOnly(value)
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            .padding(.top, 8)
+                            Text("When enabled, GrizzyBot launches to the menu bar. Use Open GrizzyBot to show the main window.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
                             Toggle("Launch at login", isOn: Binding(
                                 get: { store.appConfig.launchAtLogin },
                                 set: { value in
                                     var config = store.appConfig
                                     config.launchAtLogin = value
                                     store.saveAppConfig(config)
-                                    LoginItemController.setEnabled(value)
+                                    _ = LoginItemController.setEnabled(value)
                                 }
                             ))
                             .toggleStyle(.switch)
                             .padding(.top, 8)
-                        }
-
-                        settingsCard(
-                            title: "Updates",
-                            subtitle: "Sparkle checks GitHub for a signed GrizzyBot DMG. Check for Updates works in Debug; an empty feed means you are already on the latest published build."
-                        ) {
-                            UpdatesSettingsView()
+                            Text(LoginItemController.statusMessage)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Toggle("Background routines", isOn: Binding(
+                                get: { store.appConfig.backgroundRoutines },
+                                set: { value in
+                                    var config = store.appConfig
+                                    config.backgroundRoutines = value
+                                    store.saveAppConfig(config)
+                                    _ = RoutineAgentController.setEnabled(value)
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            .padding(.top, 8)
+                            #if DEBUG
+                            Text("Launch at login and background routines require a signed Release build. SMAppService rejects ad-hoc Debug bundles.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 4)
+                            #endif
                         }
 
                         settingsCard(
                             title: "Shared memory",
-                            subtitle: "Every bot reads this. Agents can also remember with scope=shared."
+                            subtitle: "Every bot reads SHARED.md. Put standing rules under ## Pin. Agents remember with scope=shared."
                         ) {
                             GrizzyField(
                                 placeholder: "Standing facts for the whole workspace",
@@ -314,7 +348,14 @@ struct AppSettingsOverlayView: View {
                                 onClear: { store.clearSecret(.box) }
                             )
                                 .padding(.top, 12)
-                            Text("Box.com is an optional developer token for the Box plugin when you are not using Composio Connect. It is not the Composio Connect key.")
+                            secretRow(
+                                title: "Brave Search (optional)",
+                                configured: store.appConfig.braveSearchConfigured,
+                                text: $braveSearchKey,
+                                onClear: { store.clearSecret(.braveSearch) }
+                            )
+                                .padding(.top, 12)
+                            Text("Box.com is an optional developer token for the Box plugin when you are not using Composio Connect. Brave Search is used for web_search when set; otherwise DuckDuckGo and Wikipedia.")
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(Theme.textSecondary)
                                 .padding(.top, 8)
@@ -339,8 +380,8 @@ struct AppSettingsOverlayView: View {
                             title: "Default computer",
                             subtitle: "Used when a bot’s computer mode is Auto."
                         ) {
-                            GrizzySelect(options: ComputerMode.allCases, selection: $computerMode)
-                            Text("This Mac drives the real desktop (Accessibility + Screen Recording). The in-app browser keeps cookies per bot. Cloud desktop is a stub.")
+                            GrizzySelect(options: ComputerMode.selectableCases, selection: $computerMode)
+                            Text("Auto follows your host choice (in-app browser or This Mac). In-app browser keeps cookies per bot.")
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(Theme.textSecondary)
                                 .padding(.top, 10)
@@ -349,6 +390,29 @@ struct AppSettingsOverlayView: View {
                             var config = store.appConfig
                             config.defaultComputerMode = mode
                             store.saveAppConfig(config)
+                        }
+
+                        settingsCard(
+                            title: "This Mac permissions",
+                            subtitle: "Accessibility and Screen Recording are required to click and see the desktop. Grant them before a bot uses This Mac."
+                        ) {
+                            let status = MacAccessibility.permissionStatus()
+                            Text(status.accessibility ? "Accessibility is on" : "Accessibility is off")
+                                .font(.system(size: 13.5))
+                                .foregroundStyle(status.accessibility ? Theme.green : Theme.orange)
+                            Text(status.screenRecording ? "Screen Recording is on" : "Screen Recording is off")
+                                .font(.system(size: 13.5))
+                                .foregroundStyle(status.screenRecording ? Theme.green : Theme.orange)
+                                .padding(.top, 6)
+                            HStack(spacing: 10) {
+                                GrizzyButton(title: "Open Accessibility", variant: .cream, size: .sm) {
+                                    MacAccessibility.promptAccessibility()
+                                }
+                                GrizzyButton(title: "Open Screen Recording", variant: .cream, size: .sm) {
+                                    MacAccessibility.promptScreenRecording()
+                                }
+                            }
+                            .padding(.top, 12)
                         }
 
                     case .voice:
@@ -522,6 +586,9 @@ struct AppSettingsOverlayView: View {
                             }
                         }
 
+                    case .themes:
+                        ThemesSettingsView()
+
                     case .diagnostics:
                         settingsCard(
                             title: "Crash reporting",
@@ -567,7 +634,7 @@ struct AppSettingsOverlayView: View {
                                     if let text = CrashReporting.latestCrashText() {
                                         let pasteboard = NSPasteboard.general
                                         pasteboard.clearContents()
-                                        pasteboard.setString(text, forType: .string)
+                                        pasteboard.setString(DiagnosticScrubber.redact(text), forType: .string)
                                         sessionNotice = "Copied crash log"
                                     } else {
                                         sessionNotice = "No crash log yet"
@@ -666,6 +733,7 @@ struct AppSettingsOverlayView: View {
         case .computer: return "▣"
         case .voice: return "♪"
         case .tools: return "⚒"
+        case .themes: return "◑"
         case .diagnostics: return "☰"
         }
     }
@@ -774,6 +842,7 @@ struct AppSettingsOverlayView: View {
         composioConnect = ""
         composioApi = ""
         boxToken = ""
+        braveSearchKey = ""
         ttsKey = ""
         sentryDSN = ""
     }
@@ -789,9 +858,11 @@ struct AppSettingsOverlayView: View {
         store.applySecret(.composioConnect, input: composioConnect)
         store.applySecret(.composioApi, input: composioApi)
         store.applySecret(.box, input: boxToken)
+        store.applySecret(.braveSearch, input: braveSearchKey)
         composioConnect = ""
         composioApi = ""
         boxToken = ""
+        braveSearchKey = ""
     }
 
     private func persistVoice() {

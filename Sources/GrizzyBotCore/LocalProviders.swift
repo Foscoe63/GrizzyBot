@@ -135,11 +135,16 @@ public enum LocalProviders {
     }
 
     public static func assertPrivateProviderUrl(_ baseUrl: String) throws -> URL {
+        try assertProviderUrl(baseUrl, requirePrivateHost: true)
+    }
+
+    public static func assertProviderUrl(_ baseUrl: String, requirePrivateHost: Bool = true) throws -> URL {
         guard let url = URL(string: baseUrl),
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else {
             throw LocalProviderError.message("Only http(s) provider URLs are allowed.")
         }
+        if !requirePrivateHost { return url }
         let host = (url.host ?? "").lowercased()
         if host == "localhost" || host.hasSuffix(".local") { return url }
         if isPrivateOrLoopbackIP(host) { return url }
@@ -162,18 +167,99 @@ public enum LocalProviders {
         return false
     }
 
-    /// GET `{base}/models` (OpenAI-compatible).
+    /// GET `{base}/models` (OpenAI-compatible). LM Studio also tries native `/api/v1/models` and legacy `/api/v0/models`.
     public static func probeModels(
         baseUrl: String,
+        provider: String? = nil,
         apiKey: String? = nil,
-        timeoutSeconds: TimeInterval = 4
+        timeoutSeconds: TimeInterval = 8,
+        requirePrivateHost: Bool = true
     ) async throws -> (baseUrl: String, models: [LocalModelRef]) {
         let normalized = try normalizeBaseUrl(baseUrl)
-        _ = try assertPrivateProviderUrl(normalized)
-        guard let url = URL(string: "\(normalized)/models") else {
-            throw LocalProviderError.message("Base URL is invalid.")
+        _ = try assertProviderUrl(normalized, requirePrivateHost: requirePrivateHost)
+
+        return try await Task.detached(priority: .userInitiated) {
+            try await probeModelsDetached(
+                normalized: normalized,
+                provider: provider,
+                apiKey: apiKey,
+                timeoutSeconds: timeoutSeconds
+            )
+        }.value
+    }
+
+    private static func probeModelsDetached(
+        normalized: String,
+        provider: String?,
+        apiKey: String?,
+        timeoutSeconds: TimeInterval
+    ) async throws -> (baseUrl: String, models: [LocalModelRef]) {
+        var merged: [LocalModelRef] = []
+        var seen = Set<String>()
+
+        func appendUnique(_ models: [LocalModelRef]) {
+            for model in models where seen.insert(model.id).inserted {
+                merged.append(model)
+            }
         }
 
+        if provider == LocalProviderId.lmstudio.rawValue {
+            if let v1 = lmStudioNativeModelsURL(from: normalized, apiVersion: "v1") {
+                appendUnique((try? await fetchModelList(url: v1, apiKey: apiKey, timeoutSeconds: timeoutSeconds)) ?? [])
+            }
+            if let v0 = lmStudioNativeModelsURL(from: normalized, apiVersion: "v0") {
+                appendUnique((try? await fetchModelList(url: v0, apiKey: apiKey, timeoutSeconds: timeoutSeconds)) ?? [])
+            }
+        }
+
+        if let v1 = URL(string: "\(normalized)/models") {
+            appendUnique((try? await fetchModelList(url: v1, apiKey: apiKey, timeoutSeconds: timeoutSeconds)) ?? [])
+        }
+
+        guard !merged.isEmpty else {
+            throw LocalProviderError.message("Reachable, but no models were listed.")
+        }
+        return (normalized, merged)
+    }
+
+    private static let probeSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.waitsForConnectivity = false
+        config.timeoutIntervalForRequest = 8
+        config.timeoutIntervalForResource = 12
+        config.allowsConstrainedNetworkAccess = true
+        config.allowsExpensiveNetworkAccess = true
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        config.connectionProxyDictionary = [
+            "HTTPEnable": 0,
+            "HTTPSEnable": 0,
+            "SOCKSEnable": 0,
+        ]
+        return URLSession(configuration: config)
+    }()
+
+    private static func lmStudioNativeModelsURL(from normalizedBase: String, apiVersion: String) -> URL? {
+        guard var components = URLComponents(string: normalizedBase) else { return nil }
+        if components.path.hasSuffix("/v1") {
+            components.path = String(components.path.dropLast(3))
+        } else if components.path.hasSuffix("v1") {
+            components.path = String(components.path.dropLast(2))
+        }
+        let trimmed = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components.path = trimmed.isEmpty
+            ? "/api/\(apiVersion)/models"
+            : "/\(trimmed)/api/\(apiVersion)/models"
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    private static func fetchModelList(
+        url: URL,
+        apiKey: String?,
+        timeoutSeconds: TimeInterval
+    ) async throws -> [LocalModelRef] {
         var request = URLRequest(url: url, timeoutInterval: timeoutSeconds)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -184,13 +270,13 @@ public enum LocalProviders {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await probeSession.data(for: request)
         } catch let error as URLError where error.code == .timedOut || error.code == .cancelled {
             throw LocalProviderError.message(
                 "Timed out reaching the provider. Check the base URL and LAN access."
             )
         } catch {
-            throw LocalProviderError.message(error.localizedDescription)
+            throw LocalProviderError.message(ModelTransport.message(for: error, url: url))
         }
 
         guard let http = response as? HTTPURLResponse else {
@@ -202,8 +288,7 @@ public enum LocalProviders {
             )
         }
 
-        let models = try parseModelsJSON(data)
-        return (normalized, models)
+        return try parseModelsJSON(data)
     }
 
     /// Probe known local OpenAI-compatible ports on localhost and/or a LAN host.
@@ -234,7 +319,10 @@ public enum LocalProviders {
                     let base = "http://\(hostName):\(def.defaultPort)/v1"
                     group.addTask {
                         do {
-                            let probed = try await probeModels(baseUrl: base)
+                            let probed = try await probeModels(
+                                baseUrl: base,
+                                provider: def.id.rawValue
+                            )
                             return DiscoveredLocalProvider(
                                 provider: def.id,
                                 providerName: def.name,
@@ -301,10 +389,15 @@ public enum LocalProviders {
     }
 
     public static func parseModelsJSON(_ data: Data) throws -> [LocalModelRef] {
+        if let native = try? parseLMStudioNativeModelsJSON(data), !native.isEmpty {
+            return native
+        }
+
         struct Envelope: Decodable {
             struct Row: Decodable {
                 var id: String?
                 var name: String?
+                var type: String?
             }
             var data: [Row]?
         }
@@ -312,12 +405,48 @@ public enum LocalProviders {
         var models: [LocalModelRef] = []
         var seen = Set<String>()
         for row in envelope.data ?? [] {
+            guard isChatModelType(row.type) else { continue }
             let id = row.id?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !id.isEmpty, !seen.contains(id) else { continue }
             seen.insert(id)
             models.append(LocalModelRef(id: id, label: row.name))
         }
         return models
+    }
+
+    private static func parseLMStudioNativeModelsJSON(_ data: Data) throws -> [LocalModelRef] {
+        struct Envelope: Decodable {
+            struct Row: Decodable {
+                var key: String?
+                var id: String?
+                var display_name: String?
+                var name: String?
+                var type: String?
+            }
+            var models: [Row]?
+            var data: [Row]?
+        }
+        let envelope = try JSONDecoder().decode(Envelope.self, from: data)
+        let rows = envelope.models ?? envelope.data ?? []
+        var models: [LocalModelRef] = []
+        var seen = Set<String>()
+        for row in rows {
+            guard isChatModelType(row.type) else { continue }
+            let id = (row.key ?? row.id)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !id.isEmpty, !seen.contains(id) else { continue }
+            seen.insert(id)
+            let label = row.display_name ?? row.name
+            models.append(LocalModelRef(id: id, label: label))
+        }
+        return models
+    }
+
+    private static func isChatModelType(_ type: String?) -> Bool {
+        guard let raw = type?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !raw.isEmpty else {
+            return true
+        }
+        if raw.contains("embed") { return false }
+        return ["llm", "model", "vlm", "chat"].contains(raw)
     }
 }
 

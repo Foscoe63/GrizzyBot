@@ -1,16 +1,20 @@
 name: GrizzyBot
+
+attributes:
+  LastUpgradeCheck: "2700"
+  LastSwiftUpdateCheck: "2700"
+  BuildIndependentTargetsInParallel: true
+
 options:
   bundleIdPrefix: com.grizzybot
   deploymentTarget:
     macOS: "15.0"
   createIntermediateGroups: true
   groupSortPosition: top
-  xcodeVersion: "16.0"
+  xcodeVersion: "27.0"
+  projectFormat: xcode16_3
 
 packages:
-  Sparkle:
-    url: https://github.com/sparkle-project/Sparkle
-    from: 2.7.0
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa
     from: 9.24.0
@@ -23,6 +27,16 @@ settings:
     ENABLE_TESTABILITY: YES
     MARKETING_VERSION: "1.1"
     CURRENT_PROJECT_VERSION: "2"
+    # Match Xcode 27 recommended project settings (stops "Update to recommended settings").
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    STRING_CATALOG_GENERATE_SYMBOLS: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
+  configs:
+    Release:
+      DEAD_CODE_STRIPPING: YES
 
 targets:
   GrizzyBotCore:
@@ -39,6 +53,29 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         DEFINES_MODULE: YES
         SKIP_INSTALL: YES
+        SWIFT_INSTALL_OBJC_HEADER: NO
+        SWIFT_STRICT_CONCURRENCY: complete
+        ENABLE_MODULE_VERIFIER: YES
+        MODULE_VERIFIER_SUPPORTED_LANGUAGES: "objective-c objective-c++"
+        MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS: "gnu11 gnu++14"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Automatic
+
+  GrizzyBotRoutineAgent:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/GrizzyBotRoutineAgent
+        excludes:
+          - com.grizzybot.routine-agent.plist
+    dependencies:
+      - target: GrizzyBotCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.grizzybot.routine-agent
+        PRODUCT_NAME: GrizzyBotRoutineAgent
+        # Copied into GrizzyBot.app via Copy Files — must not install as a separate archive product.
+        SKIP_INSTALL: YES
         SWIFT_STRICT_CONCURRENCY: complete
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Automatic
@@ -51,10 +88,18 @@ targets:
         excludes:
           - Info.plist
           - Resources
+      - path: Sources/GrizzyBotRoutineAgent/com.grizzybot.routine-agent.plist
+        buildPhase:
+          copyFiles:
+            destination: wrapper
+            subpath: Contents/Library/LaunchAgents
     dependencies:
       - target: GrizzyBotCore
-      - package: Sparkle
-        product: Sparkle
+      - target: GrizzyBotRoutineAgent
+        embed: true
+        link: false
+        copy:
+          destination: executables
       - package: Sentry
         product: Sentry
     info:
@@ -72,9 +117,9 @@ targets:
         NSAppleEventsUsageDescription: GrizzyBot agents can open URLs and control this Mac when a bot’s computer mode is This Mac.
         NSScreenCaptureUsageDescription: GrizzyBot captures the screen so a bot can see this Mac when computer mode is This Mac.
         NSAccessibilityUsageDescription: GrizzyBot uses Accessibility so a bot can see and control this Mac when computer mode is This Mac.
-        SUFeedURL: https://raw.githubusercontent.com/Foscoe63/GrizzyBot/main/appcast.xml
-        SUPublicEDKey: FnNhiAPohUZfHb8up9IGyhBc7BgOqZ4X+P+SHDe/9v0=
-        SUEnableInstallerLauncherService: true
+        NSLocalNetworkUsageDescription: GrizzyBot talks to local and LAN model servers (Ollama, LM Studio, vMLX, oMLX) on this network.
+        NSBonjourServices:
+          - "_http._tcp"
         SentryDSN: "$(SENTRY_DSN)"
     configFiles:
       Debug: Configs/Debug.xcconfig
@@ -91,20 +136,26 @@ targets:
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
-        ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_STYLE: Automatic
+        SKIP_INSTALL: NO
       configs:
         Debug:
+          ENABLE_HARDENED_RUNTIME: YES
           CODE_SIGN_IDENTITY: "-"
           CODE_SIGN_ENTITLEMENTS: Sources/GrizzyBot/GrizzyBot.entitlements
           OTHER_CODE_SIGN_FLAGS: "--timestamp=none"
         Release:
+          ENABLE_HARDENED_RUNTIME: "$(GRIZZYBOT_ENABLE_HARDENED_RUNTIME)"
           CODE_SIGN_IDENTITY: "$(GRIZZYBOT_CODE_SIGN_IDENTITY)"
           CODE_SIGN_ENTITLEMENTS: "$(GRIZZYBOT_CODE_SIGN_ENTITLEMENTS)"
           OTHER_CODE_SIGN_FLAGS: "$(GRIZZYBOT_OTHER_CODE_SIGN_FLAGS)"
           DEVELOPMENT_TEAM: "$(GRIZZYBOT_DEVELOPMENT_TEAM)"
           CODE_SIGN_STYLE: "$(GRIZZYBOT_CODE_SIGN_STYLE)"
+
     scheme:
+      archive:
+        revealArchiveInOrganizer: true
+        customArchiveName: GrizzyBot
       testTargets:
         - GrizzyBotCoreTests
         - GrizzyBotAppTests
@@ -133,6 +184,9 @@ targets:
     platform: macOS
     sources:
       - path: Tests/GrizzyBotAppTests
+    resources:
+      - path: Tests/GrizzyBotAppTests/Goldens
+        optional: true
     dependencies:
       - target: GrizzyBot
     settings:

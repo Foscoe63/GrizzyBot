@@ -32,9 +32,15 @@ public enum WebSearch: Sendable {
     public static let browserUserAgent =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15"
 
-    public static func search(query: String, limit: Int = 5) async throws -> [Result] {
+    public static func search(query: String, limit: Int = 5, braveKey: String? = nil) async throws -> [Result] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
+
+        if let key = braveKey?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty,
+           let brave = try? await braveSearch(query: trimmed, limit: limit, apiKey: key),
+           !brave.isEmpty {
+            return brave
+        }
 
         var blocked = false
         if let instant = try? await instantAnswer(query: trimmed), !instant.isEmpty {
@@ -61,6 +67,40 @@ public enum WebSearch: Sendable {
         }
         if blocked { throw WebSearchError.blocked }
         return []
+    }
+
+    public static func parseBraveWebSearch(_ data: Data, limit: Int) throws -> [Result] {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let web = json["web"] as? [String: Any],
+              let rows = web["results"] as? [[String: Any]] else {
+            return []
+        }
+        var results: [Result] = []
+        for row in rows {
+            guard results.count < limit else { break }
+            let title = row["title"] as? String ?? ""
+            let url = row["url"] as? String ?? ""
+            let snippet = row["description"] as? String ?? ""
+            if title.isEmpty || url.isEmpty { continue }
+            results.append(Result(title: title, url: url, snippet: snippet))
+        }
+        return results
+    }
+
+    private static func braveSearch(query: String, limit: Int, apiKey: String) async throws -> [Result] {
+        var comps = URLComponents(string: "https://api.search.brave.com/res/v1/web/search")!
+        comps.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "count", value: String(max(1, min(limit, 10)))),
+        ]
+        guard let url = comps.url else { return [] }
+        var request = URLRequest(url: url, timeoutInterval: 12)
+        request.setValue(apiKey, forHTTPHeaderField: "X-Subscription-Token")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status != 0, !(200..<300).contains(status) { return [] }
+        return try parseBraveWebSearch(data, limit: limit)
     }
 
     /// Fetch a public http(s) page and return a truncated text extract.

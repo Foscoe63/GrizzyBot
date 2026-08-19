@@ -10,6 +10,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Agent eval CI suite
+        run: swift test --filter 'Agent eval CI'
       - name: Swift tests
         run: swift test
       - name: Install XcodeGen
