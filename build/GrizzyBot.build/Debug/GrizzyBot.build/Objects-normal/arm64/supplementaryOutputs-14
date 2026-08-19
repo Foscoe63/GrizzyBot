@@ -1,0 +1,23 @@
+{
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/LoginItem.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/LoginItem.swiftdeps"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MacAccessibility.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MacAccessibility.swiftdeps"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MainWindowController.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/arm64/MainWindowController.swiftdeps"
+  }
+}

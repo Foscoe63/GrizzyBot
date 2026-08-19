@@ -1,0 +1,440 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/RightPanelView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Routines",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 112
+        }
+      },
+      {
+        "comment": "",
+        "key": "Files",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 192
+        }
+      },
+      {
+        "comment": "",
+        "key": "Ask the bot to write a note, list files, or search the web.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 200
+        }
+      },
+      {
+        "comment": "",
+        "key": "Run the first routine",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 178
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open in full window",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 227
+        }
+      },
+      {
+        "comment": "",
+        "key": "This bot runs on this computer, not a Linux desktop. Shell and files use your home folder.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 229
+        }
+      },
+      {
+        "comment": "",
+        "key": "Booting live desktop…",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 231
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@'s screen",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 233
+        }
+      },
+      {
+        "comment": "",
+        "key": "Computer is asleep — take control to wake it",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 235
+        }
+      },
+      {
+        "comment": "",
+        "key": "Computer failed to boot",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 237
+        }
+      },
+      {
+        "comment": "",
+        "key": "Computer is stopped",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 239
+        }
+      },
+      {
+        "comment": "",
+        "key": "Run now",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 153
+        }
+      },
+      {
+        "comment": "",
+        "key": "◷",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 126
+        }
+      },
+      {
+        "comment": "",
+        "key": "▶",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 145
+        }
+      },
+      {
+        "comment": "",
+        "key": "Edit",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 156
+        }
+      },
+      {
+        "comment": "",
+        "key": "Run now",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 157
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pause",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 158
+        }
+      },
+      {
+        "comment": "",
+        "key": "Resume",
+        "location": {
+          "startingColumn": 59,
+          "startingLine": 158
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 161
+        }
+      },
+      {
+        "comment": "",
+        "key": "Run now",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 170
+        }
+      },
+      {
+        "comment": "",
+        "key": "+ New routine",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 183
+        }
+      },
+      {
+        "comment": "",
+        "key": "📁",
+        "location": {
+          "startingColumn": 54,
+          "startingLine": 207
+        }
+      },
+      {
+        "comment": "",
+        "key": "📄",
+        "location": {
+          "startingColumn": 63,
+          "startingLine": 207
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start from",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 264
+        }
+      },
+      {
+        "comment": "",
+        "key": "New bot",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 254
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 324
+        }
+      },
+      {
+        "comment": "",
+        "key": "Model",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 372
+        }
+      },
+      {
+        "comment": "",
+        "key": "Workspace default uses the model from Connect. Pick a catalog model to override it for this bot only.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 384
+        }
+      },
+      {
+        "comment": "",
+        "key": "Color",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 389
+        }
+      },
+      {
+        "comment": "",
+        "key": "Computer mode",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 445
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 470
+        }
+      },
+      {
+        "comment": "",
+        "key": "Export",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 483
+        }
+      },
+      {
+        "comment": "",
+        "key": "This permanently deletes %@, including thread, computer, memory, and routines. Bots it created stay in your list.",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 491
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 499
+        }
+      },
+      {
+        "comment": "",
+        "key": "Deleting…",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 511
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete",
+        "location": {
+          "startingColumn": 69,
+          "startingLine": 511
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete bot",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 536
+        }
+      },
+      {
+        "comment": "",
+        "key": "Choose which tools this bot may use. Disabled tools never appear to the model — the chat header also shows when Shell or Computer are off.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 581
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add MCP servers in App Settings → Tools.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 597
+        }
+      },
+      {
+        "comment": "",
+        "key": "Tools",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 557
+        }
+      },
+      {
+        "comment": "",
+        "key": "Enable all",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 561
+        }
+      },
+      {
+        "comment": "",
+        "key": "Disable all",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 570
+        }
+      },
+      {
+        "comment": "",
+        "key": "Assign to bot",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 730
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create a bot first.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 737
+        }
+      },
+      {
+        "comment": "",
+        "key": "When to run",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 759
+        }
+      },
+      {
+        "comment": "",
+        "key": "Routine",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 693
+        }
+      },
+      {
+        "comment": "",
+        "key": "‹",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 687
+        }
+      },
+      {
+        "comment": "",
+        "key": "✕",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 700
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create routine",
+        "location": {
+          "startingColumn": 54,
+          "startingLine": 775
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save changes",
+        "location": {
+          "startingColumn": 73,
+          "startingLine": 775
+        }
+      },
+      {
+        "comment": "",
+        "key": "Run now",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 793
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 808
+        }
+      },
+      {
+        "comment": "",
+        "key": "⚙",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 831
+        }
+      },
+      {
+        "comment": "",
+        "key": "✕",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 846
+        }
+      }
+    ]
+  },
+  "version": 1
+}

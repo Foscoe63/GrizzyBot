@@ -1,0 +1,4 @@
+#!/bin/sh
+chmod +x "${SRCROOT}/Scripts/sign-embedded-content.sh"
+"${SRCROOT}/Scripts/sign-embedded-content.sh"
+

@@ -1,0 +1,23 @@
+{
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/AppSettingsOverlayView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/AppSettingsOverlayView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/AppSettingsOverlayView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/AppSettingsOverlayView.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/AppSettingsOverlayView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/AppSettingsOverlayView.swiftdeps"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/AuthView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/AuthView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/AuthView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/AuthView.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/AuthView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/AuthView.swiftdeps"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/ChatView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/ChatView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/ChatView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/ChatView.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/ChatView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/ChatView.swiftdeps"
+  }
+}

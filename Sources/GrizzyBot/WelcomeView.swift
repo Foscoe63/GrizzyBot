@@ -62,6 +62,37 @@ struct WelcomeView: View {
                     .buttonStyle(.plain)
                     .onHover { hoverSignIn = $0 }
                     .animation(.easeOut(duration: 0.15), value: hoverSignIn)
+
+                    if !store.registeredAccounts.isEmpty {
+                        VStack(spacing: 10) {
+                            Text("Or continue as")
+                                .font(.system(size: 14))
+                                .foregroundStyle(Theme.textWelcomeTagline.opacity(0.8))
+                            ForEach(store.registeredAccounts.filter { $0.email != "local@grizzybot.local" }.prefix(3)) { account in
+                                Button(account.name) {
+                                    store.goToSignIn(email: account.email)
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 15))
+                                .foregroundStyle(Theme.textWelcomeTagline)
+                            }
+                            Button("Local workspace") {
+                                store.continueAsLocalUser()
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 15))
+                            .foregroundStyle(Theme.textWelcomeTagline.opacity(0.9))
+                        }
+                        .padding(.top, 8)
+                    } else {
+                        Button("Continue without signing in") {
+                            store.continueAsLocalUser()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 15))
+                        .foregroundStyle(Theme.textWelcomeTagline.opacity(0.9))
+                        .padding(.top, 4)
+                    }
                 }
                 .frame(maxWidth: .infinity)
 

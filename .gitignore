@@ -4,8 +4,11 @@
 
 # App bundle
 GrizzyBot.app/
-*.xcodeproj/
 DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
 
 # OS / editor
 .DS_Store
@@ -15,3 +18,13 @@ DerivedData/
 # Local agent / MCP (do not commit)
 config.json
 .omo/
+
+# Developer ID team for notarization / iCloud Release entitlements
+Configs/Team.xcconfig
+
+# Sparkle EdDSA private key — never commit
+Scripts/sparkle_eddsa_private.key
+sparkle_eddsa_private.key
+
+# Xcode clang cache inside the generated project
+GrizzyBot.xcodeproj/-Xcc/

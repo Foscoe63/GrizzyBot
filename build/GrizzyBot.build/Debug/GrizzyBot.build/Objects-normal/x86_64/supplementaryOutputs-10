@@ -1,0 +1,23 @@
+{
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MenuBarView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/MenuBarView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/MenuBarView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/MenuBarView.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/MenuBarView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/MenuBarView.swiftdeps"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MessageViews.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/MessageViews.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/MessageViews.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/MessageViews.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/MessageViews.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/MessageViews.swiftdeps"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/ModelConnectView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/ModelConnectView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/ModelConnectView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/ModelConnectView.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/ModelConnectView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/ModelConnectView.swiftdeps"
+  }
+}

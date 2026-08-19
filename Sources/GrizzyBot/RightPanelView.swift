@@ -13,10 +13,12 @@ struct RightPanelView: View {
     @State private var settingsName = ""
     @State private var settingsTitle = ""
     @State private var settingsDescription = ""
+    @State private var settingsInstructions = ""
     @State private var confirmDelete = false
     @State private var deleting = false
     @State private var settingsError: String?
     @State private var settingsLoadedFor: String?
+    @State private var redactedExport = true
 
     var body: some View {
         Group {
@@ -63,11 +65,24 @@ struct RightPanelView: View {
 
             ZStack {
                 Theme.bgScreen
-                screenLabel
-                    .font(.system(size: 13.5))
-                    .foregroundStyle(Theme.textMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(16)
+                if store.computerOpen {
+                    screenLabel
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Theme.textMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(16)
+                } else if let bot, let data = AppComputerRuntime.shared.cachedJPEG(for: bot.id),
+                          let image = NSImage(data: data) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    screenLabel
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Theme.textMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(16)
+                }
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture { store.openComputerOverlay() }
@@ -87,7 +102,8 @@ struct RightPanelView: View {
                         }
                     } else {
                         GrizzyButton(title: "Take control", variant: .outline, size: .sm) {
-                            store.takeControl(botId: bot.id)
+                            // rakazo: Take control opens the full computer (boot + takeover).
+                            store.openComputerOverlay()
                         }
                     }
                 }
@@ -103,25 +119,50 @@ struct RightPanelView: View {
             if let bot {
                 let list = store.routines(for: bot.id)
                 ForEach(list) { routine in
-                    Button {
-                        store.openRoutine(routine)
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text("◷")
-                                .foregroundStyle(Theme.orange)
-                            Text(routine.name)
-                                .font(.system(size: 14.5))
-                                .foregroundStyle(Theme.textBright)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Text(Cron.formatCron(routine.cron))
-                                .font(.system(size: 13))
-                                .foregroundStyle(Theme.textMuted)
+                    HStack(spacing: 6) {
+                        Button {
+                            store.openRoutine(routine)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text("◷")
+                                    .foregroundStyle(Theme.orange)
+                                Text(routine.name)
+                                    .font(.system(size: 14.5))
+                                    .foregroundStyle(Theme.textBright)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Text(Cron.formatCron(routine.cron))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 8)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+
+                        Button {
+                            store.runRoutine(routine.id)
+                        } label: {
+                            Text("▶")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.textCream)
+                                .frame(width: 28, height: 28)
+                                .background(Theme.bgCream.opacity(0.9))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Run now")
                     }
-                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button("Edit") { store.openRoutine(routine) }
+                        Button("Run now") { store.runRoutine(routine.id) }
+                        Button(routine.active ? "Pause" : "Resume") {
+                            store.setRoutineActive(routine.id, active: !routine.active)
+                        }
+                        Button("Delete", role: .destructive) {
+                            store.deleteRoutine(routine.id)
+                        }
+                    }
                 }
 
                 Button {
@@ -135,6 +176,7 @@ struct RightPanelView: View {
                         .padding(.vertical, 10)
                 }
                 .buttonStyle(.plain)
+                .help("Run the next due routine")
 
                 Button {
                     store.openNewRoutine()
@@ -147,13 +189,42 @@ struct RightPanelView: View {
                         .padding(.vertical, 10)
                 }
                 .buttonStyle(.plain)
+
+                Text("Files")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 24)
+                    .padding(.bottom, 10)
+
+                let entries = store.botHomeEntries(botId: bot.id)
+                if entries.isEmpty {
+                    Text("Ask the bot to write a note, list files, or search the web.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textMuted)
+                        .padding(.horizontal, 8)
+                } else {
+                    ForEach(entries) { entry in
+                        HStack(spacing: 8) {
+                            Text(entry.isDirectory ? "📁" : "📄")
+                                .font(.system(size: 12))
+                            Text(entry.path)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.textBright)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                    }
+                }
             }
         }
     }
 
     @ViewBuilder
     private var screenLabel: some View {
-        if computer?.controlHolder == .user {
+        // rakazo: when the full overlay is open, the preview says "Open in full window".
+        if store.computerOpen {
             Text("Open in full window")
         } else if computer?.kind == .desktop {
             Text("This bot runs on this computer, not a Linux desktop. Shell and files use your home folder.")
@@ -188,11 +259,48 @@ struct RightPanelView: View {
                 closeButton
             }
 
-            GrizzyField(placeholder: "Name this bot", text: $createName)
+            GrizzyField(label: "Name", placeholder: "Name this bot", text: $createName)
                 .padding(.top, 24)
-            GrizzyField(placeholder: "Describe what this bot does", text: $createTitle)
+
+            Text("Start from")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.top, 16)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(BotTemplates.all) { template in
+                    Button {
+                        createName = template.name
+                        createTitle = template.title
+                        createDescription = template.blurb
+                        _ = store.createBot(from: template, name: template.name)
+                        createName = ""
+                        createTitle = ""
+                        createDescription = ""
+                        store.openPanel(nil)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(template.name)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Theme.textBright)
+                            Text(template.blurb)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Theme.bgCard)
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            GrizzyField(label: "Title", placeholder: "Describe what this bot does", text: $createTitle)
                 .padding(.top, 12)
             GrizzyField(
+                label: "Description",
                 placeholder: "What this bot is for",
                 text: $createDescription,
                 axis: .vertical,
@@ -253,6 +361,117 @@ struct RightPanelView: View {
                     lineLimit: 4...8
                 )
                 .padding(.top, 12)
+                GrizzyField(
+                    label: "Instructions",
+                    placeholder: "What this bot should always do",
+                    text: $settingsInstructions,
+                    axis: .vertical,
+                    lineLimit: 4...8
+                )
+                .padding(.top, 12)
+                GrizzyField(
+                    label: "Memory",
+                    placeholder: "Facts this bot should keep. Standing rules go under ## Pin.",
+                    text: Binding(
+                        get: { store.botMemory(botId: bot.id) },
+                        set: { store.setBotMemory(botId: bot.id, text: $0) }
+                    ),
+                    axis: .vertical,
+                    lineLimit: 6...16
+                )
+                .padding(.top, 12)
+                Text("Saved as MEMORY.md in this bot’s home. Newest facts are what the model sees first; search_memory can recall the rest.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 6)
+
+                Text("Model")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+                GrizzySelect(
+                    options: modelChoices(for: bot),
+                    selection: Binding(
+                        get: { BotModelChoice.current(bot: bot) },
+                        set: { store.setBotModel(bot.id, choice: $0) }
+                    )
+                )
+                .padding(.top, 8)
+                Text("Workspace default uses the model from Connect. Pick a catalog model to override it for this bot only.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 6)
+
+                Text("Color")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+                HStack(spacing: 8) {
+                    ForEach(botColors, id: \.self) { hex in
+                        Button {
+                            store.patchBot(bot.id, color: hex)
+                        } label: {
+                            Circle()
+                                .fill(Color(hex: hex))
+                                .frame(width: 22, height: 22)
+                                .overlay {
+                                    if bot.color == hex {
+                                        Circle().stroke(Theme.textBright, lineWidth: 2)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.top, 8)
+
+                settingsToggle(
+                    title: "Chief of Staff",
+                    subtitle: "Coordinates the roster. Only one bot can hold this role.",
+                    isOn: bot.chiefOfStaff
+                ) {
+                    store.setChiefOfStaff(bot.id, enabled: !bot.chiefOfStaff)
+                }
+                .padding(.top, 18)
+
+                settingsToggle(
+                    title: "Auto-approve tools",
+                    subtitle: "Skip Allow/Deny prompts for shell and file tools.",
+                    isOn: bot.autoApprove
+                ) {
+                    store.patchBot(bot.id, autoApprove: !bot.autoApprove)
+                }
+
+                settingsToggle(
+                    title: "Speak replies",
+                    subtitle: "Use configured TTS voice when a reply finishes.",
+                    isOn: bot.speakReplies
+                ) {
+                    store.patchBot(bot.id, speakReplies: !bot.speakReplies)
+                }
+
+                settingsToggle(
+                    title: "Notifications",
+                    subtitle: "Notify when this bot finishes a run.",
+                    isOn: bot.notifications
+                ) {
+                    store.patchBot(bot.id, notifications: !bot.notifications)
+                }
+
+                Text("Computer mode")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+                GrizzySelect(
+                    options: ComputerMode.selectableCases,
+                    selection: Binding(
+                        get: { bot.computerMode },
+                        set: { store.patchBot(bot.id, computerMode: $0) }
+                    )
+                )
+                .padding(.top, 8)
+
+                toolsSection(bot)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Button {
@@ -261,7 +480,7 @@ struct RightPanelView: View {
                             name: settingsName,
                             title: settingsTitle,
                             description: settingsDescription,
-                            instructions: settingsDescription
+                            instructions: settingsInstructions
                         )
                     } label: {
                         Text("Save")
@@ -282,6 +501,12 @@ struct RightPanelView: View {
                             .foregroundStyle(Theme.textSecondary)
                     }
                     .buttonStyle(.plain)
+
+                    Toggle("Redact chat history (share-safe)", isOn: $redactedExport)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textSecondary)
+                        .toggleStyle(.checkbox)
+                        .padding(.top, 4)
 
                     if confirmDelete {
                         VStack(alignment: .leading, spacing: 0) {
@@ -348,18 +573,119 @@ struct RightPanelView: View {
         }
     }
 
+    private func toolsSection(_ bot: Bot) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Tools")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Button("Enable all") {
+                    store.setAllBotTools(bot.id, enabled: true)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textSidebarIcon)
+                .disabled(bot.allToolsEnabled(knownIds: store.knownToolIds))
+                .opacity(bot.allToolsEnabled(knownIds: store.knownToolIds) ? 0.4 : 1)
+
+                Button("Disable all") {
+                    store.setAllBotTools(bot.id, enabled: false)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.orange)
+                .disabled(bot.noToolsEnabled)
+                .opacity(bot.noToolsEnabled ? 0.4 : 1)
+            }
+            .padding(.top, 18)
+
+            Text("Choose which tools this bot may use. Disabled tools never appear to the model — the chat header also shows when Shell or Computer are off.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textMuted)
+
+            ForEach(store.knownToolDefinitions) { tool in
+                settingsToggle(
+                    title: tool.label,
+                    subtitle: tool.kind == .builtin
+                        ? tool.subtitle
+                        : "\(tool.kind == .mcp ? "MCP" : "Custom") · \(tool.subtitle)",
+                    isOn: bot.isToolEnabled(tool.id)
+                ) {
+                    store.setBotTool(bot.id, toolId: tool.id, enabled: !bot.isToolEnabled(tool.id))
+                }
+            }
+
+            Text("Add MCP servers in App Settings → Tools.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textMuted)
+                .padding(.top, 4)
+        }
+    }
+
+    private func modelChoices(for bot: Bot) -> [BotModelChoice] {
+        var options = BotModelChoice.choices(
+            workspaceProvider: store.modelProvider,
+            workspaceModel: store.modelId,
+            fetched: store.fetchedModels(for: store.modelProvider ?? ModelCatalog.defaultProvider),
+            includeFullCatalog: true,
+            enabledProviders: store.enabledModelSources()
+        )
+        let current = BotModelChoice.current(bot: bot)
+        if !options.contains(current) {
+            options.insert(current, at: 1)
+        }
+        return options
+    }
+
     private func syncSettings() {
         guard let bot, settingsLoadedFor != bot.id else { return }
         settingsName = bot.name
         settingsTitle = bot.title
         settingsDescription = bot.description
+        settingsInstructions = bot.instructions.isEmpty ? bot.description : bot.instructions
         settingsLoadedFor = bot.id
         confirmDelete = false
         settingsError = nil
     }
 
+    private func settingsToggle(
+        title: String,
+        subtitle: String,
+        isOn: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 14.5, weight: .medium))
+                        .foregroundStyle(Theme.textBright)
+                    Text(subtitle)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Capsule()
+                    .fill(isOn ? Theme.orange : Theme.bgChip)
+                    .frame(width: 40, height: 24)
+                    .overlay(alignment: isOn ? .trailing : .leading) {
+                        Circle()
+                            .fill(Theme.textCream)
+                            .frame(width: 18, height: 18)
+                            .padding(3)
+                    }
+            }
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 10)
+    }
+
     private func exportBot(_ bot: Bot) {
-        guard let manifest = store.exportManifest(botId: bot.id) else { return }
+        guard let manifest = store.exportManifest(botId: bot.id, redacted: redactedExport) else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = store.exportFilename(for: bot.id)
         panel.allowedContentTypes = [.json]
@@ -416,18 +742,60 @@ struct RightPanelView: View {
                 )
             )
             .padding(.top, 20)
-            GrizzyField(
-                label: "Instruction",
-                labelSize: 14,
-                placeholder: "Instruction",
-                text: Binding(
-                    get: { store.routineDraft.prompt },
-                    set: { store.routineDraft.prompt = $0 }
-                ),
-                axis: .vertical,
-                lineLimit: 4...8
-            )
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Instruction")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textSecondary)
+                TextField(
+                    "Instruction",
+                    text: Binding(
+                        get: { store.routineDraft.prompt },
+                        set: { store.routineDraft.prompt = $0 }
+                    ),
+                    axis: .vertical
+                )
+                .lineLimit(6...)
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.textBright)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(Theme.borderInputsDark, lineWidth: 1)
+                }
+            }
             .padding(.top, 12)
+
+            Text("Assign to bot")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+
+            if store.visibleBots.isEmpty {
+                Text("Create a bot first.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textMuted)
+            } else {
+                let options = store.visibleBots
+                let selected = options.first(where: { $0.id == store.routineDraft.botId }) ?? options.first!
+                GrizzySelect(
+                    options: options.map(\.id),
+                    selection: Binding(
+                        get: {
+                            store.routineDraft.botId.isEmpty
+                                ? (selected.id)
+                                : store.routineDraft.botId
+                        },
+                        set: { store.routineDraft.botId = $0 }
+                    ),
+                    label: { id in
+                        store.bots.first(where: { $0.id == id })?.name ?? id
+                    }
+                )
+            }
 
             Text("When to run")
                 .font(.system(size: 14))
@@ -443,11 +811,9 @@ struct RightPanelView: View {
             )
 
             Button {
-                if let bot {
-                    store.saveRoutineDraft(botId: bot.id)
-                }
+                store.saveRoutineDraft(botId: bot?.id)
             } label: {
-                Text("Save")
+                Text(store.editingRoutineId == nil ? "Create routine" : "Save changes")
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.textCream)
                     .padding(.horizontal, 16)
@@ -457,6 +823,37 @@ struct RightPanelView: View {
             }
             .buttonStyle(.plain)
             .padding(.top, 20)
+            .disabled(store.visibleBots.isEmpty)
+            .opacity(store.visibleBots.isEmpty ? 0.45 : 1)
+
+            if let editingId = store.editingRoutineId {
+                HStack(spacing: 12) {
+                    Button {
+                        store.runRoutine(editingId)
+                    } label: {
+                        Text("Run now")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.textBright)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .stroke(Theme.borderInputsDark, lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        store.deleteRoutine(editingId)
+                    } label: {
+                        Text("Delete")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.orange)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 14)
+            }
         }
     }
 

@@ -1,0 +1,184 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/PluginsOverlayView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Search apps or Composio toolkits",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 63
+        }
+      },
+      {
+        "comment": "",
+        "key": "Plugins",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 30
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld apps in GrizzyBot",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 33
+        }
+      },
+      {
+        "comment": "",
+        "key": "✕",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 41
+        }
+      },
+      {
+        "comment": "",
+        "key": "Connect opens a browser sign-in via Composio. Paste a token instead if you already have one.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 298
+        }
+      },
+      {
+        "comment": "",
+        "key": "No apps in GrizzyBot yet.",
+        "location": {
+          "startingColumn": 51,
+          "startingLine": 86
+        }
+      },
+      {
+        "comment": "",
+        "key": "No installed apps match that search.",
+        "location": {
+          "startingColumn": 81,
+          "startingLine": 86
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add a Composio Connect key in Settings to browse 200+ toolkits, or type a slug above.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 214
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading toolkits…",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 224
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search to find more Composio toolkits, or add a slug above.",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 229
+        }
+      },
+      {
+        "comment": "",
+        "key": "No more Composio toolkits match that search.",
+        "location": {
+          "startingColumn": 99,
+          "startingLine": 229
+        }
+      },
+      {
+        "comment": "",
+        "key": "Connect %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 134
+        }
+      },
+      {
+        "comment": "",
+        "key": "API token or webhook URL",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 139
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 145
+        }
+      },
+      {
+        "comment": "",
+        "key": "Connect",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 150
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add toolkit slug (clickup, hubspot, …)",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 165
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 179
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 203
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 281
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add a Composio Connect key in Settings to sign in through the browser. Until then, paste an API token per app.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 304
+        }
+      },
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 308
+        }
+      },
+      {
+        "comment": "",
+        "key": "Paste token",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 335
+        }
+      }
+    ]
+  },
+  "version": 1
+}

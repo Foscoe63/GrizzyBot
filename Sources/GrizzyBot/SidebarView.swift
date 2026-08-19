@@ -1,3 +1,4 @@
+import AppKit
 import GrizzyBotCore
 import SwiftUI
 
@@ -8,13 +9,27 @@ struct SidebarView: View {
     @State private var showUsage = false
     @State private var hoverPlus = false
     @State private var hoverPlugins = false
+    @State private var hoverSkills = false
+    @State private var showNewMenu = false
+    @State private var showCreateRoom = false
+    @State private var roomName = ""
+    @State private var roomMemberIds: Set<String> = []
 
     private var filteredBots: [Bot] {
+        let base = store.visibleBots
         let q = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return store.bots }
-        return store.bots.filter { bot in
+        guard !q.isEmpty else { return base }
+        return base.filter { bot in
             let preview = store.sidebarPreview(for: bot).lowercased()
             return bot.name.lowercased().contains(q) || preview.contains(q)
+        }
+    }
+
+    private var filteredGroups: [GroupRoom] {
+        let q = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return store.groups }
+        return store.groups.filter {
+            $0.name.lowercased().contains(q) || $0.preview.lowercased().contains(q)
         }
     }
 
@@ -24,15 +39,46 @@ struct SidebarView: View {
                 TrafficLightSpacer()
                 Spacer()
                 Button {
-                    store.openPanel(.create)
+                    showNewMenu.toggle()
                 } label: {
                     Text("+")
                         .font(.system(size: 21, weight: .regular))
                         .foregroundStyle(hoverPlus ? Theme.textSidebarIconHover : Theme.textSidebarIcon)
                 }
                 .buttonStyle(.plain)
-                .help("New bot")
+                .help("New bot or room")
                 .onHover { hoverPlus = $0 }
+                .popover(isPresented: $showNewMenu, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button {
+                            showNewMenu = false
+                            store.openPanel(.create)
+                        } label: {
+                            Label("New bot", systemImage: "plus")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            showNewMenu = false
+                            roomName = ""
+                            roomMemberIds = Set(store.visibleBots.prefix(2).map(\.id))
+                            showCreateRoom = true
+                        } label: {
+                            Label("New room", systemImage: "person.2")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(store.visibleBots.count < 2)
+                    }
+                    .frame(width: 180)
+                    .padding(6)
+                    .background(Theme.bgUserMenu)
+                }
             }
             .padding(.horizontal, 18)
             .padding(.top, 16)
@@ -60,6 +106,15 @@ struct SidebarView: View {
 
             ScrollView {
                 LazyVStack(spacing: 2) {
+                    if !filteredGroups.isEmpty {
+                        sectionLabel("Rooms")
+                        ForEach(filteredGroups) { group in
+                            groupRow(group)
+                        }
+                        sectionLabel("Bots")
+                            .padding(.top, 8)
+                    }
+
                     ForEach(filteredBots) { bot in
                         botRow(bot)
                     }
@@ -70,7 +125,15 @@ struct SidebarView: View {
             .grizzyScroll()
             .frame(maxHeight: .infinity)
 
+            routinesButton
+                .padding(.horizontal, 12)
+                .padding(.bottom, 2)
+
             pluginsButton
+                .padding(.horizontal, 12)
+                .padding(.bottom, 2)
+
+            skillsButton
                 .padding(.horizontal, 12)
                 .padding(.bottom, 4)
 
@@ -82,10 +145,22 @@ struct SidebarView: View {
         .overlay(alignment: .trailing) {
             Rectangle().fill(Theme.borderSidebar).frame(width: 1)
         }
+        .sheet(isPresented: $showCreateRoom) {
+            createRoomSheet
+        }
+    }
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Theme.textMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
     }
 
     private func botRow(_ bot: Bot) -> some View {
-        let active = store.activeBotId == bot.id
+        let active = store.mainView == .chat && store.activeBotId == bot.id && store.activeGroupId == nil
         let status = store.sidebarStatus(for: bot)
         let preview = store.sidebarPreview(for: bot)
         return Button {
@@ -95,18 +170,115 @@ struct SidebarView: View {
                 BotAvatarView(color: bot.color, size: 38)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline) {
+                        if bot.pinned {
+                            Text("⌖")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.textMuted)
+                        }
                         Text(bot.name)
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(Theme.textBright)
                             .lineLimit(1)
                         Spacer(minLength: 8)
-                        if status != "idle" {
+                        if bot.unread {
+                            Circle()
+                                .fill(Theme.orange)
+                                .frame(width: 7, height: 7)
+                        } else if status != "idle" {
                             Text(status)
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(Theme.textMuted)
                         }
                     }
-                    Text(preview.isEmpty ? bot.title : preview)
+                    HStack(spacing: 6) {
+                        if bot.chiefOfStaff {
+                            Text("Chief of Staff")
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(Theme.orange)
+                        }
+                        Text(preview.isEmpty ? bot.title : preview)
+                            .font(.system(size: 13.5))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 11)
+            .background(
+                active
+                    ? Theme.orange.opacity(0.16)
+                    : (bot.chiefOfStaff ? Theme.orange.opacity(0.07) : Color.clear)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                if active || bot.chiefOfStaff {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Theme.orange.opacity(active ? 0.45 : 0.25), lineWidth: 1)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button(bot.pinned ? "Unpin" : "Pin") {
+                store.setBotPinned(bot.id, pinned: !bot.pinned)
+            }
+            Button(bot.chiefOfStaff ? "Remove Chief of Staff" : "Make Chief of Staff") {
+                store.setChiefOfStaff(bot.id, enabled: !bot.chiefOfStaff)
+            }
+            Button("Mark as Unread") {
+                store.markBotUnread(bot.id)
+            }
+            Divider()
+            Button("Edit Profile") {
+                store.selectBot(bot.id)
+                store.openPanel(.settings)
+            }
+            Button("Duplicate") {
+                _ = store.duplicateBot(bot.id)
+            }
+            Divider()
+            Button("Copy conversation ID") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(bot.threadId, forType: .string)
+            }
+            Divider()
+            Button("Hide from sidebar") {
+                store.setBotHidden(bot.id, hidden: true)
+            }
+            .disabled(bot.chiefOfStaff)
+            Button("Delete", role: .destructive) {
+                store.deleteBot(bot.id)
+            }
+        }
+    }
+
+    private func groupRow(_ group: GroupRoom) -> some View {
+        let active = store.activeGroupId == group.id
+        return Button {
+            store.selectGroup(group.id)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.bgLetterBadge)
+                        .frame(width: 38, height: 38)
+                    Text("◇")
+                        .foregroundStyle(Theme.textLetter)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(group.name)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Theme.textBright)
+                            .lineLimit(1)
+                        Spacer()
+                        if group.unread {
+                            Circle().fill(Theme.orange).frame(width: 7, height: 7)
+                        }
+                    }
+                    Text(group.preview.isEmpty ? "\(group.memberIds.count) members" : group.preview)
                         .font(.system(size: 13.5))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
@@ -119,16 +291,53 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("Delete room", role: .destructive) {
+                store.deleteGroup(group.id)
+            }
+        }
     }
 
-    private var pluginsButton: some View {
+    private var routinesButton: some View {
         Button {
-            store.pluginsOpen = true
+            store.showRoutinesPage()
         } label: {
             HStack(spacing: 10) {
                 ZStack {
                     Circle()
-                        .fill(Color(hex: "#17171A"))
+                        .fill(Theme.bgCard)
+                        .frame(width: 30, height: 30)
+                    Text("◷")
+                        .font(.system(size: 13))
+                        .foregroundStyle(store.mainView == .routines ? Theme.orange : Theme.textLetter)
+                }
+                Text("Routines")
+                    .font(.system(size: 14.5))
+                    .foregroundStyle(Theme.textGhost)
+                Spacer()
+                if store.missedRoutineCount > 0 {
+                    Text("\(store.missedRoutineCount)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.orange)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(store.mainView == .routines ? Theme.bgHoverRow : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var pluginsButton: some View {
+        Button {
+            store.openPlugins()
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.bgCard)
                         .frame(width: 30, height: 30)
                     PuzzleIcon()
                         .stroke(Theme.textLetter, style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
@@ -141,12 +350,40 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(hoverPlugins ? Color(hex: "#131315") : Color.clear)
+            .background(hoverPlugins ? Theme.bgHoverRow : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hoverPlugins = $0 }
+    }
+
+    private var skillsButton: some View {
+        Button {
+            store.skillsOpen = true
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.bgCard)
+                        .frame(width: 30, height: 30)
+                    Text("✦")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textLetter)
+                }
+                Text("Skills")
+                    .font(.system(size: 14.5))
+                    .foregroundStyle(Theme.textGhost)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(hoverSkills ? Theme.bgHoverRow : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hoverSkills = $0 }
     }
 
     private var userRow: some View {
@@ -212,19 +449,25 @@ struct SidebarView: View {
 
             Button {
                 userMenuOpen = false
+                store.openModelSettings()
+            } label: {
+                menuRow(icon: "◈", title: "Model")
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                userMenuOpen = false
+                store.openAppSettings()
+            } label: {
+                menuRow(icon: "⚙", title: "Settings")
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                userMenuOpen = false
                 store.signOut()
             } label: {
-                HStack(spacing: 10) {
-                    Text("⇤")
-                        .foregroundStyle(Theme.textLetter)
-                    Text("Log out")
-                        .font(.system(size: 14.5))
-                        .foregroundStyle(Theme.textBright)
-                    Spacer()
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 10)
-                .contentShape(Rectangle())
+                menuRow(icon: "⇤", title: "Log out")
             }
             .buttonStyle(.plain)
         }
@@ -238,6 +481,68 @@ struct SidebarView: View {
         .shadow(color: .black.opacity(0.55), radius: 22, y: 8)
         .padding(.horizontal, -6)
     }
+
+    private func menuRow(icon: String, title: String) -> some View {
+        HStack(spacing: 10) {
+            Text(icon)
+                .foregroundStyle(Theme.textLetter)
+            Text(title)
+                .font(.system(size: 14.5))
+                .foregroundStyle(Theme.textBright)
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+    }
+
+    private var createRoomSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("New room")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.textBright)
+            GrizzyField(label: "Name", placeholder: "Room name", text: $roomName)
+            Text("Members")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textSecondary)
+            ForEach(store.visibleBots) { bot in
+                Toggle(isOn: Binding(
+                    get: { roomMemberIds.contains(bot.id) },
+                    set: { on in
+                        if on { roomMemberIds.insert(bot.id) }
+                        else { roomMemberIds.remove(bot.id) }
+                    }
+                )) {
+                    Text(bot.name)
+                        .foregroundStyle(Theme.textBright)
+                }
+                .toggleStyle(.checkbox)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { showCreateRoom = false }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.textSecondary)
+                Button("Create") {
+                    let name = roomName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !name.isEmpty else { return }
+                    _ = store.createGroup(name: name, memberIds: Array(roomMemberIds))
+                    showCreateRoom = false
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.textCream)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(Theme.bgCream)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .disabled(roomName.trimmingCharacters(in: .whitespaces).isEmpty || roomMemberIds.count < 2)
+                .opacity(roomName.trimmingCharacters(in: .whitespaces).isEmpty || roomMemberIds.count < 2 ? 0.45 : 1)
+            }
+        }
+        .padding(24)
+        .frame(width: 360)
+        .background(Theme.bgRightPanel)
+    }
 }
 
 /// Puzzle piece path from HANDOFF §8 (24×24 viewBox, drawn in unit space).
@@ -249,7 +554,6 @@ struct PuzzleIcon: Shape {
             CGPoint(x: rect.minX + x * sx, y: rect.minY + y * sy)
         }
         var path = Path()
-        // Approximate M4 7h3a1 1 0 0 0 1-1 1.5 1.5 0 1 1 3 0 1 1 0 0 0 1 1h3v3a1 1 0 0 0 1 1 1.5 1.5 0 1 1 0 3 1 1 0 0 0-1 1v3h-3a1 1 0 0 0-1 1 1.5 1.5 0 1 1-3 0 1 1 0 0 0-1-1H4v-3a1 1 0 0 0-1-1 1.5 1.5 0 1 1 0-3 1 1 0 0 0 1-1z
         path.move(to: p(4, 7))
         path.addLine(to: p(7, 7))
         path.addQuadCurve(to: p(8, 6), control: p(8, 7))

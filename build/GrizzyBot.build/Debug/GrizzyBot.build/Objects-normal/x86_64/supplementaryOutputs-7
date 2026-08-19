@@ -1,0 +1,23 @@
+{
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/GrizzyBotApp.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/GrizzyBotApp.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/GrizzyBotApp.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/GrizzyBotApp.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/GrizzyBotApp.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/GrizzyBotApp.swiftdeps"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/GrizzyThemePalette.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/GrizzyThemePalette.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/GrizzyThemePalette.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/GrizzyThemePalette.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/GrizzyThemePalette.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/GrizzyThemePalette.swiftdeps"
+  },
+  "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/HostComputerPromptView.swift" : {
+    "const-values" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/HostComputerPromptView.swiftconstvalues",
+    "dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/HostComputerPromptView.d",
+    "diagnostics" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/HostComputerPromptView.dia",
+    "object" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/HostComputerPromptView.o",
+    "swift-dependencies" : "/Volumes/Storage/Projects/GrokBot/GrizzyBot/build/GrizzyBot.build/Debug/GrizzyBot.build/Objects-normal/x86_64/HostComputerPromptView.swiftdeps"
+  }
+}

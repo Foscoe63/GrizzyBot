@@ -1,0 +1,40 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MenuBarView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "GrizzyBot",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 10
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld missed routine%@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 17
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open GrizzyBot",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 27
+        }
+      },
+      {
+        "comment": "",
+        "key": "Quit",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 30
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -69,4 +69,34 @@ struct ScriptedRuntimeTests {
         #expect(reply.text.contains("on it."))
         #expect(ScriptedRuntime.subagentResult(for: "please research the market").contains("done. i handled:"))
     }
+
+    @Test("web search")
+    func webSearch() {
+        let reply = ScriptedRuntime.reply(to: "search the web for swift concurrency")
+        #expect(reply.action == .webSearch(query: "swift concurrency"))
+    }
+
+    @Test("list files")
+    func listFiles() {
+        let reply = ScriptedRuntime.reply(to: "list files in my home")
+        #expect(reply.action == .listFiles(directory: ""))
+    }
+
+    @Test("read file")
+    func readFile() {
+        let reply = ScriptedRuntime.reply(to: "read file notes/result.txt")
+        #expect(reply.action == .readFile(path: "notes/result.txt"))
+    }
+
+    @Test("move file")
+    func moveFile() {
+        let reply = ScriptedRuntime.reply(to: "move file notes/a.txt to notes/b.txt")
+        #expect(reply.action == .moveFile(from: "notes/a.txt", to: "notes/b.txt"))
+    }
+
+    @Test("delete file")
+    func deleteFile() {
+        let reply = ScriptedRuntime.reply(to: "delete file notes/result.txt")
+        #expect(reply.action == .deleteFile(path: "notes/result.txt"))
+    }
 }

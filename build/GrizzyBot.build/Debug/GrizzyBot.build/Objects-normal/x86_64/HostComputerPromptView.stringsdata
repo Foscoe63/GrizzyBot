@@ -1,0 +1,48 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/HostComputerPromptView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "How should bots use the computer?",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 13
+        }
+      },
+      {
+        "comment": "",
+        "key": "GrizzyBot supports an in-app browser (cookies can persist per bot) or controlling this Mac with Accessibility and Screen Recording. Cloud VMs and Docker are not available yet.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 17
+        }
+      },
+      {
+        "comment": "",
+        "key": "This Mac runs shell commands and UI automation with your account. Only enable it on a machine you control.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 56
+        }
+      },
+      {
+        "comment": "",
+        "key": "In-app browser (recommended)",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 27
+        }
+      },
+      {
+        "comment": "",
+        "key": "This Mac",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 41
+        }
+      }
+    ]
+  },
+  "version": 1
+}

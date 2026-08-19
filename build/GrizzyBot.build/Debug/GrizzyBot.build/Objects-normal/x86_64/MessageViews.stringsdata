@@ -1,0 +1,232 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MessageViews.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Copy",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 28
+        }
+      },
+      {
+        "comment": "",
+        "key": "Edit & resend",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 30
+        }
+      },
+      {
+        "comment": "",
+        "key": "Branch from here",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 34
+        }
+      },
+      {
+        "comment": "",
+        "key": "Regenerate",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 37
+        }
+      },
+      {
+        "comment": "",
+        "key": "React",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 42
+        }
+      },
+      {
+        "comment": "",
+        "key": "Regenerate",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 49
+        }
+      },
+      {
+        "comment": "",
+        "key": "Branch from here",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 52
+        }
+      },
+      {
+        "comment": "",
+        "key": "Speak",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 55
+        }
+      },
+      {
+        "comment": "",
+        "key": "Copied",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 254
+        }
+      },
+      {
+        "comment": "",
+        "key": "Copy",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 254
+        }
+      },
+      {
+        "comment": "",
+        "key": "Copy",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 255
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ %lld",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 79
+        }
+      },
+      {
+        "comment": "",
+        "key": "◷",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 99
+        }
+      },
+      {
+        "comment": "",
+        "key": "Edit message",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 127
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 136
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save & run",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 140
+        }
+      },
+      {
+        "comment": "",
+        "key": "Speak this reply",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 176
+        }
+      },
+      {
+        "comment": "",
+        "key": "♪",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 171
+        }
+      },
+      {
+        "comment": "",
+        "key": "✓",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 185
+        }
+      },
+      {
+        "comment": "",
+        "key": "→",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 190
+        }
+      },
+      {
+        "comment": "",
+        "key": "Approval needed",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 323
+        }
+      },
+      {
+        "comment": "",
+        "key": "Connected",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 410
+        }
+      },
+      {
+        "comment": "",
+        "key": "Connect to continue",
+        "location": {
+          "startingColumn": 59,
+          "startingLine": 410
+        }
+      },
+      {
+        "comment": "",
+        "key": "deleted",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 507
+        }
+      },
+      {
+        "comment": "",
+        "key": "bot",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 507
+        }
+      },
+      {
+        "comment": "",
+        "key": "Send it",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 561
+        }
+      },
+      {
+        "comment": "",
+        "key": "Edit first",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 574
+        }
+      },
+      {
+        "comment": "",
+        "key": "Computer",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 602
+        }
+      }
+    ]
+  },
+  "version": 1
+}

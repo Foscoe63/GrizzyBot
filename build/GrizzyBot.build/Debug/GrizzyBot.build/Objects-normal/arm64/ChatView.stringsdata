@@ -1,0 +1,368 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/ChatView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Create a bot to start chatting.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 40
+        }
+      },
+      {
+        "comment": "",
+        "key": "Undo send",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 107
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search chats",
+        "location": {
+          "startingColumn": 19,
+          "startingLine": 125
+        }
+      },
+      {
+        "comment": "",
+        "key": "◇",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 73
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chief",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 91
+        }
+      },
+      {
+        "comment": "",
+        "key": "Clear this chat?",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 204
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete this chat?",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 213
+        }
+      },
+      {
+        "comment": "",
+        "key": "Session",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 222
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save snapshot",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 154
+        }
+      },
+      {
+        "comment": "",
+        "key": "Export chat…",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 159
+        }
+      },
+      {
+        "comment": "",
+        "key": "Export transcript…",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 163
+        }
+      },
+      {
+        "comment": "",
+        "key": "Import chat…",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 166
+        }
+      },
+      {
+        "comment": "",
+        "key": "Undo send",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 177
+        }
+      },
+      {
+        "comment": "",
+        "key": "Clear chat…",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 185
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete chat…",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 189
+        }
+      },
+      {
+        "comment": "",
+        "key": "Session",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 194
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 205
+        }
+      },
+      {
+        "comment": "",
+        "key": "Clear",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 206
+        }
+      },
+      {
+        "comment": "",
+        "key": "Removes messages from “%@”. The bot stays. You can restore from a snapshot if you saved one.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 211
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 214
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 215
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stops any run and wipes this thread. Task chats are removed from the list.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 220
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 226
+        }
+      },
+      {
+        "comment": "",
+        "key": "Main thread",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 234
+        }
+      },
+      {
+        "comment": "",
+        "key": "New task…",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 243
+        }
+      },
+      {
+        "comment": "",
+        "key": "New task",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 265
+        }
+      },
+      {
+        "comment": "",
+        "key": "Title",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 268
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 273
+        }
+      },
+      {
+        "comment": "",
+        "key": "Tools",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 296
+        }
+      },
+      {
+        "comment": "",
+        "key": "No matches",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 333
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search chats",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 314
+        }
+      },
+      {
+        "comment": "",
+        "key": "This thread",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 318
+        }
+      },
+      {
+        "comment": "",
+        "key": "Done",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 322
+        }
+      },
+      {
+        "comment": "",
+        "key": "working…",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 381
+        }
+      },
+      {
+        "comment": "",
+        "key": "Send anyway",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 463
+        }
+      },
+      {
+        "comment": "",
+        "key": "✕",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 484
+        }
+      },
+      {
+        "comment": "",
+        "key": "Attach files",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 525
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stop dictation",
+        "location": {
+          "startingColumn": 47,
+          "startingLine": 550
+        }
+      },
+      {
+        "comment": "",
+        "key": "Dictate",
+        "location": {
+          "startingColumn": 66,
+          "startingLine": 550
+        }
+      },
+      {
+        "comment": "",
+        "key": "+",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 516
+        }
+      },
+      {
+        "comment": "",
+        "key": "●",
+        "location": {
+          "startingColumn": 50,
+          "startingLine": 544
+        }
+      },
+      {
+        "comment": "",
+        "key": "🎤",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 544
+        }
+      },
+      {
+        "comment": "",
+        "key": "■",
+        "location": {
+          "startingColumn": 80,
+          "startingLine": 559
+        }
+      },
+      {
+        "comment": "",
+        "key": "↑",
+        "location": {
+          "startingColumn": 88,
+          "startingLine": 559
+        }
+      },
+      {
+        "comment": "",
+        "key": "↑",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 611
+        }
+      }
+    ]
+  },
+  "version": 1
+}

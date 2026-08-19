@@ -1,0 +1,96 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/SkillsOverlayView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Search skills",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 64
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skills",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 30
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld packaged workflows · load with read_skill",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 33
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 41
+        }
+      },
+      {
+        "comment": "",
+        "key": "New skill",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 41
+        }
+      },
+      {
+        "comment": "",
+        "key": "✕",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 49
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 160
+        }
+      },
+      {
+        "comment": "",
+        "key": "bundled",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 149
+        }
+      },
+      {
+        "comment": "",
+        "key": "user",
+        "location": {
+          "startingColumn": 65,
+          "startingLine": 149
+        }
+      },
+      {
+        "comment": "",
+        "key": "On",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 171
+        }
+      },
+      {
+        "comment": "",
+        "key": "Off",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 171
+        }
+      }
+    ]
+  },
+  "version": 1
+}

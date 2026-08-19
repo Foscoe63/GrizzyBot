@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    env:
+      KEYCHAIN: build.keychain-db
+      KEYCHAIN_PASSWORD: actions
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: brew install xcodegen create-dmg
+
+      - name: Require Developer ID secrets
+        env:
+          TEAM: ${{ secrets.GRIZZYBOT_DEVELOPMENT_TEAM }}
+          CERT: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_PASSWORD }}
+          NOTARY_PROFILE: ${{ secrets.NOTARY_KEYCHAIN_PROFILE }}
+        run: |
+          missing=()
+          [[ -z "$TEAM" ]] && missing+=("GRIZZYBOT_DEVELOPMENT_TEAM")
+          [[ -z "$CERT" ]] && missing+=("DEVELOPER_ID_APPLICATION_P12")
+          [[ -z "$CERT_PASSWORD" ]] && missing+=("DEVELOPER_ID_APPLICATION_P12_PASSWORD")
+          [[ -z "$NOTARY_PROFILE" ]] && missing+=("NOTARY_KEYCHAIN_PROFILE")
+          if (( ${#missing[@]} )); then
+            echo "Missing repo secrets: ${missing[*]}"
+            echo "Create NOTARY_KEYCHAIN_PROFILE with: xcrun notarytool store-credentials GrizzyBot-notary --apple-id ... --team-id ... --password ..."
+            exit 1
+          fi
+
+      - name: Import Developer ID certificate
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_PASSWORD }}
+        run: |
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          echo "$P12_BASE64" | base64 --decode > /tmp/grizzybot.p12
+          security import /tmp/grizzybot.p12 -k "$KEYCHAIN" -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productsign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          rm -f /tmp/grizzybot.p12
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Write Team.xcconfig
+        env:
+          GRIZZYBOT_DEVELOPMENT_TEAM: ${{ secrets.GRIZZYBOT_DEVELOPMENT_TEAM }}
+        run: |
+          cat > Configs/Team.xcconfig <<EOF
+          GRIZZYBOT_DEVELOPMENT_TEAM = ${GRIZZYBOT_DEVELOPMENT_TEAM}
+          GRIZZYBOT_CODE_SIGN_IDENTITY = Developer ID Application
+          GRIZZYBOT_CODE_SIGN_STYLE = Manual
+          GRIZZYBOT_OTHER_CODE_SIGN_FLAGS = --timestamp
+          GRIZZYBOT_CODE_SIGN_ENTITLEMENTS = Sources/GrizzyBot/GrizzyBot.Release.entitlements
+          GRIZZYBOT_ENABLE_HARDENED_RUNTIME = YES
+          EOF
+
+      - name: Build Release
+        run: |
+          xcodebuild \
+            -project GrizzyBot.xcodeproj \
+            -scheme GrizzyBot \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM="${{ secrets.GRIZZYBOT_DEVELOPMENT_TEAM }}" \
+            build
+
+      - name: Locate app bundle
+        id: app
+        run: |
+          APP="$(find ~/Library/Developer/Xcode/DerivedData -path '*/Build/Products/Release/GrizzyBot.app' -print -quit)"
+          test -d "$APP"
+          echo "path=$APP" >> "$GITHUB_OUTPUT"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Notarize app
+        env:
+          NOTARY_KEYCHAIN_PROFILE: ${{ secrets.NOTARY_KEYCHAIN_PROFILE }}
+          GRIZZYBOT_DEVELOPMENT_TEAM: ${{ secrets.GRIZZYBOT_DEVELOPMENT_TEAM }}
+        run: ./Scripts/notarize.sh "${{ steps.app.outputs.path }}"
+
+      - name: Package DMG
+        run: |
+          create-dmg \
+            --volname GrizzyBot \
+            --app-drop-link 480 170 \
+            "$PWD/GrizzyBot.dmg" \
+            "${{ steps.app.outputs.path }}"
+
+      - name: Sign and notarize DMG
+        env:
+          NOTARY_KEYCHAIN_PROFILE: ${{ secrets.NOTARY_KEYCHAIN_PROFILE }}
+          GRIZZYBOT_DEVELOPMENT_TEAM: ${{ secrets.GRIZZYBOT_DEVELOPMENT_TEAM }}
+        run: |
+          codesign --force --sign "Developer ID Application" --timestamp GrizzyBot.dmg
+          ./Scripts/notarize.sh GrizzyBot.dmg
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/GrizzyBot/Info.plist)"
+          gh release create "v${VERSION}" GrizzyBot.dmg --title "v${VERSION}" --notes "Signed and notarized GrizzyBot ${VERSION}" || \
+            gh release upload "v${VERSION}" GrizzyBot.dmg --clobber

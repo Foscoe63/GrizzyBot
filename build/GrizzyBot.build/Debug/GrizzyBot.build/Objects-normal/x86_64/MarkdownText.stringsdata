@@ -1,0 +1,16 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/MarkdownText.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "▍",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 48
+        }
+      }
+    ]
+  },
+  "version": 1
+}

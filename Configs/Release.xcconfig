@@ -1,0 +1,19 @@
+// Release defaults stay ad-hoc so CI and machines without a Developer ID still build.
+// Copy Team.xcconfig.example → Team.xcconfig (gitignored) to notarize with iCloud.
+GRIZZYBOT_CODE_SIGN_IDENTITY = -
+GRIZZYBOT_CODE_SIGN_STYLE = Automatic
+GRIZZYBOT_OTHER_CODE_SIGN_FLAGS = --timestamp=none
+GRIZZYBOT_CODE_SIGN_ENTITLEMENTS = Sources/GrizzyBot/GrizzyBot.entitlements
+GRIZZYBOT_DEVELOPMENT_TEAM =
+// Ad-hoc Release must match Debug-style signing so embedded SPM frameworks load.
+GRIZZYBOT_ENABLE_HARDENED_RUNTIME = NO
+SENTRY_DSN =
+
+#include? "Team.xcconfig"
+
+CODE_SIGN_IDENTITY = $(GRIZZYBOT_CODE_SIGN_IDENTITY)
+CODE_SIGN_STYLE = $(GRIZZYBOT_CODE_SIGN_STYLE)
+OTHER_CODE_SIGN_FLAGS = $(GRIZZYBOT_OTHER_CODE_SIGN_FLAGS)
+CODE_SIGN_ENTITLEMENTS = $(GRIZZYBOT_CODE_SIGN_ENTITLEMENTS)
+DEVELOPMENT_TEAM = $(GRIZZYBOT_DEVELOPMENT_TEAM)
+ENABLE_HARDENED_RUNTIME = $(GRIZZYBOT_ENABLE_HARDENED_RUNTIME)

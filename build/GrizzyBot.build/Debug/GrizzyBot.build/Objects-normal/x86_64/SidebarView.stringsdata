@@ -1,0 +1,272 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/SidebarView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "New bot or room",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 49
+        }
+      },
+      {
+        "comment": "",
+        "key": "+",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 44
+        }
+      },
+      {
+        "comment": "",
+        "key": "New bot",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 57
+        }
+      },
+      {
+        "comment": "",
+        "key": "New room",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 70
+        }
+      },
+      {
+        "comment": "",
+        "key": "⌕",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 88
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 91
+        }
+      },
+      {
+        "comment": "",
+        "key": "⌖",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 174
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chief of Staff",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 195
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unpin",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 224
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pin",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 224
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove Chief of Staff",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 227
+        }
+      },
+      {
+        "comment": "",
+        "key": "Make Chief of Staff",
+        "location": {
+          "startingColumn": 65,
+          "startingLine": 227
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mark as Unread",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 230
+        }
+      },
+      {
+        "comment": "",
+        "key": "Edit Profile",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 234
+        }
+      },
+      {
+        "comment": "",
+        "key": "Duplicate",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 238
+        }
+      },
+      {
+        "comment": "",
+        "key": "Copy conversation ID",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 242
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hide from sidebar",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 247
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 251
+        }
+      },
+      {
+        "comment": "",
+        "key": "◇",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 267
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete room",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 295
+        }
+      },
+      {
+        "comment": "",
+        "key": "Routines",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 314
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 319
+        }
+      },
+      {
+        "comment": "",
+        "key": "◷",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 310
+        }
+      },
+      {
+        "comment": "",
+        "key": "Plugins",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 346
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skills",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 374
+        }
+      },
+      {
+        "comment": "",
+        "key": "✦",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 370
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld runs · %lld tokens",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 438
+        }
+      },
+      {
+        "comment": "",
+        "key": "◔",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 428
+        }
+      },
+      {
+        "comment": "",
+        "key": "Weekly usage",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 430
+        }
+      },
+      {
+        "comment": "",
+        "key": "New room",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 501
+        }
+      },
+      {
+        "comment": "",
+        "key": "Members",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 505
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 523
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 526
+        }
+      }
+    ]
+  },
+  "version": 1
+}

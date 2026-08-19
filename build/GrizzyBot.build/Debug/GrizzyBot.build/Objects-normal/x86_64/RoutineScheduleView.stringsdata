@@ -1,0 +1,32 @@
+{
+  "source": "/Volumes/Storage/Projects/GrokBot/GrizzyBot/Sources/GrizzyBot/RoutineScheduleView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "every",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 61
+        }
+      },
+      {
+        "comment": "",
+        "key": "at",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 81
+        }
+      },
+      {
+        "comment": "",
+        "key": "*/3 * * * *",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 94
+        }
+      }
+    ]
+  },
+  "version": 1
+}
