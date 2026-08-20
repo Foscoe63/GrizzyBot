@@ -6,6 +6,7 @@ public enum LLMError: Error, LocalizedError, Sendable, Equatable {
     case http(Int, String)
     case emptyResponse
     case decoding(String)
+    case stalled(silentForMs: Int, chunks: Int)
 
     public var errorDescription: String? {
         switch self {
@@ -19,6 +20,8 @@ public enum LLMError: Error, LocalizedError, Sendable, Equatable {
             return "The model returned an empty reply."
         case .decoding(let detail):
             return "Could not read the model response: \(detail)"
+        case .stalled(let silentForMs, _):
+            return StreamStallError(silentForMs: silentForMs, chunks: 0).errorDescription
         }
     }
 
@@ -37,6 +40,8 @@ public enum ModelRequestRetry {
             if code == 429 { return true }
             if (500...599).contains(code) { return true }
             if code == -1 { return true }
+            return false
+        case .stalled:
             return false
         default:
             return false
@@ -247,17 +252,21 @@ public struct ChatCompletionRequest: Sendable {
     public var messages: [ChatMessage]
     public var tools: [ChatTool]
     public var timeout: TimeInterval
+    /// Silence limit for streaming. 0 disables the watchdog.
+    public var stallMs: Int
 
     public init(
         endpoint: ModelEndpoint,
         messages: [ChatMessage],
         tools: [ChatTool] = [],
-        timeout: TimeInterval = 120
+        timeout: TimeInterval = 120,
+        stallMs: Int = 60_000
     ) {
         self.endpoint = endpoint
         self.messages = messages
         self.tools = tools
         self.timeout = timeout
+        self.stallMs = stallMs
     }
 }
 
@@ -268,18 +277,22 @@ public struct ChatCompletionResponse: Sendable, Equatable {
     public var outputTokens: Int
     public var finishReason: String?
 
+    public var state: JSONValue
+
     public init(
         text: String = "",
         toolCalls: [LLMToolCall] = [],
         inputTokens: Int = 0,
         outputTokens: Int = 0,
-        finishReason: String? = nil
+        finishReason: String? = nil,
+        state: JSONValue = .object([:])
     ) {
         self.text = text
         self.toolCalls = toolCalls
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.finishReason = finishReason
+        self.state = state
     }
 
     public var hasToolCalls: Bool { !toolCalls.isEmpty }
@@ -571,11 +584,39 @@ public struct OpenAIChatClient: ChatCompleting {
             throw LLMError.http(status, Self.extractErrorMessage(snippet))
         }
 
-        var acc = OpenAIStreamAccumulator()
-        for try await line in bytes.lines {
-            if acc.consume(line: line, onDelta: onDelta) { break }
+        let monitor = StallMonitor(stallMs: request.stallMs)
+        let streamTask = Task { () -> OpenAIStreamAccumulator in
+            var acc = OpenAIStreamAccumulator()
+            for try await line in bytes.lines {
+                await monitor.touch()
+                if acc.consume(line: line, onDelta: onDelta) { break }
+            }
+            return acc
         }
-        return try acc.result()
+        let watchTask = Task {
+            do {
+                try await monitor.watchUntilStall()
+            } catch is CancellationError {
+                return
+            } catch {
+                streamTask.cancel()
+            }
+        }
+        do {
+            let acc = try await streamTask.value
+            watchTask.cancel()
+            return try acc.result()
+        } catch is CancellationError {
+            watchTask.cancel()
+            let snap = await monitor.snapshot()
+            if snap.stalled {
+                throw LLMError.stalled(silentForMs: snap.silentForMs, chunks: snap.chunks)
+            }
+            throw CancellationError()
+        } catch {
+            watchTask.cancel()
+            throw error
+        }
     }
 
     private func streamAnthropic(

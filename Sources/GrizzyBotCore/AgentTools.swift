@@ -263,6 +263,9 @@ public enum AgentToolCatalog {
         .init(id: "plugin_call", label: "Plugin call", subtitle: "Search or write through a connected plugin"),
         .init(id: "read_skill", label: "Read skill", subtitle: "Load a skill's full instructions"),
         .init(id: "import_skills", label: "Import skills", subtitle: "Copy SKILL.md folders into GrizzyBot"),
+        .init(id: "search_knowledge", label: "Search knowledge", subtitle: "Search granted knowledge sources"),
+        .init(id: "present_component", label: "Present component", subtitle: "Show a form, gallery, or audit component"),
+        .init(id: "report_decline", label: "Report decline", subtitle: "Audit that this bot declined a request"),
     ]
 
     /// Back-compat alias.
@@ -329,6 +332,9 @@ extension Bot {
         if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
         if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
         if toolId == "import_skills", enabledTools.contains("read_file") { return true }
+        if toolId == "search_knowledge", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
+            return true
+        }
         return false
     }
 
@@ -404,6 +410,10 @@ extension AgentToolCatalog {
     ) -> [ChatTool] {
         let enabled = Set(enabledIds)
             .union(enabledIds.contains("read_file") ? ["import_skills"] : [])
+            .union(
+                (enabledIds.contains("remember") || enabledIds.contains("search_memory"))
+                    ? ["search_knowledge"] : []
+            )
         var tools: [ChatTool] = []
 
         func add(_ id: String, name: String? = nil, description: String, properties: [String: JSONValue], required: [String]) {
@@ -430,7 +440,7 @@ extension AgentToolCatalog {
         )
         add(
             "read_file",
-            description: "Read a UTF-8 file from this bot's home, or an absolute/~ path on this Mac (for example /Users/me/.agents/skills/orchestration/SKILL.md).",
+            description: "Read a UTF-8 file from this bot's home. Absolute/~ paths on this Mac pause for approval (for example ~/.agents/skills/orchestration/SKILL.md).",
             properties: ["path": stringProp("Relative bot-home path or absolute/~ path")],
             required: ["path"]
         )
@@ -464,7 +474,7 @@ extension AgentToolCatalog {
         )
         add(
             "list_files",
-            description: "List a directory in this bot's home, or an absolute/~ folder on this Mac.",
+            description: "List a directory in this bot's home. Absolute/~ folders on this Mac pause for approval.",
             properties: ["directory": stringProp("Relative directory, empty for home root, or an absolute/~ path")],
             required: []
         )
@@ -537,6 +547,29 @@ extension AgentToolCatalog {
                 )
             )
         }
+        add(
+            "search_knowledge",
+            description: "Search knowledge sources this bot is granted (folders and plugin corpora). Respects per-bot ACLs.",
+            properties: ["query": stringProp("Keywords to find")],
+            required: ["query"]
+        )
+        add(
+            "present_component",
+            description: "Show a native component instead of only prose. id is form, gallery, activity, or refusals.",
+            properties: [
+                "id": stringProp("form, gallery, activity, or refusals"),
+                "title": stringProp("Heading"),
+                "fields": stringProp("JSON array of {id,label,value} for forms"),
+                "items": stringProp("JSON array of strings for a gallery"),
+            ],
+            required: ["id"]
+        )
+        add(
+            "report_decline",
+            description: "Record that you declined a request without calling other tools. Used for the audit trail.",
+            properties: ["reason": stringProp("Why you declined")],
+            required: ["reason"]
+        )
         add(
             "request_takeover",
             description: "Ask the user to take over the computer for login or human judgment.",

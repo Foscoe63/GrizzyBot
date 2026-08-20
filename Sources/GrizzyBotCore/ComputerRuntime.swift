@@ -167,6 +167,7 @@ public actor FileDesktopRuntime: ComputerRuntime {
         frames[botId] = frame
         let outline = ComputerOutline.format(lines: [
             ComputerOutline.line(tag: "placeholder", title: url.isEmpty ? "GrizzyBot computer" : url, x: 24, y: 24, width: 180, height: 28),
+            ComputerOutline.line(tag: "button", title: "Submit", x: 40, y: 80, width: 100, height: 28),
         ])
         return ComputerSnapshot(jpeg: jpeg, width: 1024, height: 640, url: url, frame: frame, outline: outline)
     }

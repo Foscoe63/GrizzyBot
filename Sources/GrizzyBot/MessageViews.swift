@@ -215,6 +215,9 @@ struct MessageView: View {
 
         case .approval(let tool, let detail, let status):
             approvalCard(tool: tool, detail: detail, status: status)
+
+        case .component(let payload):
+            componentCard(payload)
         }
     }
 
@@ -231,6 +234,7 @@ struct MessageView: View {
             case .computer(_, let t): return t
             case .choice(let q, _, _): return q
             case .approval(let tool, let detail, _): return "\(tool)\n\(detail)"
+            case .component(let payload): return payload.title
             default: return nil
             }
         }.joined(separator: "\n")
@@ -265,6 +269,42 @@ struct MessageView: View {
             try? await Task.sleep(for: .seconds(1.2))
             copied = false
         }
+    }
+
+    private func componentCard(_ payload: ComponentPayload) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(payload.title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.textBright)
+            Text(payload.id)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.orange)
+            if !payload.fields.isEmpty {
+                ForEach(payload.fields) { field in
+                    HStack {
+                        Text(field.label)
+                            .font(.system(size: 13.5))
+                            .foregroundStyle(Theme.textSecondary)
+                        Spacer()
+                        Text(field.value.isEmpty ? "—" : field.value)
+                            .font(.system(size: 13.5))
+                            .foregroundStyle(Theme.textPrimary)
+                    }
+                }
+            }
+            if !payload.items.isEmpty {
+                ForEach(Array(payload.items.enumerated()), id: \.offset) { _, item in
+                    Text("• \(item)")
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Theme.textPrimary)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .background(Theme.bgBubble)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
     }
 
     private func choiceCard(question: String, subtitle: String?, options: [ChoiceOption]) -> some View {

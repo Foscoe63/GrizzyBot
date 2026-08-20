@@ -268,4 +268,58 @@ struct StoreRobustnessTests {
         store.tickDueRoutines()
         #expect(store.routines[bot.id]?.first?.lastRunAt != nil)
     }
+
+    @Test("failed routine backs off instead of advancing the cron")
+    func routineFailureBackoff() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "cronfail@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Agent", title: "helper")
+        store.chatCompleter = QueueChatClient(results: [
+            .failure(LLMError.http(401, "unauthorized")),
+        ])
+        store.openNewRoutine()
+        store.routineDraft.name = "Ping"
+        store.routineDraft.prompt = "scan github"
+        store.routineDraft.botId = bot.id
+        store.saveRoutineDraft()
+        if let idx = store.routines[bot.id]?.indices.first {
+            store.routines[bot.id]?[idx].nextRunAt = Date.now.addingTimeInterval(-60)
+            store.routines[bot.id]?[idx].active = true
+        }
+        store.tickDueRoutines()
+        #expect(await store.waitForRunCompletion(botId: bot.id) == false)
+        let routine = store.routines[bot.id]?.first
+        #expect(store.threads[bot.id]?.run?.status == .failed)
+        #expect(routine?.failCount == 1)
+        #expect(routine?.inProgress == false)
+        let delay = routine?.nextRunAt?.timeIntervalSinceNow ?? 0
+        #expect(delay > 10 * 60)
+        #expect(delay < 20 * 60)
+    }
+
+    @Test("host-path reads pause for approval")
+    func hostReadApproval() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "hostread@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Agent", title: "helper")
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("host-read-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("note.md")
+        try? "hello-host\n".write(to: file, atomically: true, encoding: .utf8)
+        let escaped = file.path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(
+                toolCalls: [LLMToolCall(
+                    id: "1",
+                    name: "read_file",
+                    arguments: "{\"path\":\"\(escaped)\"}"
+                )]
+            ),
+        ])
+        store.send(botId: bot.id, text: "read that file")
+        #expect(await store.waitForPendingTool(botId: bot.id))
+        #expect(store.threads[bot.id]?.pendingTool?.tool == "read_file.host")
+        #expect(store.threads[bot.id]?.run?.status == .waitingInput)
+    }
 }

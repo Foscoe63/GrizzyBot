@@ -34,6 +34,8 @@ public struct AgentLoopRequest: Sendable {
     public var charBudget: Int
     /// Honest computer status for the system prompt (browser cookies, this Mac, or none).
     public var computerNote: String
+    /// Silence limit for the model stream. 0 disables.
+    public var stallMs: Int
 
     public init(
         endpoint: ModelEndpoint,
@@ -51,7 +53,8 @@ public struct AgentLoopRequest: Sendable {
         maxSteps: Int = 48,
         depth: Int = 0,
         charBudget: Int = 100_000,
-        computerNote: String = ""
+        computerNote: String = "",
+        stallMs: Int = 60_000
     ) {
         self.endpoint = endpoint
         self.botName = botName
@@ -69,6 +72,7 @@ public struct AgentLoopRequest: Sendable {
         self.depth = depth
         self.charBudget = charBudget
         self.computerNote = computerNote
+        self.stallMs = stallMs
     }
 }
 
@@ -100,6 +104,8 @@ public struct AgentLoopResult: Sendable {
     public var steps: Int
     public var messages: [ChatMessage]
     public var compacted: Bool
+    public var failed: Bool
+    public var failureReason: String?
 
     public init(
         text: String,
@@ -109,7 +115,9 @@ public struct AgentLoopResult: Sendable {
         outputTokens: Int = 0,
         steps: Int = 0,
         messages: [ChatMessage] = [],
-        compacted: Bool = false
+        compacted: Bool = false,
+        failed: Bool = false,
+        failureReason: String? = nil
     ) {
         self.text = text
         self.blocks = blocks
@@ -119,6 +127,53 @@ public struct AgentLoopResult: Sendable {
         self.steps = steps
         self.messages = messages
         self.compacted = compacted
+        self.failed = failed
+        self.failureReason = failureReason
+    }
+}
+
+/// Deterministic end-of-turn check: never trust chat text over tool cards.
+public enum AgentCompletionGate {
+    public static func claimsVaultWrite(_ text: String) -> Bool {
+        let t = text.lowercased()
+        if t.contains("vault note written") { return true }
+        if t.contains("successfully uploaded") { return true }
+        let mentionedInbox = t.contains("inbox/") && t.contains(".md")
+        let wrote = t.contains("wrote") || t.contains("saved") || t.contains("written") || t.contains("uploaded")
+        if mentionedInbox && wrote { return true }
+        if t.contains("obsidian") && wrote { return true }
+        return false
+    }
+
+    public static func confirmedVaultWrite(messages: [ChatMessage], blocks: [MessageBlock]) -> Bool {
+        for message in messages where message.role == "tool" {
+            let content = (message.content ?? "").lowercased()
+            if content.contains("tool error") { continue }
+            if content.contains("successfully uploaded") { return true }
+            if content.contains("obsidian_put_file") || content.contains("put_file") {
+                if content.contains("uploaded") || content.contains("ok") { return true }
+            }
+        }
+        for block in blocks {
+            guard case .card(let lines) = block else { continue }
+            var tool = ""
+            var status = ""
+            for line in lines {
+                if line.k == "tool" { tool = line.v.lowercased() }
+                if line.k == "status" { status = line.v.lowercased() }
+            }
+            let writeTool = tool.contains("put_file") || tool.contains("obsidian")
+            if writeTool && status == "ok" { return true }
+        }
+        return false
+    }
+
+    public static func unconfirmedVaultWrite(
+        text: String,
+        messages: [ChatMessage],
+        blocks: [MessageBlock]
+    ) -> Bool {
+        claimsVaultWrite(text) && !confirmedVaultWrite(messages: messages, blocks: blocks)
     }
 }
 
@@ -273,25 +328,75 @@ public enum StreamText {
 
 /// OpenAI/Anthropic tool-calling loop. The store supplies tool execution.
 public enum AgentLoop {
+    public enum PromptSection {
+        public static func identity(botName: String) -> String {
+            "You are \(botName), a GrizzyBot agent running on this Mac."
+        }
+
+        public static func agency() -> String {
+            "You are a fully capable agent: think, use tools, and keep going until the user's request is done or you must wait for them."
+        }
+
+        public static func honesty() -> String {
+            "Be concise. Prefer tools over guessing. Never claim you wrote a file, ran a command, searched, signed in, or called a plugin unless a tool result says so."
+        }
+
+        public static func sandbox() -> String {
+            """
+            Shell runs inside a macOS seatbelt sandbox rooted at your home. Destructive shell and plugin writes pause for user approval unless always-allowed.
+            Shell default timeout is \(Int(BotHomeStore.ShellTimeout.default))s. For multi-step research (curl loops, sleeps), pass timeout_seconds up to \(Int(BotHomeStore.ShellTimeout.max)) or split into shorter commands.
+            Keep going across many tool rounds. If context is compacted, trust the remaining transcript and continue the job.
+            """
+        }
+
+        public static func memory() -> String {
+            "Memory in this prompt is pinned standing rules plus the newest facts. Use search_memory for older facts. Use forget when a fact is wrong or outdated."
+        }
+
+        public static func planFile() -> String {
+            "For jobs that span turns, keep PLAN.md in your home with read_file/write_file and update it as you go."
+        }
+
+        public static func filesAndMcp() -> String {
+            """
+            read_file and list_files read the bot home. Absolute/~ paths on this Mac pause for approval (for example ~/.agents/skills). Prefer them over shell cat.
+            write_file only writes the bot sandbox (Home path), not the user's Obsidian vault.
+            MCP: mcp_list_tools once, then mcp_call. Toolport is a lazy gateway — list returns search/call meta-tools, not GitHub or Obsidian. Pass a catalog name like github__search_repositories as mcp_call's tool, or as arguments.name on toolport_call_tool (not id). Do not list or search Toolport again this turn after you have a name. Do not curl those APIs when an MCP tool exists.
+            Shell ~ is the bot home, not the Mac home.
+            Never claim an Obsidian write unless the tool result names obsidian_put_file (or that server's write tool) and status is ok.
+            """
+        }
+
+        public static func governance() -> String {
+            """
+            Prefer present_component (form, gallery, activity, refusals) over dumping tables as prose. search_knowledge only sees sources you are granted. If a tool result says the workspace policy refused the action, do not retry the same call — change the approach or tell the user.
+            While a person is driving the computer, computer_* tools are refused. Wait.
+            """
+        }
+
+        public static func computer(_ note: String) -> String {
+            let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                return "Computer: no live session is attached. Do not claim you can see or click a desktop until a screenshot tool succeeds."
+            }
+            return "Computer: \(trimmed)"
+        }
+    }
+
     public static func systemPrompt(for request: AgentLoopRequest, now: Date = .now) -> String {
         var lines: [String] = [
-            "You are \(request.botName), a GrizzyBot agent running on this Mac.",
+            PromptSection.identity(botName: request.botName),
             utcDateLine(now: now),
-            "You are a fully capable agent: think, use tools, and keep going until the user's request is done or you must wait for them.",
-            "Be concise. Prefer tools over guessing. Never claim you wrote a file, ran a command, searched, signed in, or called a plugin unless a tool result says so.",
-            "Shell runs inside a macOS seatbelt sandbox rooted at your home. Destructive shell and plugin writes pause for user approval unless always-allowed.",
-            "Shell default timeout is \(Int(BotHomeStore.ShellTimeout.default))s. For multi-step research (curl loops, sleeps), pass timeout_seconds up to \(Int(BotHomeStore.ShellTimeout.max)) or split into shorter commands.",
-            "Keep going across many tool rounds. If context is compacted, trust the remaining transcript and continue the job.",
-            "Memory in this prompt is pinned standing rules plus the newest facts. Use search_memory for older facts. Use forget when a fact is wrong or outdated.",
-            "read_file and list_files read the bot home, or an absolute/~ path on this Mac when the user named a folder (for example ~/.agents/skills). Prefer them over shell cat. write_file only writes the bot sandbox (Home path), not the user's Obsidian vault. MCP: mcp_list_tools once, then mcp_call. Toolport is a lazy gateway — list returns search/call meta-tools, not GitHub or Obsidian. Pass a catalog name like github__search_repositories as mcp_call's tool, or as arguments.name on toolport_call_tool (not id). Do not list or search Toolport again this turn after you have a name. Do not curl those APIs when an MCP tool exists. Shell ~ is the bot home, not the Mac home. Never claim an Obsidian write unless the tool result names obsidian_put_file (or that server's write tool) and status is ok.",
+            PromptSection.agency(),
+            PromptSection.honesty(),
+            PromptSection.sandbox(),
+            PromptSection.memory(),
+            PromptSection.planFile(),
+            PromptSection.filesAndMcp(),
+            PromptSection.governance(),
             AppConfig.keysHelp,
+            PromptSection.computer(request.computerNote),
         ]
-        let computer = request.computerNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        if computer.isEmpty {
-            lines.append("Computer: no live session is attached. Do not claim you can see or click a desktop until a screenshot tool succeeds.")
-        } else {
-            lines.append("Computer: \(computer)")
-        }
         if !request.homePath.isEmpty {
             lines.append("Home path: \(request.homePath)")
         }
@@ -332,7 +437,7 @@ public enum AgentLoop {
 
     public static let parallelSafeTools: Set<String> = [
         "web_search", "web_fetch", "read_file", "list_files", "search_memory",
-        "computer_screenshot", "mcp_list_tools", "read_skill",
+        "computer_screenshot", "mcp_list_tools", "read_skill", "search_knowledge",
     ]
 
     public static func run(
@@ -395,7 +500,8 @@ public enum AgentLoop {
                 let chatRequest = ChatCompletionRequest(
                     endpoint: request.endpoint,
                     messages: messages,
-                    tools: tools
+                    tools: tools,
+                    stallMs: request.stallMs
                 )
                 do {
                     if let onDelta {
@@ -425,6 +531,21 @@ public enum AgentLoop {
             do {
                 response = try await modelRequest(onDelta: onDelta, charBudget: request.charBudget)
             } catch {
+                if error is CancellationError { throw error }
+                if let llm = error as? LLMError, case .stalled(let silent, let chunks) = llm {
+                    return AgentLoopResult(
+                        text: "The model stopped responding. Nothing arrived from it for \(StallClock.words(ms: silent)).",
+                        blocks: blocks,
+                        pause: pause,
+                        inputTokens: inputTokens,
+                        outputTokens: outputTokens,
+                        steps: step,
+                        messages: persistable(),
+                        compacted: compacted,
+                        failed: true,
+                        failureReason: "AGENT_STREAM_STALLED chunks=\(chunks)"
+                    )
+                }
                 if !blocks.isEmpty {
                     let detail = error.localizedDescription
                     return AgentLoopResult(
@@ -435,7 +556,9 @@ public enum AgentLoop {
                         outputTokens: outputTokens,
                         steps: step,
                         messages: persistable(),
-                        compacted: compacted
+                        compacted: compacted,
+                        failed: true,
+                        failureReason: "model stopped responding"
                     )
                 }
                 throw error
@@ -445,9 +568,27 @@ public enum AgentLoop {
             lastText = StreamText.visible(response.text)
 
             if !response.hasToolCalls {
+                if AgentCompletionGate.unconfirmedVaultWrite(
+                    text: lastText,
+                    messages: messages,
+                    blocks: blocks
+                ), step < maxSteps {
+                    if !lastText.isEmpty {
+                        messages.append(.assistant(lastText))
+                    }
+                    messages.append(.user(
+                        "You claimed an Obsidian/vault write, but no tool result names obsidian_put_file (or that server's write tool) with status ok. Call mcp_call to write it, or retract the claim."
+                    ))
+                    continue
+                }
                 if !lastText.isEmpty {
                     messages.append(.assistant(lastText))
                 }
+                let unconfirmed = AgentCompletionGate.unconfirmedVaultWrite(
+                    text: lastText,
+                    messages: messages,
+                    blocks: blocks
+                )
                 return AgentLoopResult(
                     text: lastText,
                     blocks: blocks,
@@ -456,7 +597,9 @@ public enum AgentLoop {
                     outputTokens: outputTokens,
                     steps: step,
                     messages: persistable(),
-                    compacted: compacted
+                    compacted: compacted,
+                    failed: unconfirmed,
+                    failureReason: unconfirmed ? "claimed vault write without an ok tool result" : nil
                 )
             }
 
@@ -526,17 +669,20 @@ public enum AgentLoop {
             }
         }
 
+        let budgetText = lastText.isEmpty
+            ? "I reached the step budget for this turn. Ask me to continue — I'll keep the full tool transcript."
+            : lastText
         return AgentLoopResult(
-            text: lastText.isEmpty
-                ? "I reached the step budget for this turn. Ask me to continue — I'll keep the full tool transcript."
-                : lastText,
+            text: budgetText,
             blocks: blocks,
             pause: pause,
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             steps: maxSteps,
             messages: persistable(),
-            compacted: compacted
+            compacted: compacted,
+            failed: true,
+            failureReason: "step budget"
         )
     }
 

@@ -90,4 +90,14 @@ struct CronTests {
         #expect(described.lead == "Every hour")
         #expect(described.detail == "")
     }
+
+    @Test("routine backoff doubles then caps")
+    func routineBackoff() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        #expect(Cron.backoffDate(failCount: 1, from: now).timeIntervalSince(now) == 15 * 60)
+        #expect(Cron.backoffDate(failCount: 2, from: now).timeIntervalSince(now) == 30 * 60)
+        #expect(Cron.backoffDate(failCount: 3, from: now).timeIntervalSince(now) == 60 * 60)
+        #expect(Cron.backoffDate(failCount: 5, from: now).timeIntervalSince(now) == 240 * 60)
+        #expect(Cron.backoffDate(failCount: 9, from: now).timeIntervalSince(now) == 240 * 60)
+    }
 }

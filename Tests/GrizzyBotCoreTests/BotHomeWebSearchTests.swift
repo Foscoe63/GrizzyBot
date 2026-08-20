@@ -93,6 +93,15 @@ struct BotHomeTests {
         #expect(throws: BotHomeError.hostDenied) {
             _ = try home.readFlexible(botId: "bot-1", path: "/tmp/grizzy-deny/.ssh/id_rsa")
         }
+        let backup = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ssh-backup-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
+        let note = backup.appendingPathComponent("readme.md")
+        try "ok\n".write(to: note, atomically: true, encoding: .utf8)
+        #expect(!BotHomeStore.isDeniedHostPath(note.path))
+        #expect(try home.readFlexible(botId: "bot-1", path: note.path).contains("ok"))
+        #expect(BotHomeStore.isDeniedHostPath("/tmp/grizzy-deny/.ssh/../.ssh/config"))
+        #expect(!BotHomeStore.isDeniedHostPath("/tmp/project/.ssh-backup/readme.md"))
     }
 
     @Test("rejects path escape")

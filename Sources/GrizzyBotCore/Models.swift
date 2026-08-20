@@ -46,6 +46,12 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var enabledTools: [String]
     /// Skills this bot may load. Missing on decode → all bundled skills.
     public var enabledSkills: [String]
+    /// Private bots stay off group pickers. Shared bots can join rooms.
+    public var visibility: BotVisibility
+    /// Local loop (default) or an AG-UI HTTP endpoint.
+    public var runtime: BotRuntime
+    public var aguiURL: String?
+    public var enabledComponents: [String]
 
     public init(
         id: String,
@@ -75,7 +81,11 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         activeTaskId: String? = nil,
         alwaysAllowTools: [String] = [],
         enabledTools: [String] = AgentToolCatalog.allIds,
-        enabledSkills: [String] = BundledSkills.ids
+        enabledSkills: [String] = BundledSkills.ids,
+        visibility: BotVisibility = .private,
+        runtime: BotRuntime = .local,
+        aguiURL: String? = nil,
+        enabledComponents: [String] = AgentComponentCatalog.allIds
     ) {
         self.id = id
         self.name = name
@@ -105,6 +115,10 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.alwaysAllowTools = alwaysAllowTools
         self.enabledTools = enabledTools
         self.enabledSkills = enabledSkills
+        self.visibility = visibility
+        self.runtime = runtime
+        self.aguiURL = aguiURL
+        self.enabledComponents = enabledComponents
     }
 
     enum CodingKeys: String, CodingKey {
@@ -112,7 +126,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case threadId, preview, status, updatedAt, createdAt
         case pinned, hidden, unread, autoApprove, speakReplies, notifications, chiefOfStaff
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
-        case enabledTools, enabledSkills
+        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents
     }
 
     public init(from decoder: Decoder) throws {
@@ -145,6 +159,10 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         alwaysAllowTools = try c.decodeIfPresent([String].self, forKey: .alwaysAllowTools) ?? []
         enabledTools = try c.decodeIfPresent([String].self, forKey: .enabledTools) ?? AgentToolCatalog.allIds
         enabledSkills = try c.decodeIfPresent([String].self, forKey: .enabledSkills) ?? BundledSkills.ids
+        visibility = try c.decodeIfPresent(BotVisibility.self, forKey: .visibility) ?? .private
+        runtime = try c.decodeIfPresent(BotRuntime.self, forKey: .runtime) ?? .local
+        aguiURL = try c.decodeIfPresent(String.self, forKey: .aguiURL)
+        enabledComponents = try c.decodeIfPresent([String].self, forKey: .enabledComponents) ?? AgentComponentCatalog.allIds
     }
 }
 
@@ -207,6 +225,7 @@ public enum MessageBlock: Codable, Sendable, Hashable {
     )
     case childBot(botId: String, name: String, title: String?, status: ChildBotStatus)
     case approval(tool: String, detail: String, status: ApprovalStatus)
+    case component(ComponentPayload)
 }
 
 public enum ApprovalStatus: String, Codable, Sendable {
@@ -274,6 +293,7 @@ public struct ThreadMessage: Codable, Sendable, Hashable, Identifiable {
     public var firstText: String {
         for block in blocks {
             if case .text(let t) = block, !t.isEmpty { return t }
+            if case .component(let payload) = block, !payload.title.isEmpty { return payload.title }
         }
         return ""
     }
@@ -311,6 +331,7 @@ public struct Run: Codable, Sendable, Hashable, Identifiable {
     public var error: String?
     public var startedAt: Date?
     public var completedAt: Date?
+    public var routineId: String?
 
     public init(
         id: String,
@@ -322,7 +343,8 @@ public struct Run: Codable, Sendable, Hashable, Identifiable {
         modelId: String? = nil,
         error: String? = nil,
         startedAt: Date? = .now,
-        completedAt: Date? = nil
+        completedAt: Date? = nil,
+        routineId: String? = nil
     ) {
         self.id = id
         self.botId = botId
@@ -334,6 +356,7 @@ public struct Run: Codable, Sendable, Hashable, Identifiable {
         self.error = error
         self.startedAt = startedAt
         self.completedAt = completedAt
+        self.routineId = routineId
     }
 }
 
@@ -382,6 +405,10 @@ public struct ComputerStatus: Codable, Sendable, Hashable {
     public var controlHolder: ControlHolder
     public var screenAvailable: Bool
     public var lastHeartbeatAt: Date?
+    /// Last screenshot outline. Click policy hit-tests this, not the model's claimed label.
+    public var lastOutline: String
+    public var lastPageURL: String
+    public var lastElement: PolicyElement?
 
     public init(
         botId: String,
@@ -389,7 +416,10 @@ public struct ComputerStatus: Codable, Sendable, Hashable {
         state: ComputerState = .stopped,
         controlHolder: ControlHolder = .none,
         screenAvailable: Bool = false,
-        lastHeartbeatAt: Date? = nil
+        lastHeartbeatAt: Date? = nil,
+        lastOutline: String = "",
+        lastPageURL: String = "",
+        lastElement: PolicyElement? = nil
     ) {
         self.botId = botId
         self.kind = kind
@@ -397,6 +427,40 @@ public struct ComputerStatus: Codable, Sendable, Hashable {
         self.controlHolder = controlHolder
         self.screenAvailable = screenAvailable
         self.lastHeartbeatAt = lastHeartbeatAt
+        self.lastOutline = lastOutline
+        self.lastPageURL = lastPageURL
+        self.lastElement = lastElement
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case botId, kind, state, controlHolder, screenAvailable, lastHeartbeatAt
+        case lastOutline, lastPageURL, lastElement
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        botId = try c.decode(String.self, forKey: .botId)
+        kind = try c.decodeIfPresent(SandboxKind.self, forKey: .kind) ?? .browser
+        state = try c.decodeIfPresent(ComputerState.self, forKey: .state) ?? .stopped
+        controlHolder = try c.decodeIfPresent(ControlHolder.self, forKey: .controlHolder) ?? .none
+        screenAvailable = try c.decodeIfPresent(Bool.self, forKey: .screenAvailable) ?? false
+        lastHeartbeatAt = try c.decodeIfPresent(Date.self, forKey: .lastHeartbeatAt)
+        lastOutline = try c.decodeIfPresent(String.self, forKey: .lastOutline) ?? ""
+        lastPageURL = try c.decodeIfPresent(String.self, forKey: .lastPageURL) ?? ""
+        lastElement = try c.decodeIfPresent(PolicyElement.self, forKey: .lastElement)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(botId, forKey: .botId)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(state, forKey: .state)
+        try c.encode(controlHolder, forKey: .controlHolder)
+        try c.encode(screenAvailable, forKey: .screenAvailable)
+        try c.encodeIfPresent(lastHeartbeatAt, forKey: .lastHeartbeatAt)
+        try c.encode(lastOutline, forKey: .lastOutline)
+        try c.encode(lastPageURL, forKey: .lastPageURL)
+        try c.encodeIfPresent(lastElement, forKey: .lastElement)
     }
 }
 
@@ -414,6 +478,9 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
     public var lastRunAt: Date?
     public var nextRunAt: Date?
     public var createdAt: Date
+    public var inProgress: Bool
+    public var failCount: Int
+    public var lastError: String?
 
     public init(
         id: String,
@@ -426,7 +493,10 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
         notify: Bool = true,
         lastRunAt: Date? = nil,
         nextRunAt: Date? = nil,
-        createdAt: Date = .now
+        createdAt: Date = .now,
+        inProgress: Bool = false,
+        failCount: Int = 0,
+        lastError: String? = nil
     ) {
         self.id = id
         self.botId = botId
@@ -439,6 +509,32 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
         self.lastRunAt = lastRunAt
         self.nextRunAt = nextRunAt
         self.createdAt = createdAt
+        self.inProgress = inProgress
+        self.failCount = failCount
+        self.lastError = lastError
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, botId, name, prompt, cron, timezone, active, notify
+        case lastRunAt, nextRunAt, createdAt, inProgress, failCount, lastError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        botId = try c.decode(String.self, forKey: .botId)
+        name = try c.decode(String.self, forKey: .name)
+        prompt = try c.decodeIfPresent(String.self, forKey: .prompt) ?? ""
+        cron = try c.decode(String.self, forKey: .cron)
+        timezone = try c.decodeIfPresent(String.self, forKey: .timezone) ?? "UTC"
+        active = try c.decodeIfPresent(Bool.self, forKey: .active) ?? true
+        notify = try c.decodeIfPresent(Bool.self, forKey: .notify) ?? true
+        lastRunAt = try c.decodeIfPresent(Date.self, forKey: .lastRunAt)
+        nextRunAt = try c.decodeIfPresent(Date.self, forKey: .nextRunAt)
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? .now
+        inProgress = try c.decodeIfPresent(Bool.self, forKey: .inProgress) ?? false
+        failCount = try c.decodeIfPresent(Int.self, forKey: .failCount) ?? 0
+        lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
     }
 }
 
@@ -743,16 +839,18 @@ public struct UserAccount: Codable, Sendable, Hashable, Identifiable {
     public var email: String
     public var name: String
     public var createdAt: Date
+    public var role: AccountRole
 
-    public init(id: String, email: String, name: String, createdAt: Date = .now) {
+    public init(id: String, email: String, name: String, createdAt: Date = .now, role: AccountRole = .owner) {
         self.id = id
         self.email = email
         self.name = name
         self.createdAt = createdAt
+        self.role = role
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, email, name, createdAt, passwordHash
+        case id, email, name, createdAt, passwordHash, role
     }
 
     public init(from decoder: Decoder) throws {
@@ -761,6 +859,7 @@ public struct UserAccount: Codable, Sendable, Hashable, Identifiable {
         email = try c.decode(String.self, forKey: .email)
         name = try c.decode(String.self, forKey: .name)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? .now
+        role = try c.decodeIfPresent(AccountRole.self, forKey: .role) ?? .owner
         if let legacyHash = try c.decodeIfPresent(String.self, forKey: .passwordHash),
            !legacyHash.isEmpty {
             try? AccountCredentialStore.save(userId: id, passwordHash: legacyHash)
@@ -773,6 +872,7 @@ public struct UserAccount: Codable, Sendable, Hashable, Identifiable {
         try c.encode(email, forKey: .email)
         try c.encode(name, forKey: .name)
         try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(role, forKey: .role)
     }
 }
 

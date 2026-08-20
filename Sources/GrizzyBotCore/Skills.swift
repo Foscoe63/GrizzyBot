@@ -224,13 +224,14 @@ public enum BundledSkills {
         3. Otherwise call `web_search` once with a precise query. One follow-up is allowed only if results are thin but non-empty.
         4. `web_fetch` the 2–4 best URLs. Quote or paraphrase; do not invent citations.
         5. Write the answer with short bullets, then a **Sources** list of title + URL.
-        6. If the user asked for a file, `write_file` a markdown brief under `notes/` — unless they asked to save in Obsidian, then use the vault's MCP write tool.
+        6. If the user asked for a file, `write_file` a markdown brief under `notes/` — unless they asked to save in Obsidian, then use the vault's MCP write tool. For multi-day jobs, keep `PLAN.md` in the bot home.
 
         ## Rules
         - Prefer primary sources over aggregators.
         - If search fails, is blocked, or returns no results twice, stop. Say so and work from what you have (including this Mac Settings). Do not keep retrying similar queries.
         - For Toolport, search once and call with the exact catalog name (`github__search_repositories`). After a tool error, stop; do not grep binaries or retry similar searches.
         - Never claim you visited a page unless `web_fetch` returned it.
+        - Never claim an Obsidian write unless the tool result names `obsidian_put_file` and status is ok.
         """,
         allowedTools: ["web_search", "web_fetch", "write_file", "mcp_list_tools", "mcp_call"]
     )
