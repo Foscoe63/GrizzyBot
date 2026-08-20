@@ -184,6 +184,32 @@ public struct PluginClient: PluginConnecting {
                 let id = item["id"] as? String ?? ""
                 return "• \(name) (\(id))"
             }.joined(separator: "\n")
+        case "google-drive", "googledrive", "gdrive":
+            let encoded = urlEncode(q)
+            let json = try await getJSON(
+                "https://www.googleapis.com/drive/v3/files?q=fullText%20contains%20%27\(encoded)%27&pageSize=8&fields=files(id,name,mimeType)",
+                token: token
+            )
+            let files = (json["files"] as? [[String: Any]]) ?? []
+            if files.isEmpty { return "No Google Drive files for \(q)." }
+            return files.prefix(8).compactMap { item in
+                let name = item["name"] as? String ?? ""
+                let id = item["id"] as? String ?? ""
+                return "• \(name) (\(id))"
+            }.joined(separator: "\n")
+        case "onedrive", "microsoft-onedrive":
+            let encoded = urlEncode(q)
+            let json = try await getJSON(
+                "https://graph.microsoft.com/v1.0/me/drive/root/search(q='\(encoded)')",
+                token: token
+            )
+            let values = (json["value"] as? [[String: Any]]) ?? []
+            if values.isEmpty { return "No OneDrive files for \(q)." }
+            return values.prefix(8).compactMap { item in
+                let name = item["name"] as? String ?? ""
+                let id = item["id"] as? String ?? ""
+                return "• \(name) (\(id))"
+            }.joined(separator: "\n")
         default:
             throw PluginError.rejected("Paste-token \(slug) has no read API in GrizzyBot. Connect Composio for search.")
         }

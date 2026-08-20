@@ -488,28 +488,47 @@ public enum McpClient {
 
     public static func formatToolList(_ tools: [McpToolInfo]) -> String {
         if tools.isEmpty { return "No tools." }
-        return tools.map { tool in
-            var line = "• \(tool.name)"
-            if !tool.description.isEmpty {
-                line += " — \(tool.description)"
+        let gateway = tools.contains { McpGatewayCall.isMetaTool($0.name) }
+        var lines: [String] = []
+        if gateway {
+            lines.append(contentsOf: [
+                "Lazy MCP gateway: this list is meta-tools, not GitHub/Obsidian/etc.",
+                "1. toolport_status once if you need server prefixes and tool counts.",
+                "2. toolport_search_tools once (server: \"github\" with an empty query lists that server).",
+                "3. mcp_call with tool=toolport_call_tool and arguments.name = the exact catalog name (not id). Passing github__search_repositories as mcp_call's tool is also fine — it is wrapped.",
+                "4. Do not search again this turn. Do not curl or shell those APIs when a catalog tool exists.",
+                "",
+            ])
+        }
+        lines.append(contentsOf: tools.map { formatToolLine($0, compact: gateway) })
+        return lines.joined(separator: "\n")
+    }
+
+    private static func formatToolLine(_ tool: McpToolInfo, compact: Bool) -> String {
+        var line = "• \(tool.name)"
+        if !tool.description.isEmpty {
+            let description = compact
+                ? String(tool.description.prefix(120)).replacingOccurrences(of: "\n", with: " ")
+                : tool.description
+            line += " — \(description)"
+        }
+        let schema = tool.inputSchema.mapValues(\.value)
+        let properties = (schema["properties"] as? [String: Any]) ?? [:]
+        if !properties.isEmpty {
+            let keys = properties.keys.sorted().joined(separator: ", ")
+            line += "\n  args: \(keys)"
+            if let required = schema["required"] as? [String], !required.isEmpty {
+                line += " (required: \(required.joined(separator: ", ")))"
             }
-            let schema = tool.inputSchema.mapValues(\.value)
-            let properties = (schema["properties"] as? [String: Any]) ?? [:]
-            if !properties.isEmpty {
-                let keys = properties.keys.sorted().joined(separator: ", ")
-                line += "\n  args: \(keys)"
-                if let required = schema["required"] as? [String], !required.isEmpty {
-                    line += " (required: \(required.joined(separator: ", ")))"
-                }
-            }
-            return line
-        }.joined(separator: "\n")
+        }
+        return line
     }
 }
 
 /// Flatten `mcp_call` arguments so path/content work whether nested or top-level.
 public enum McpCallArguments {
-    private static let reserved: Set<String> = ["server", "tool", "name"]
+    /// `name` is not reserved: Toolport's call_tool requires it, and `tool` already identifies the MCP tool.
+    private static let reserved: Set<String> = ["server", "tool"]
 
     public static func resolve(_ args: [String: JSONValue]) -> [String: JSONValue] {
         var call = args["arguments"]?.objectValue() ?? [:]

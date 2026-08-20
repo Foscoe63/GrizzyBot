@@ -38,7 +38,7 @@ struct AppSettingsOverlayView: View {
                 nav
                 content
             }
-            .frame(width: 860, height: store.appSettingsSection == .themes ? 620 : 560)
+            .frame(width: 860, height: store.appSettingsSection == .themes || store.appSettingsSection == .governance || store.appSettingsSection == .knowledge || store.appSettingsSection == .components ? 620 : 560)
             .background(Theme.bgRightPanel)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
@@ -653,6 +653,15 @@ struct AppSettingsOverlayView: View {
                             .foregroundStyle(Theme.textSidebarIcon)
                             .padding(.top, 8)
                         }
+
+                    case .governance:
+                        GovernanceSettingsView()
+
+                    case .knowledge:
+                        KnowledgeSettingsView()
+
+                    case .components:
+                        ComponentsSettingsView()
                     }
                 }
                 .padding(.horizontal, 20)
@@ -735,6 +744,9 @@ struct AppSettingsOverlayView: View {
         case .tools: return "⚒"
         case .themes: return "◑"
         case .diagnostics: return "☰"
+        case .governance: return "⚖"
+        case .knowledge: return "▤"
+        case .components: return "▣"
         }
     }
 

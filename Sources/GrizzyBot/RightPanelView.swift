@@ -402,6 +402,78 @@ struct RightPanelView: View {
                     .foregroundStyle(Theme.textMuted)
                     .padding(.top, 6)
 
+                Text("Visibility")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+                Picker("Visibility", selection: Binding(
+                    get: { bot.visibility },
+                    set: { store.patchBot(bot.id, visibility: $0) }
+                )) {
+                    ForEach(BotVisibility.allCases) { item in
+                        Text(item.label).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.top, 8)
+                Text("Private bots stay off group pickers. Shared bots can join rooms.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 6)
+
+                Text("Runtime")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+                Picker("Runtime", selection: Binding(
+                    get: { bot.runtime },
+                    set: { store.patchBot(bot.id, runtime: $0) }
+                )) {
+                    ForEach(BotRuntime.allCases) { item in
+                        Text(item.label).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.top, 8)
+                GrizzyField(
+                    label: "AG-UI URL",
+                    placeholder: "http://127.0.0.1:4200/",
+                    text: Binding(
+                        get: { bot.aguiURL ?? "" },
+                        set: { store.patchBot(bot.id, aguiURL: $0) }
+                    )
+                )
+                .padding(.top, 8)
+                Text("An AG-UI endpoint is a coworker you already run (LangGraph, Mastra, CrewAI). Tools still execute in GrizzyBot through policy and audit after RUN_FINISHED; the next POST carries tool results and state. Bearer token: store it as connection secret agui:<bot-id> if needed.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 6)
+
+                Text("Components")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+                Text("Published cards this bot may present. Drafts in Settings → Components stay hidden until you publish.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 4)
+                let published = AgentComponentCatalog.allIds + store.sandboxComponents.filter(\.published).map(\.id)
+                ForEach(published, id: \.self) { componentId in
+                    settingsToggle(
+                        title: componentId,
+                        subtitle: AgentComponentCatalog.allIds.contains(componentId)
+                            ? "Built-in card"
+                            : "Published playground card",
+                        isOn: bot.enabledComponents.contains(componentId)
+                    ) {
+                        store.setBotComponent(
+                            bot.id,
+                            componentId: componentId,
+                            enabled: !bot.enabledComponents.contains(componentId)
+                        )
+                    }
+                }
+
                 Text("Color")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.textSecondary)

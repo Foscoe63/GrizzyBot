@@ -132,6 +132,22 @@ extension JSONValue: Codable {
         }
         return decoded.objectValue()
     }
+
+    /// Shallow object merge used for AG-UI `STATE_DELTA`. Arrays and scalars replace.
+    public func merging(_ delta: JSONValue) -> JSONValue {
+        guard case .object(let base) = self, case .object(let patch) = delta else {
+            return delta
+        }
+        var next = base
+        for (key, value) in patch {
+            if let existing = next[key] {
+                next[key] = existing.merging(value)
+            } else {
+                next[key] = value
+            }
+        }
+        return .object(next)
+    }
 }
 
 extension JSONEncoder {

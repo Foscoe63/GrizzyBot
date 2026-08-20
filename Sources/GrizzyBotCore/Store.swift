@@ -45,6 +45,12 @@ public final class AppStore {
     public var appConfig: AppConfig = AppConfig()
     public var customTools: [CustomAgentTool] = []
     public var mcpServers: [McpServer] = []
+    public var actionPolicy: ActionPolicy = .openDefault
+    public var knowledgeSources: [KnowledgeSource] = []
+    public var pluginGrants: [PluginGrant] = []
+    public var sandboxComponents: [SandboxComponent] = []
+    public var mcpAdvertisedTools: [String: [String]] = [:]
+    public var auditEvents: [AuditEvent] = []
     public var appSettingsOpen: Bool = false
     public var appSettingsSection: AppSettingsSection = .general
     public var mainView: ShellMainView = .chat
@@ -58,7 +64,7 @@ public final class AppStore {
     public var pendingAuthEmail: String = ""
 
     public enum AppSettingsSection: String, Sendable, CaseIterable, Identifiable {
-        case general, connections, computer, voice, tools, themes, diagnostics
+        case general, connections, computer, voice, tools, themes, diagnostics, governance, knowledge, components
         public var id: String { rawValue }
         public var label: String {
             switch self {
@@ -69,6 +75,9 @@ public final class AppStore {
             case .tools: return "Tools"
             case .themes: return "Themes"
             case .diagnostics: return "Diagnostics"
+            case .governance: return "Governance"
+            case .knowledge: return "Knowledge"
+            case .components: return "Components"
             }
         }
     }
@@ -163,6 +172,9 @@ public final class AppStore {
         optInNewTool("import_skills")
         optInNewTool("forget")
         optInNewTool("computer_scroll")
+        optInNewTool("search_knowledge")
+        optInNewTool("present_component")
+        optInNewTool("report_decline")
         if delayScale >= 1 {
             startRoutineScheduler()
         }
@@ -213,6 +225,13 @@ public final class AppStore {
     /// Registered accounts on this Mac (passwords live in Keychain).
     public var registeredAccounts: [UserAccount] { users }
 
+    public var currentRole: AccountRole {
+        guard let id = session?.userId else { return .operatorUser }
+        return users.first(where: { $0.id == id })?.role ?? .operatorUser
+    }
+
+    public var isOwner: Bool { currentRole == .owner }
+
     private func attachUserPersistence(userId: String) {
         let userDir = AccountLayout.ensureUserDirectory(global: globalRoot, userId: userId)
         userPersistence = Persistence(root: userDir)
@@ -227,6 +246,7 @@ public final class AppStore {
         route = bots.isEmpty ? .onboarding : .shell
         showHostPrompt = route == .shell && deployment.computerHost == nil
         globalPersistence.saveSession(session)
+        recordBootBoundary()
     }
 
     private func loadWorkspace(for userId: String) {
@@ -253,6 +273,12 @@ public final class AppStore {
         groups = []
         customTools = []
         mcpServers = []
+        actionPolicy = .openDefault
+        knowledgeSources = []
+        pluginGrants = []
+        sandboxComponents = []
+        mcpAdvertisedTools = [:]
+        auditEvents = []
         oauthJSON = nil
         connectionSecrets = [:]
         activeBotId = nil
@@ -285,6 +311,22 @@ public final class AppStore {
         appConfig = ws.appConfig
         customTools = ws.customTools
         mcpServers = ws.mcpServers
+        actionPolicy = ws.actionPolicy
+        knowledgeSources = ws.knowledgeSources
+        pluginGrants = ws.pluginGrants
+        sandboxComponents = ws.sandboxComponents
+        mcpAdvertisedTools = ws.mcpAdvertisedTools
+        auditEvents = globalPersistence.loadAudit()
+        if auditEvents.isEmpty {
+            auditEvents = userPersistence.loadAudit()
+        }
+        applyGovernance(globalPersistence.loadGovernance() ?? GovernanceBundle(
+            actionPolicy: ws.actionPolicy,
+            pluginGrants: ws.pluginGrants,
+            knowledgeSources: ws.knowledgeSources,
+            sandboxComponents: ws.sandboxComponents,
+            mcpAdvertisedTools: ws.mcpAdvertisedTools
+        ))
         oauthJSON = ws.oauthJSON
         connectionSecrets = ws.connectionSecrets
         if let userId = session?.userId, let secrets = SecretStore.load(userId: userId) {
@@ -340,8 +382,36 @@ public final class AppStore {
             customTools: customTools,
             mcpServers: mcpServers,
             oauthJSON: oauthJSON,
-            connectionSecrets: connectionSecrets
+            connectionSecrets: connectionSecrets,
+            actionPolicy: actionPolicy,
+            knowledgeSources: knowledgeSources,
+            pluginGrants: pluginGrants,
+            sandboxComponents: sandboxComponents,
+            mcpAdvertisedTools: mcpAdvertisedTools
         )
+    }
+
+    private func currentGovernance() -> GovernanceBundle {
+        GovernanceBundle(
+            actionPolicy: actionPolicy,
+            pluginGrants: pluginGrants,
+            knowledgeSources: knowledgeSources,
+            sandboxComponents: sandboxComponents,
+            mcpAdvertisedTools: mcpAdvertisedTools
+        )
+    }
+
+    private func applyGovernance(_ bundle: GovernanceBundle) {
+        actionPolicy = bundle.actionPolicy
+        pluginGrants = bundle.pluginGrants
+        knowledgeSources = bundle.knowledgeSources
+        sandboxComponents = bundle.sandboxComponents
+        mcpAdvertisedTools = bundle.mcpAdvertisedTools
+    }
+
+    private func saveGovernanceIfOwner() {
+        guard isOwner else { return }
+        globalPersistence.saveGovernance(currentGovernance())
     }
 
     private func save() {
@@ -352,6 +422,9 @@ public final class AppStore {
             userId: userId,
             providerCredentials: providerCredentials
         )
+        userPersistence.saveAudit(auditEvents)
+        globalPersistence.saveAudit(auditEvents)
+        saveGovernanceIfOwner()
         globalPersistence.saveUsers(users)
         globalPersistence.saveSession(session)
     }
@@ -476,12 +549,17 @@ public final class AppStore {
         let local = trimmedEmail.split(separator: "@").first.map(String.init) ?? "User"
         let resolvedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalName = resolvedName.isEmpty ? (local.isEmpty ? "User" : local) : resolvedName
+        if isOwner {
+            saveGovernanceIfOwner()
+        }
+        let role: AccountRole = users.contains(where: { $0.role == .owner }) ? .operatorUser : .owner
         let userId = Ids.new()
         try? AccountCredentialStore.save(userId: userId, passwordHash: PasswordHasher.hash(password))
         let user = UserAccount(
             id: userId,
             email: trimmedEmail,
-            name: finalName
+            name: finalName,
+            role: role
         )
         users.append(user)
         attachUserPersistence(userId: userId)
@@ -501,8 +579,10 @@ public final class AppStore {
         modelBaseUrl = nil
         fetchedModels = []
         activeBotId = nil
+        applyGovernance(globalPersistence.loadGovernance() ?? currentGovernance())
         route = .onboarding
         save()
+        recordBootBoundary()
         return nil
     }
 
@@ -919,6 +999,7 @@ public final class AppStore {
         var steps = 0
         var replyText = ""
         var failed = false
+        var failureReason: String?
         var transcript: [ChatMessage] = []
 
         do {
@@ -952,47 +1033,26 @@ public final class AppStore {
                 )
             }
             let progressId = progressMsg.id
-            let result = try await AgentLoop.run(
-                client: client,
-                request: AgentLoopRequest(
-                    endpoint: endpoint,
-                    botName: bot.name,
-                    botTitle: bot.title,
-                    instructions: bot.instructions,
-                    memory: memoryText,
-                    sharedMemory: sharedText,
-                    skillCatalog: skillText,
-                    homePath: homePath,
-                    history: textHistory,
-                    priorMessages: priorLLM,
-                    prompt: prompt,
-                    tools: tools,
-                    maxSteps: 48,
-                    charBudget: AgentLoopRequest.charBudget(provider: provider),
-                    computerNote: computerNote
-                ),
-                onDelta: { [weak self] delta in
-                    Task { @MainActor in
-                        self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: delta)
-                    }
-                },
-                onStep: { [weak self] step, max in
-                    Task { @MainActor in
-                        self?.setThinkingProgress(
-                            threadKey: threadKey,
-                            runId: runId,
-                            messageId: progressId,
-                            text: "thinking… step \(step)/\(max)"
-                        )
-                    }
-                },
-                onTool: { [weak self] name, _, result in
-                    Task { @MainActor in
-                        self?.appendRunLog(botId: botId, kind: "tool", text: "\(name) \(String(result.output.prefix(400)))")
-                        self?.appendLiveTool(threadKey: threadKey, runId: runId, name: name, result: result)
-                    }
-                }
-            ) { [weak self] name, arguments in
+            let stallMs = max(0, appConfig.agentStallTimeoutMs)
+            let loopRequest = AgentLoopRequest(
+                endpoint: endpoint,
+                botName: bot.name,
+                botTitle: bot.title,
+                instructions: bot.instructions,
+                memory: memoryText,
+                sharedMemory: sharedText,
+                skillCatalog: skillText,
+                homePath: homePath,
+                history: textHistory,
+                priorMessages: priorLLM,
+                prompt: prompt,
+                tools: tools,
+                maxSteps: 48,
+                charBudget: AgentLoopRequest.charBudget(provider: provider),
+                computerNote: computerNote,
+                stallMs: stallMs
+            )
+            let execute: @Sendable (String, String) async -> AgentToolCallResult = { [weak self] name, arguments in
                 guard let self else {
                     return AgentToolCallResult(output: "store released")
                 }
@@ -1005,6 +1065,66 @@ public final class AppStore {
                     client: client
                 )
             }
+            let result: AgentLoopResult
+            if bot.runtime == .agui, let agui = bot.aguiURL?.trimmingCharacters(in: .whitespacesAndNewlines), !agui.isEmpty {
+                var aguiMessages: [ChatMessage] = [.system(AgentLoop.systemPrompt(for: loopRequest))]
+                aguiMessages.append(contentsOf: priorLLM.filter { $0.role != "system" })
+                aguiMessages.append(.user(prompt))
+                var headers: [String: String] = [:]
+                if let token = connectionSecrets["agui:\(botId)"], !token.isEmpty {
+                    headers["Authorization"] = "Bearer \(token)"
+                }
+                result = try await AguiRuntime.run(
+                    input: AguiClient.RunInput(
+                        url: agui,
+                        headers: headers,
+                        threadId: thread.threadId,
+                        runId: runId,
+                        messages: aguiMessages,
+                        tools: tools,
+                        stallMs: stallMs
+                    ),
+                    onDelta: { [weak self] delta in
+                        Task { @MainActor in
+                            self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: delta)
+                        }
+                    },
+                    onTool: { [weak self] name, _, toolResult in
+                        Task { @MainActor in
+                            self?.appendRunLog(botId: botId, kind: "tool", text: "\(name) \(String(toolResult.output.prefix(400)))")
+                            self?.appendLiveTool(threadKey: threadKey, runId: runId, name: name, result: toolResult)
+                        }
+                    },
+                    execute: execute
+                )
+            } else {
+                result = try await AgentLoop.run(
+                    client: client,
+                    request: loopRequest,
+                    onDelta: { [weak self] delta in
+                        Task { @MainActor in
+                            self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: delta)
+                        }
+                    },
+                    onStep: { [weak self] step, max in
+                        Task { @MainActor in
+                            self?.setThinkingProgress(
+                                threadKey: threadKey,
+                                runId: runId,
+                                messageId: progressId,
+                                text: "thinking… step \(step)/\(max)"
+                            )
+                        }
+                    },
+                    onTool: { [weak self] name, _, toolResult in
+                        Task { @MainActor in
+                            self?.appendRunLog(botId: botId, kind: "tool", text: "\(name) \(String(toolResult.output.prefix(400)))")
+                            self?.appendLiveTool(threadKey: threadKey, runId: runId, name: name, result: toolResult)
+                        }
+                    },
+                    execute: execute
+                )
+            }
             blocks.append(contentsOf: result.blocks)
             replyText = result.text
             pause = result.pause
@@ -1012,6 +1132,13 @@ public final class AppStore {
             outputTokens = result.outputTokens
             steps = result.steps
             transcript = result.messages
+            if result.failed {
+                failed = true
+                failureReason = result.failureReason
+                if let reason = result.failureReason {
+                    appendRunLog(botId: botId, kind: "error", text: reason)
+                }
+            }
         } catch is CancellationError {
             finishCancelled(botId: botId, threadKey: threadKey, runId: runId)
             runTasks.removeValue(forKey: runId)
@@ -1075,8 +1202,18 @@ public final class AppStore {
             thread2.run?.status = .waitingInput
         } else if failed {
             thread2.run?.status = .failed
-            thread2.run?.error = replyText
+            thread2.run?.error = failureReason ?? replyText
             thread2.run?.completedAt = .now
+            if failureReason?.contains("AGENT_STREAM_STALLED") == true {
+                recordAudit(
+                    type: .agentStreamStalled,
+                    botId: botId,
+                    tool: nil,
+                    reason: replyText,
+                    allowed: false,
+                    forwarded: false
+                )
+            }
         } else {
             thread2.run?.status = .completed
             thread2.run?.completedAt = .now
@@ -1096,6 +1233,12 @@ public final class AppStore {
         )
         save()
         runTasks.removeValue(forKey: runId)
+        finishRoutineIfNeeded(
+            botId: botId,
+            threadKey: threadKey,
+            status: thread2.run?.status,
+            error: thread2.run?.error ?? (failed ? replyText : nil)
+        )
         announceFinished(botId: botId, text: replyText, status: thread2.run?.status)
     }
 
@@ -1303,6 +1446,110 @@ public final class AppStore {
             return AgentToolCallResult(output: output)
         }
 
+        if ActionGateway.isComputerTool(name), computers[botId]?.controlHolder == .user {
+            let refusal = ActionGateway.humanDrivingRefusal(tool: name)
+            recordAudit(
+                type: .computerActionRefused,
+                botId: botId,
+                tool: name,
+                reason: refusal.reason,
+                allowed: false,
+                forwarded: false
+            )
+            return AgentToolCallResult(
+                output: refusal.output,
+                blocks: [.card(lines: [CardLine(k: "refused", v: refusal.reason)])]
+            )
+        }
+
+        if name == "mcp_call" || name == "mcp_list_tools" {
+            let server = resolveMcpServer(s("server"), bot: bot)
+            if let server {
+                let plugin = server.toolId
+                let toolName = name == "mcp_list_tools" ? nil : s("tool", "name")
+                if !PluginGrant.allows(grants: pluginGrants, botId: botId, plugin: plugin, tool: toolName) {
+                    let reason = "This bot is not granted \(plugin)\(toolName.map { "/\($0)" } ?? "")."
+                    recordAudit(
+                        type: .mcpCallRejected,
+                        botId: botId,
+                        tool: name,
+                        reason: reason,
+                        allowed: false,
+                        forwarded: false
+                    )
+                    return AgentToolCallResult(output: reason)
+                }
+            }
+        }
+
+        if name == "present_component" {
+            let componentId = s("id", "name")
+            if !AgentComponentCatalog.isPublished(componentId, extras: sandboxComponents) {
+                return AgentToolCallResult(output: "Unknown component \(componentId).")
+            }
+            if !bot.enabledComponents.contains(componentId) {
+                let reason = "Component \(componentId) is withheld from this bot."
+                recordAudit(type: .componentRefused, botId: botId, tool: name, reason: reason, allowed: false, forwarded: false)
+                return AgentToolCallResult(output: reason)
+            }
+            let authored = sandboxComponents.first { $0.id == componentId }
+            let needsData = componentId == "activity" || componentId == "refusals"
+                || (authored?.dataFunctions.isEmpty == false)
+            if needsData {
+                let dataPlugin = "component-data:\(componentId)"
+                if !PluginGrant.allows(grants: pluginGrants, botId: botId, plugin: dataPlugin, tool: nil) {
+                    let reason = "This bot is not granted \(dataPlugin)."
+                    recordAudit(type: .componentRefused, botId: botId, tool: name, reason: reason, allowed: false, forwarded: false)
+                    return AgentToolCallResult(output: reason)
+                }
+            }
+        }
+
+        let mcpServer = (name == "mcp_call" || name == "mcp_list_tools") ? resolveMcpServer(s("server"), bot: bot) : nil
+        let advertised: Bool = {
+            if name == "mcp_list_tools" { return true }
+            guard name == "mcp_call", let server = mcpServer else { return false }
+            let toolName = s("tool", "name")
+            return mcpAdvertisedTools[server.id]?.contains(toolName) == true
+        }()
+        let resolved = resolvePolicyElement(tool: name, argumentsJSON: argumentsJSON, botId: botId)
+        let pageURL = computers[botId]?.lastPageURL ?? ""
+        let pageHost = URL(string: pageURL)?.host ?? ""
+        let context = ActionGateway.context(
+            tool: name,
+            argumentsJSON: argumentsJSON,
+            botId: botId,
+            actorId: session?.userId ?? "local",
+            pageURL: pageURL,
+            pageHost: pageHost,
+            element: resolved,
+            mcpServer: mcpServer,
+            advertisedMcpTool: advertised
+        )
+        let decision = ActionGateway.decide(policy: actionPolicy, context: context)
+        recordAudit(
+            type: ActionGateway.auditType(for: name, decision: decision, failed: false),
+            botId: botId,
+            tool: name,
+            reason: decision.reason,
+            allowed: decision.allowed,
+            forwarded: decision.forward,
+            matched: decision.matched,
+            source: decision.source.rawValue,
+            attributes: context.mcp.map { mcp in
+                ["mcp.server": .string(mcp.server), "mcp.tool": .string(mcp.tool), "mcp.effect": .string(mcp.effect.rawValue)]
+            } ?? [:]
+        )
+        if !decision.forward {
+            return AgentToolCallResult(
+                output: decision.reason,
+                blocks: [.card(lines: [
+                    CardLine(k: "policy", v: "refused"),
+                    CardLine(k: "rule", v: decision.matched ?? "default deny"),
+                ])]
+            )
+        }
+
         switch name {
         case "write_file":
             let path = s("path")
@@ -1322,6 +1569,20 @@ public final class AppStore {
         case "read_file":
             let path = s("path")
             guard !path.isEmpty else { return AgentToolCallResult(output: "path is required") }
+            if BotHomeStore.isHostPath(path) {
+                if BotHomeStore.isDeniedHostPath(path) {
+                    return AgentToolCallResult(output: "Read failed: \(BotHomeError.hostDenied.localizedDescription)")
+                }
+                if let gated = gatedWrite(
+                    tool: "read_file.host",
+                    detail: path,
+                    argumentsJSON: argumentsJSON,
+                    bot: bot,
+                    approved: approved
+                ) {
+                    return gated
+                }
+            }
             do {
                 let content = try botHome.readFlexible(botId: botId, path: path)
                 return AgentToolCallResult(
@@ -1389,6 +1650,20 @@ public final class AppStore {
 
         case "list_files":
             let directory = s("directory", "path")
+            if BotHomeStore.isHostPath(directory) {
+                if BotHomeStore.isDeniedHostPath(directory) {
+                    return AgentToolCallResult(output: "List failed: \(BotHomeError.hostDenied.localizedDescription)")
+                }
+                if let gated = gatedWrite(
+                    tool: "list_files.host",
+                    detail: directory,
+                    argumentsJSON: argumentsJSON,
+                    bot: bot,
+                    approved: approved
+                ) {
+                    return gated
+                }
+            }
             do {
                 let entries = try botHome.listFlexible(botId: botId, directory: directory)
                 let listing = entries.map { "\($0.isDirectory ? "dir" : "file") \($0.path)" }.joined(separator: "\n")
@@ -1549,6 +1824,89 @@ public final class AppStore {
                 blocks: [.card(lines: hits.prefix(8).map { CardLine(k: $0.path, v: $0.snippet) })]
             )
 
+        case "search_knowledge":
+            let query = s("query", "q")
+            guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
+            await syncPluginKnowledge(query: query, botId: botId)
+            let docs = knowledgeDocuments()
+            let hits = KnowledgePlane.search(
+                query: query,
+                botId: botId,
+                sources: knowledgeSources,
+                documents: docs
+            )
+            recordAudit(
+                type: .knowledgeSearched,
+                botId: botId,
+                tool: "search_knowledge",
+                reason: "query \(query.count) chars",
+                allowed: true,
+                forwarded: true,
+                attributes: ["chars": .number(Double(query.count))]
+            )
+            if hits.isEmpty {
+                return AgentToolCallResult(output: "No knowledge hits for that query.")
+            }
+            let text = hits.map { "• [\($0.sourceName)] \($0.path): \($0.snippet)" }.joined(separator: "\n")
+            return AgentToolCallResult(
+                output: text,
+                blocks: [.card(lines: hits.prefix(8).map { CardLine(k: $0.sourceName, v: $0.snippet) })]
+            )
+
+        case "present_component":
+            let componentId = s("id", "name")
+            let authored = sandboxComponents.first { $0.id == componentId && $0.published }
+            var title = s("title")
+            var fields: [ComponentField] = authored?.payload.fields ?? []
+            var items: [String] = authored?.payload.items ?? []
+            if let data = s("fields").data(using: .utf8),
+               let parsed = try? JSONDecoder().decode([ComponentField].self, from: data) {
+                fields = parsed
+            }
+            if let data = s("items").data(using: .utf8),
+               let parsed = try? JSONDecoder().decode([String].self, from: data) {
+                items = parsed
+            }
+            if title.isEmpty {
+                title = authored?.title ?? componentId
+            }
+            let dataFns = authored?.dataFunctions ?? (
+                componentId == "activity" || componentId == "refusals" ? [componentId] : []
+            )
+            if dataFns.contains("activity") || componentId == "activity" {
+                let rows = AuditLog.recent(auditEvents, limit: 8, botId: botId)
+                items = rows.map { "\($0.type.rawValue): \($0.reason)" }
+            }
+            if dataFns.contains("refusals") || componentId == "refusals" {
+                let rows = AuditLog.refusals(auditEvents, botId: botId)
+                items = rows.map { "\($0.tool ?? $0.type.rawValue): \($0.reason)" }
+            }
+            let payload = ComponentPayload(
+                id: componentId,
+                title: title,
+                fields: fields,
+                items: items
+            )
+            return AgentToolCallResult(
+                output: "Presented \(componentId).",
+                blocks: [.component(payload)]
+            )
+
+        case "report_decline":
+            let reason = s("reason")
+            recordAudit(
+                type: .botDeclined,
+                botId: botId,
+                tool: "report_decline",
+                reason: reason.isEmpty ? "declined" : reason,
+                allowed: true,
+                forwarded: true
+            )
+            return AgentToolCallResult(
+                output: "Recorded the decline.",
+                blocks: [.card(lines: [CardLine(k: "declined", v: reason)])]
+            )
+
         case "read_skill":
             let id = SkillMarkdown.slug(s("id", "name", "skill"))
             guard !id.isEmpty else { return AgentToolCallResult(output: "id is required") }
@@ -1594,6 +1952,14 @@ public final class AppStore {
                 computer.controlHolder = .user
                 computers[botId] = computer
             }
+            recordAudit(
+                type: .computerHelpRequested,
+                botId: botId,
+                tool: "request_takeover",
+                reason: reason.isEmpty ? "help requested" : reason,
+                allowed: true,
+                forwarded: true
+            )
             return AgentToolCallResult(
                 output: "Asked the user to take over the computer.",
                 blocks: [.ask(text: "Take over the computer", detail: reason.isEmpty ? nil : reason)],
@@ -1770,6 +2136,8 @@ public final class AppStore {
             }
             do {
                 let listed = try await McpClient.listTools(server: server)
+                mcpAdvertisedTools[server.id] = listed.map(\.name)
+                save()
                 let text = McpClient.formatToolList(listed)
                 return AgentToolCallResult(
                     output: text,
@@ -1792,29 +2160,67 @@ public final class AppStore {
             let toolName = s("tool", "name")
             let prompt = s("prompt", "query", "text")
             do {
-                let result: McpCallResult
                 if toolName.isEmpty {
-                    result = try await McpClient.invoke(server: server, prompt: prompt.isEmpty ? argumentsJSON : prompt)
-                } else {
-                    var callArgs = McpCallArguments.resolve(args)
-                    if callArgs.isEmpty, !prompt.isEmpty {
-                        callArgs = ["prompt": .string(prompt)]
-                    }
-                    result = try await McpClient.call(server: server, toolName: toolName, arguments: callArgs)
+                    let result = try await McpClient.invoke(
+                        server: server,
+                        prompt: prompt.isEmpty ? argumentsJSON : prompt
+                    )
+                    let prepared = McpPreparedCall(toolName: result.toolName, arguments: [:])
+                    return AgentToolCallResult(
+                        output: McpGatewayCall.modelOutput(
+                            prepared: prepared,
+                            isError: result.isError,
+                            text: result.text
+                        ),
+                        blocks: [.card(lines: McpGatewayCall.cardLines(
+                            serverName: server.name,
+                            catalogTool: result.toolName,
+                            gatewayTool: result.toolName,
+                            isError: result.isError,
+                            text: result.text
+                        ))]
+                    )
                 }
+                var prepared = McpGatewayCall.prepare(
+                    server: server,
+                    toolName: toolName,
+                    raw: args
+                )
+                if prepared.arguments.isEmpty, !prompt.isEmpty {
+                    prepared.arguments = ["prompt": .string(prompt)]
+                }
+                let result = try await McpClient.call(
+                    server: server,
+                    toolName: prepared.toolName,
+                    arguments: prepared.arguments
+                )
                 return AgentToolCallResult(
-                    output: result.text.isEmpty ? (result.isError ? "MCP tool error" : "ok") : result.text,
-                    blocks: [.card(lines: [
-                        CardLine(k: "mcp", v: server.name),
-                        CardLine(k: "tool", v: result.toolName),
-                        CardLine(k: "status", v: result.isError ? "tool error" : "ok"),
-                    ])]
+                    output: McpGatewayCall.modelOutput(
+                        prepared: prepared,
+                        isError: result.isError,
+                        text: result.text
+                    ),
+                    blocks: [.card(lines: McpGatewayCall.cardLines(
+                        serverName: server.name,
+                        prepared: prepared,
+                        isError: result.isError,
+                        text: result.text
+                    ))]
                 )
             } catch {
                 let command = ([server.command] + server.args).joined(separator: " ")
                 let output = "MCP call failed: \(error.localizedDescription) [\(command)]"
                 appendRunLog(botId: botId, kind: "mcp", text: output)
-                return AgentToolCallResult(output: output)
+                return AgentToolCallResult(
+                    output: output,
+                    blocks: [.card(lines: McpGatewayCall.cardLines(
+                        serverName: server.name,
+                        catalogTool: toolName,
+                        gatewayTool: toolName,
+                        isError: true,
+                        text: output
+                    ))]
+                )
             }
 
         case "computer_screenshot":
@@ -1836,6 +2242,12 @@ public final class AppStore {
             if !snap.outline.isEmpty {
                 output += "\nTargets:\n\(snap.outline)"
             }
+            if var computer = computers[botId] {
+                computer.lastOutline = snap.outline
+                computer.lastPageURL = snap.url
+                computer.screenAvailable = true
+                computers[botId] = computer
+            }
             return AgentToolCallResult(
                 output: output,
                 blocks: [.card(lines: [
@@ -1856,6 +2268,7 @@ public final class AppStore {
             if var computer = computers[botId] {
                 computer.state = .running
                 computer.screenAvailable = true
+                computer.lastPageURL = url
                 computers[botId] = computer
             }
             return AgentToolCallResult(
@@ -1878,6 +2291,14 @@ public final class AppStore {
                 kind = .click
             }
             let action = await computerRuntime?.send(ComputerInput(kind: kind, x: x, y: y), botId: botId)
+            if var computer = computers[botId] {
+                computer.lastElement = resolved ?? ComputerOutline.hit(
+                    outline: computer.lastOutline,
+                    x: x,
+                    y: y
+                )
+                computers[botId] = computer
+            }
             return AgentToolCallResult(
                 output: action?.output ?? "Clicked (\(Int(x)), \(Int(y))).",
                 blocks: [.card(lines: [
@@ -2237,6 +2658,41 @@ public final class AppStore {
         }
         runTasks.removeValue(forKey: runId)
         save()
+        finishRoutineIfNeeded(botId: botId, threadKey: key, status: .cancelled, error: "cancelled")
+    }
+
+    private func finishRoutineIfNeeded(
+        botId: String,
+        threadKey: String,
+        status: RunStatus?,
+        error: String?
+    ) {
+        guard let run = threads[threadKey]?.run, run.trigger == "routine",
+              let routineId = run.routineId,
+              let idx = routines[botId]?.firstIndex(where: { $0.id == routineId })
+        else { return }
+        let cron = routines[botId]?[idx].cron ?? ""
+        switch status {
+        case .waitingInput, .waitingTakeover:
+            routines[botId]?[idx].inProgress = false
+            routines[botId]?[idx].nextRunAt = Cron.nextDate(cron, from: .now)
+            save()
+        case .completed:
+            routines[botId]?[idx].inProgress = false
+            routines[botId]?[idx].failCount = 0
+            routines[botId]?[idx].lastError = nil
+            routines[botId]?[idx].nextRunAt = Cron.nextDate(cron, from: .now)
+            save()
+        case .failed, .cancelled:
+            let fails = (routines[botId]?[idx].failCount ?? 0) + 1
+            routines[botId]?[idx].inProgress = false
+            routines[botId]?[idx].failCount = fails
+            routines[botId]?[idx].lastError = error
+            routines[botId]?[idx].nextRunAt = Cron.backoffDate(failCount: fails, from: .now)
+            save()
+        case .running, .queued, .leased, .none:
+            break
+        }
     }
 
     public func stopRun(botId: String) {
@@ -2560,6 +3016,14 @@ public final class AppStore {
             computer.screenAvailable = true
         }
         computers[botId] = computer
+        recordAudit(
+            type: .computerControlTaken,
+            botId: botId,
+            tool: nil,
+            reason: "Person took control.",
+            allowed: true,
+            forwarded: true
+        )
         save()
     }
 
@@ -2569,6 +3033,14 @@ public final class AppStore {
         computer.controlHolder = .bot
         computers[botId] = computer
         computerOpen = false
+        recordAudit(
+            type: .computerControlReleased,
+            botId: botId,
+            tool: nil,
+            reason: "Person released control.",
+            allowed: true,
+            forwarded: true
+        )
         save()
     }
 
@@ -2776,6 +3248,7 @@ public final class AppStore {
             if let idx = routines[botId]?.firstIndex(where: { $0.id == routine.id }) {
                 routines[botId]?[idx].lastRunAt = .now
                 routines[botId]?[idx].nextRunAt = Cron.nextDate(routine.cron, from: .now)
+                routines[botId]?[idx].inProgress = false
             }
             appendRunLog(botId: botId, kind: "routine", text: reason)
             save()
@@ -2797,14 +3270,16 @@ public final class AppStore {
             botId: botId,
             threadId: thread.threadId,
             status: .running,
-            trigger: "routine"
+            trigger: "routine",
+            routineId: routine.id
         )
         thread.run = run
         threads[threadKey] = thread
 
         if let idx = routines[botId]?.firstIndex(where: { $0.id == routine.id }) {
             routines[botId]?[idx].lastRunAt = .now
-            routines[botId]?[idx].nextRunAt = Cron.nextDate(routine.cron, from: .now)
+            routines[botId]?[idx].inProgress = true
+            routines[botId]?[idx].lastError = nil
         }
         save()
 
@@ -3077,6 +3552,250 @@ public final class AppStore {
         return try await pluginClient.search(slug: slug, token: token, query: query)
     }
 
+    private func recordAudit(
+        type: AuditEventType,
+        botId: String?,
+        tool: String?,
+        reason: String,
+        allowed: Bool?,
+        forwarded: Bool?,
+        matched: String? = nil,
+        source: String? = nil,
+        attributes: [String: JSONValue] = [:]
+    ) {
+        let event = AuditEvent(
+            type: type,
+            actorId: session?.userId ?? "local",
+            botId: botId,
+            tool: tool,
+            matched: matched,
+            source: source,
+            allowed: allowed,
+            forwarded: forwarded,
+            reason: reason,
+            attributes: attributes
+        )
+        auditEvents = AuditLog.appending(auditEvents, event)
+    }
+
+    private func resolvePolicyElement(tool: String, argumentsJSON: String, botId: String) -> PolicyElement? {
+        let args = JSONValue.parseObject(argumentsJSON)
+        func num(_ keys: String...) -> Double? {
+            for key in keys {
+                if let value = JSONValue.object(args).stringValue(key), let n = Double(value) {
+                    return n
+                }
+            }
+            return nil
+        }
+        let computer = computers[botId]
+        if tool == "computer_click" || tool == "computer_scroll" {
+            let x = num("x") ?? 0
+            let y = num("y") ?? 0
+            return ComputerOutline.hit(outline: computer?.lastOutline ?? "", x: x, y: y)
+        }
+        if tool == "computer_key" {
+            return computer?.lastElement
+        }
+        return nil
+    }
+
+    private func recordBootBoundary() {
+        let already = auditEvents.contains {
+            $0.type == .computerPolicyLoaded && $0.actorId == (session?.userId ?? "local")
+        }
+        guard !already else { return }
+        let deny = actionPolicy.deny.count
+        let allow = actionPolicy.allow.count
+        recordAudit(
+            type: .computerPolicyLoaded,
+            botId: nil,
+            tool: nil,
+            reason: "Policy \(actionPolicy.mode.rawValue) loaded. Deny \(deny), allow \(allow).",
+            allowed: true,
+            forwarded: true,
+            attributes: [
+                "mode": .string(actionPolicy.mode.rawValue),
+                "deny": .number(Double(deny)),
+                "allow": .number(Double(allow)),
+            ]
+        )
+        let host = deployment.normalizedHost?.rawValue ?? deployment.computerHost ?? "none"
+        recordAudit(
+            type: .computerIsolationLoaded,
+            botId: nil,
+            tool: nil,
+            reason: "Computer boundary: \(host). This Mac vs in-app browser; not a cloud VM.",
+            allowed: true,
+            forwarded: true,
+            attributes: ["boundary": .string(host)]
+        )
+        globalPersistence.saveAudit(auditEvents)
+    }
+
+    private func syncPluginKnowledge(query: String, botId: String) async {
+        let visible = KnowledgePlane.sourcesVisible(to: botId, from: knowledgeSources)
+        for source in visible where source.kind == .plugin {
+            do {
+                let text = try await readPlugin(slug: source.path, query: query)
+                let docs = KnowledgePlane.documents(from: text, source: source)
+                memory.removeAll { $0.scope == "knowledge" && $0.botId == source.id }
+                memory.append(contentsOf: docs)
+                recordAudit(
+                    type: .connectorSyncSucceeded,
+                    botId: botId,
+                    tool: "search_knowledge",
+                    reason: "Synced \(source.path) (\(docs.count) docs).",
+                    allowed: true,
+                    forwarded: true,
+                    attributes: ["source": .string(source.path)]
+                )
+            } catch {
+                recordAudit(
+                    type: .connectorSyncFailed,
+                    botId: botId,
+                    tool: "search_knowledge",
+                    reason: "Sync \(source.path) failed: \(error.localizedDescription)",
+                    allowed: false,
+                    forwarded: false,
+                    attributes: ["source": .string(source.path)]
+                )
+            }
+        }
+    }
+
+    private func knowledgeDocuments() -> [MemoryDocument] {
+        var docs: [MemoryDocument] = []
+        for source in knowledgeSources {
+            switch source.kind {
+            case .folder:
+                docs.append(contentsOf: KnowledgePlane.indexFolder(source: source))
+            case .plugin:
+                docs.append(contentsOf: memory.filter { $0.scope == "knowledge" && $0.botId == source.id })
+            }
+        }
+        return docs
+    }
+
+    public func setStallTimeout(_ ms: Int) {
+        guard isOwner else { return }
+        appConfig.agentStallTimeoutMs = max(0, ms)
+        save()
+    }
+
+    public func setActionPolicy(_ policy: ActionPolicy) {
+        guard isOwner else { return }
+        actionPolicy = policy
+        recordAudit(
+            type: .configurationChanged,
+            botId: nil,
+            tool: nil,
+            reason: "Action policy updated (\(policy.mode.rawValue)).",
+            allowed: true,
+            forwarded: true,
+            attributes: [
+                "deny": .number(Double(policy.deny.count)),
+                "allow": .number(Double(policy.allow.count)),
+            ]
+        )
+        save()
+    }
+
+    public func addKnowledgeSource(_ source: KnowledgeSource) {
+        guard isOwner else { return }
+        knowledgeSources.append(source)
+        save()
+    }
+
+    public func removeKnowledgeSource(_ id: String) {
+        guard isOwner else { return }
+        knowledgeSources.removeAll { $0.id == id }
+        memory.removeAll { $0.scope == "knowledge" && $0.botId == id }
+        save()
+    }
+
+    public func setPluginGranted(botId: String, plugin: String, tool: String? = nil, granted: Bool) {
+        guard isOwner else { return }
+        let family = PluginGrant.family(of: plugin)
+        let familyEmpty = pluginGrants.filter { $0.botId == botId && PluginGrant.family(of: $0.plugin) == family }.isEmpty
+        if familyEmpty, !granted, tool == nil, family == "mcp" {
+            for server in mcpServers where server.toolId != plugin {
+                pluginGrants.append(PluginGrant(botId: botId, plugin: server.toolId))
+            }
+        } else {
+            if tool == nil {
+                pluginGrants.removeAll { $0.botId == botId && $0.plugin == plugin }
+            } else {
+                pluginGrants.removeAll { $0.botId == botId && $0.plugin == plugin && $0.tool == tool }
+            }
+            if granted {
+                pluginGrants.append(PluginGrant(botId: botId, plugin: plugin, tool: tool))
+            }
+        }
+        recordAudit(
+            type: .configurationChanged,
+            botId: botId,
+            tool: nil,
+            reason: granted ? "Granted \(plugin)." : "Revoked \(plugin).",
+            allowed: true,
+            forwarded: true
+        )
+        save()
+    }
+
+    public func isPluginGranted(botId: String, plugin: String, tool: String? = nil) -> Bool {
+        PluginGrant.allows(grants: pluginGrants, botId: botId, plugin: plugin, tool: tool)
+    }
+
+    public func saveSandboxComponent(_ component: SandboxComponent) {
+        guard isOwner else { return }
+        if let idx = sandboxComponents.firstIndex(where: { $0.id == component.id }) {
+            sandboxComponents[idx] = component
+        } else {
+            sandboxComponents.append(component)
+        }
+        save()
+    }
+
+    public func publishSandboxComponent(_ id: String, published: Bool) {
+        guard isOwner else { return }
+        guard let idx = sandboxComponents.firstIndex(where: { $0.id == id }) else { return }
+        sandboxComponents[idx].published = published
+        save()
+    }
+
+    public func removeSandboxComponent(_ id: String) {
+        guard isOwner else { return }
+        sandboxComponents.removeAll { $0.id == id }
+        save()
+    }
+
+    public func setBotComponent(_ botId: String, componentId: String, enabled: Bool) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
+        var list = bots[idx].enabledComponents
+        if enabled {
+            if !list.contains(componentId) { list.append(componentId) }
+        } else {
+            list.removeAll { $0 == componentId }
+        }
+        bots[idx].enabledComponents = list
+        bots[idx].updatedAt = .now
+        save()
+    }
+
+    public func recordSecretEvent(requested: Bool, label: String, characterCount: Int, botId: String?) {
+        recordAudit(
+            type: requested ? .computerSecretRequested : .computerSecretSupplied,
+            botId: botId,
+            tool: nil,
+            reason: requested ? "Secret requested." : "Secret supplied.",
+            allowed: true,
+            forwarded: true,
+            attributes: AuditRedactor.secretRecord(label: label, characterCount: characterCount)
+        )
+        save()
+    }
+
     private func gatedWrite(
         tool: String,
         detail: String,
@@ -3095,6 +3814,8 @@ public final class AppStore {
     private static func approvalFunctionName(_ tool: String) -> String {
         switch tool {
         case "shell.exec": return "shell"
+        case "read_file.host": return "read_file"
+        case "list_files.host": return "list_files"
         default: return tool
         }
     }
@@ -3158,6 +3879,7 @@ public final class AppStore {
 
     public func tickDueRoutines() {
         let now = Date.now
+        recoverStuckRoutines(now: now)
         var activeRoutineRuns = 0
         for (botId, _) in routines {
             let run = threads[threadKey(for: botId)]?.run
@@ -3168,15 +3890,49 @@ public final class AppStore {
         var due: [(botId: String, routine: Routine)] = []
         for (botId, list) in routines {
             let key = threadKey(for: botId)
-            if threads[key]?.run?.status.isActive == true { continue }
+            if let status = threads[key]?.run?.status {
+                switch status {
+                case .running, .queued, .leased, .waitingInput, .waitingTakeover:
+                    continue
+                case .completed, .failed, .cancelled:
+                    break
+                }
+            }
             guard let routine = list.first(where: { item in
-                item.active && (item.nextRunAt.map { $0 <= now } ?? false)
+                item.active && !item.inProgress && (item.nextRunAt.map { $0 <= now } ?? false)
             }) else { continue }
             due.append((botId, routine))
         }
         let slots = RoutineTickPolicy.admit(dueCount: due.count, activeRoutineRuns: activeRoutineRuns)
         for item in due.prefix(slots) {
             fireRoutine(botId: item.botId, routine: item.routine)
+        }
+    }
+
+    private func recoverStuckRoutines(now: Date) {
+        let stale: TimeInterval = 30 * 60
+        for (botId, list) in routines {
+            let key = threadKey(for: botId)
+            let run = threads[key]?.run
+            let runBusy: Bool = {
+                guard let status = run?.status else { return false }
+                switch status {
+                case .running, .queued, .leased, .waitingInput, .waitingTakeover:
+                    return true
+                default:
+                    return false
+                }
+            }()
+            for (idx, routine) in list.enumerated() where routine.inProgress {
+                let last = routine.lastRunAt ?? .distantPast
+                if runBusy, run?.routineId == routine.id { continue }
+                if now.timeIntervalSince(last) < stale { continue }
+                let fails = routine.failCount + 1
+                routines[botId]?[idx].inProgress = false
+                routines[botId]?[idx].failCount = fails
+                routines[botId]?[idx].lastError = "stale in-progress run"
+                routines[botId]?[idx].nextRunAt = Cron.backoffDate(failCount: fails, from: now)
+            }
         }
     }
 
@@ -3439,6 +4195,8 @@ public final class AppStore {
                 return "[\(state)] \(text)"
             case .progress(let t):
                 return StreamText.visible(t)
+            case .component(let payload):
+                return payload.title
             }
         }.joined(separator: "\n")
     }
@@ -3744,7 +4502,11 @@ public final class AppStore {
         notifications: Bool? = nil,
         computerMode: ComputerMode? = nil,
         modelProvider: String? = nil,
-        modelId: String? = nil
+        modelId: String? = nil,
+        visibility: BotVisibility? = nil,
+        runtime: BotRuntime? = nil,
+        aguiURL: String? = nil,
+        enabledComponents: [String]? = nil
     ) {
         guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
         if let name { bots[idx].name = name }
@@ -3758,6 +4520,13 @@ public final class AppStore {
         if let computerMode { bots[idx].computerMode = computerMode }
         if let modelProvider { bots[idx].modelProvider = modelProvider }
         if let modelId { bots[idx].modelId = modelId }
+        if let visibility { bots[idx].visibility = visibility }
+        if let runtime { bots[idx].runtime = runtime }
+        if let aguiURL {
+            let trimmed = aguiURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            bots[idx].aguiURL = trimmed.isEmpty ? nil : trimmed
+        }
+        if let enabledComponents { bots[idx].enabledComponents = enabledComponents }
         bots[idx].updatedAt = .now
         save()
     }

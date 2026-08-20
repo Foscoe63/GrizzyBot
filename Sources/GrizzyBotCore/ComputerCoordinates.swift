@@ -118,6 +118,83 @@ public enum ComputerOutline {
         }
         return text
     }
+
+    /// One clickable from `line(tag:title:x:y:width:height:)`.
+    public struct Target: Sendable, Equatable {
+        public var tag: String
+        public var name: String
+        public var x: Int
+        public var y: Int
+        public var width: Int
+        public var height: Int
+
+        public var role: String { tag }
+        public var ref: String { "\(tag):\(x),\(y)" }
+
+        public var policyElement: PolicyElement {
+            PolicyElement(ref: ref, role: role, name: name, type: tag)
+        }
+
+        var hitWidth: Int { width > 0 ? width : 32 }
+        var hitHeight: Int { height > 0 ? height : 16 }
+        var area: Int { max(1, hitWidth * hitHeight) }
+
+        func contains(x: Double, y: Double) -> Bool {
+            x >= Double(self.x)
+                && x <= Double(self.x + hitWidth)
+                && y >= Double(self.y)
+                && y <= Double(self.y + hitHeight)
+        }
+
+        func centerDistance(x: Double, y: Double) -> Double {
+            let cx = Double(self.x) + Double(hitWidth) / 2
+            let cy = Double(self.y) + Double(hitHeight) / 2
+            let dx = x - cx
+            let dy = y - cy
+            return (dx * dx + dy * dy).squareRoot()
+        }
+    }
+
+    public static func parse(_ outline: String) -> [Target] {
+        let pattern = #"^(\S+)\s+\"([^\"]*)\"\s+@\s+\((-?\d+),(-?\d+)(?:,(\d+)x(\d+))?\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else {
+            return []
+        }
+        let ns = outline as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        return regex.matches(in: outline, options: [], range: range).compactMap { match in
+            guard match.numberOfRanges >= 5,
+                  let tag = rangeString(ns, match, 1),
+                  let name = rangeString(ns, match, 2),
+                  let x = rangeString(ns, match, 3).flatMap(Int.init),
+                  let y = rangeString(ns, match, 4).flatMap(Int.init)
+            else { return nil }
+            let width = match.numberOfRanges > 5 ? rangeString(ns, match, 5).flatMap(Int.init) ?? 0 : 0
+            let height = match.numberOfRanges > 6 ? rangeString(ns, match, 6).flatMap(Int.init) ?? 0 : 0
+            return Target(tag: tag, name: name, x: x, y: y, width: width, height: height)
+        }
+    }
+
+    /// Smallest containing target, else nearest center within 48px. Same as OpenBot: the host snapshot, not the model's label.
+    public static func hit(outline: String, x: Double, y: Double) -> PolicyElement? {
+        let targets = parse(outline)
+        guard !targets.isEmpty else { return nil }
+        if let best = targets.filter({ $0.contains(x: x, y: y) }).min(by: { $0.area < $1.area }) {
+            return best.policyElement
+        }
+        if let nearest = targets.min(by: { $0.centerDistance(x: x, y: y) < $1.centerDistance(x: x, y: y) }),
+           nearest.centerDistance(x: x, y: y) <= 48 {
+            return nearest.policyElement
+        }
+        return nil
+    }
+
+    private static func rangeString(_ ns: NSString, _ match: NSTextCheckingResult, _ index: Int) -> String? {
+        guard index < match.numberOfRanges else { return nil }
+        let range = match.range(at: index)
+        guard range.location != NSNotFound, range.length > 0 else { return nil }
+        return ns.substring(with: range)
+    }
 }
 
 public struct ComputerHit: Sendable, Equatable {

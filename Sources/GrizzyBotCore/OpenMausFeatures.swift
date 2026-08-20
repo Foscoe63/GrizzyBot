@@ -95,6 +95,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var themeAppearanceMode: ThemeAppearanceMode
     /// Active built-in theme preset id (Osaurus-compatible gallery).
     public var activeThemePresetId: String?
+    /// Silence limit for model streams. 0 disables. Default 60s.
+    public var agentStallTimeoutMs: Int
 
     public init(
         profileName: String = "",
@@ -113,7 +115,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
         menuBarOnly: Bool = false,
         backgroundRoutines: Bool = false,
         themeAppearanceMode: ThemeAppearanceMode = .dark,
-        activeThemePresetId: String? = "grizzy-default"
+        activeThemePresetId: String? = "grizzy-default",
+        agentStallTimeoutMs: Int = 60_000
     ) {
         self.profileName = profileName
         self.profileEmail = profileEmail
@@ -132,12 +135,13 @@ public struct AppConfig: Codable, Sendable, Equatable {
         self.backgroundRoutines = backgroundRoutines
         self.themeAppearanceMode = themeAppearanceMode
         self.activeThemePresetId = activeThemePresetId
+        self.agentStallTimeoutMs = agentStallTimeoutMs
     }
 
     enum CodingKeys: String, CodingKey {
         case profileName, profileEmail, composioConnectKey, composioApiKey, boxToken
         case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
-        case themeAppearanceMode, activeThemePresetId
+        case themeAppearanceMode, activeThemePresetId, agentStallTimeoutMs
     }
 
     public init(from decoder: Decoder) throws {
@@ -160,6 +164,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         backgroundRoutines = try c.decodeIfPresent(Bool.self, forKey: .backgroundRoutines) ?? false
         themeAppearanceMode = try c.decodeIfPresent(ThemeAppearanceMode.self, forKey: .themeAppearanceMode) ?? .dark
         activeThemePresetId = try c.decodeIfPresent(String.self, forKey: .activeThemePresetId) ?? "grizzy-default"
+        agentStallTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .agentStallTimeoutMs) ?? 60_000
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -181,6 +186,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encode(backgroundRoutines, forKey: .backgroundRoutines)
         try c.encode(themeAppearanceMode, forKey: .themeAppearanceMode)
         try c.encodeIfPresent(activeThemePresetId, forKey: .activeThemePresetId)
+        try c.encode(agentStallTimeoutMs, forKey: .agentStallTimeoutMs)
     }
 
     public var composioConfigured: Bool {

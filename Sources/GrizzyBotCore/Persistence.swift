@@ -25,6 +25,11 @@ public struct UserWorkspace: Codable, Sendable {
     public var mcpServers: [McpServer]
     public var oauthJSON: String?
     public var connectionSecrets: [String: String]
+    public var actionPolicy: ActionPolicy
+    public var knowledgeSources: [KnowledgeSource]
+    public var pluginGrants: [PluginGrant]
+    public var sandboxComponents: [SandboxComponent]
+    public var mcpAdvertisedTools: [String: [String]]
 
     public init(
         bots: [Bot] = [],
@@ -47,7 +52,12 @@ public struct UserWorkspace: Codable, Sendable {
         customTools: [CustomAgentTool] = [],
         mcpServers: [McpServer] = [],
         oauthJSON: String? = nil,
-        connectionSecrets: [String: String] = [:]
+        connectionSecrets: [String: String] = [:],
+        actionPolicy: ActionPolicy = .openDefault,
+        knowledgeSources: [KnowledgeSource] = [],
+        pluginGrants: [PluginGrant] = [],
+        sandboxComponents: [SandboxComponent] = [],
+        mcpAdvertisedTools: [String: [String]] = [:]
     ) {
         self.bots = bots
         self.threads = threads
@@ -70,12 +80,18 @@ public struct UserWorkspace: Codable, Sendable {
         self.mcpServers = mcpServers
         self.oauthJSON = oauthJSON
         self.connectionSecrets = connectionSecrets
+        self.actionPolicy = actionPolicy
+        self.knowledgeSources = knowledgeSources
+        self.pluginGrants = pluginGrants
+        self.sandboxComponents = sandboxComponents
+        self.mcpAdvertisedTools = mcpAdvertisedTools
     }
 
     enum CodingKeys: String, CodingKey {
         case bots, threads, routines, computers, connections, usage, memory, files
         case deployment, modelProvider, modelId, apiKey, modelBaseUrl, fetchedModels, providerProfiles
         case groups, appConfig, customTools, mcpServers, oauthJSON, connectionSecrets
+        case actionPolicy, knowledgeSources, pluginGrants, sandboxComponents, mcpAdvertisedTools
     }
 
     public init(from decoder: Decoder) throws {
@@ -101,6 +117,11 @@ public struct UserWorkspace: Codable, Sendable {
         mcpServers = try c.decodeIfPresent([McpServer].self, forKey: .mcpServers) ?? []
         oauthJSON = try c.decodeIfPresent(String.self, forKey: .oauthJSON)
         connectionSecrets = try c.decodeIfPresent([String: String].self, forKey: .connectionSecrets) ?? [:]
+        actionPolicy = try c.decodeIfPresent(ActionPolicy.self, forKey: .actionPolicy) ?? .openDefault
+        knowledgeSources = try c.decodeIfPresent([KnowledgeSource].self, forKey: .knowledgeSources) ?? []
+        pluginGrants = try c.decodeIfPresent([PluginGrant].self, forKey: .pluginGrants) ?? []
+        sandboxComponents = try c.decodeIfPresent([SandboxComponent].self, forKey: .sandboxComponents) ?? []
+        mcpAdvertisedTools = try c.decodeIfPresent([String: [String]].self, forKey: .mcpAdvertisedTools) ?? [:]
     }
 }
 
@@ -116,6 +137,7 @@ public enum ConnectionCatalog {
         ConnectionItem(slug: "google-sheets", name: "Google Sheets", blurb: "Read and update spreadsheets", domain: "sheets.google.com"),
         ConnectionItem(slug: "google-docs", name: "Google Docs", blurb: "Read and write documents", domain: "docs.google.com"),
         ConnectionItem(slug: "google-drive", name: "Google Drive", blurb: "Browse and manage files", domain: "drive.google.com"),
+        ConnectionItem(slug: "microsoft-onedrive", name: "OneDrive", blurb: "Files on OneDrive", domain: "onedrive.live.com"),
         ConnectionItem(slug: "hubspot", name: "HubSpot", blurb: "CRM search and updates", domain: "hubspot.com"),
         ConnectionItem(slug: "salesforce", name: "Salesforce", blurb: "CRM records and reports", domain: "salesforce.com"),
         ConnectionItem(slug: "jira", name: "Jira", blurb: "Issues and sprints", domain: "atlassian.com"),
@@ -208,6 +230,22 @@ public struct Persistence: Sendable {
         if !secrets.isEmpty {
             try? SecretStore.save(secrets, userId: userId)
         }
+    }
+
+    public func loadAudit() -> [AuditEvent] {
+        load([AuditEvent].self, from: "audit.json") ?? []
+    }
+
+    public func saveAudit(_ events: [AuditEvent]) {
+        save(Array(events.suffix(AuditLog.cap)), to: "audit.json")
+    }
+
+    public func loadGovernance() -> GovernanceBundle? {
+        load(GovernanceBundle.self, from: "governance.json")
+    }
+
+    public func saveGovernance(_ bundle: GovernanceBundle) {
+        save(bundle, to: "governance.json")
     }
 
     public func loadWorkspace(userId: String) -> UserWorkspace {

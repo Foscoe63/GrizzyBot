@@ -29,6 +29,9 @@ struct SkillsTests {
         #expect(body.contains("if search fails"))
         #expect(body.contains("this mac") || body.contains("settings"))
         #expect(body.contains("do not keep retrying") || body.contains("do not retry"))
+        #expect(body.contains("mcp_call"))
+        #expect(body.contains("toolport") || body.contains("github__"))
+        #expect(BundledSkills.research.allowedTools.contains("mcp_call"))
     }
 
     @Test("rejects missing description")

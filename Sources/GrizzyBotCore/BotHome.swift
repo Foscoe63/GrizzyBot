@@ -94,10 +94,14 @@ public struct BotHomeStore: Sendable {
     }
 
     public static func isDeniedHostPath(_ path: String) -> Bool {
-        let p = expandPath(path).lowercased()
-        if p.contains("/.ssh") || p.contains("/.gnupg") || p.contains("/.aws") { return true }
-        if p.contains("id_rsa") || p.contains("id_ed25519") || p.contains("/.netrc") { return true }
-        if p.hasSuffix("/.env") || p.contains("/.env.") { return true }
+        let url = URL(fileURLWithPath: expandPath(path)).standardizedFileURL
+        let parts = url.pathComponents.map { $0.lowercased() }
+        let secretDirs: Set<String> = [".ssh", ".gnupg", ".aws"]
+        if parts.contains(where: { secretDirs.contains($0) }) { return true }
+        let name = url.lastPathComponent.lowercased()
+        if name == "id_rsa" || name.hasPrefix("id_rsa.") { return true }
+        if name == "id_ed25519" || name.hasPrefix("id_ed25519.") { return true }
+        if name == ".netrc" || name == ".env" || name.hasPrefix(".env.") { return true }
         return false
     }
 

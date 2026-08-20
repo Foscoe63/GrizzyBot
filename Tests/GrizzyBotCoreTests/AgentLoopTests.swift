@@ -230,6 +230,34 @@ struct AgentLoopTests {
         }) == true)
     }
 
+    @Test("system prompt includes UTC today and yesterday")
+    func utcDatesInPrompt() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 8, day: 19, hour: 19))!
+        #expect(AgentLoop.utcDateLine(now: now).contains("2026-08-19"))
+        #expect(AgentLoop.utcDateLine(now: now).contains("2026-08-18"))
+        let prompt = AgentLoop.systemPrompt(
+            for: AgentLoopRequest(
+                endpoint: ModelEndpoint(provider: "x", model: "y", baseURL: "https://x", apiKey: "k"),
+                botName: "Scout",
+                prompt: "hi",
+                tools: []
+            ),
+            now: now
+        )
+        #expect(prompt.contains("Today is 2026-08-19 (UTC)"))
+        #expect(prompt.contains("Yesterday UTC is 2026-08-18"))
+        #expect(prompt.contains("obsidian_put_file"))
+        #expect(prompt.contains("PLAN.md"))
+        #expect(prompt.contains(AgentLoop.PromptSection.filesAndMcp().prefix(40)))
+        #expect(AgentLoop.PromptSection.honesty().contains("Never claim"))
+        #expect(AgentLoop.PromptSection.filesAndMcp().contains("toolport_call_tool"))
+        #expect(AgentLoop.PromptSection.filesAndMcp().contains("github__search_repositories"))
+        #expect(prompt.contains("present_component"))
+        #expect(prompt.contains("search_knowledge"))
+    }
+
     @Test("drops web tools after repeated empty searches")
     func stallsWebRetries() async throws {
         let search = LLMToolCall(id: "1", name: "web_search", arguments: "{\"query\":\"box key\"}")
@@ -323,6 +351,8 @@ struct AgentLoopTests {
             return false
         }))
         #expect(client.calls >= ModelRequestRetry.maxAttempts)
+        #expect(result.failed)
+        #expect(result.failureReason == "model stopped responding")
     }
 
     @Test("executes tool calls then returns the follow-up text")
@@ -367,6 +397,108 @@ struct AgentLoopTests {
         #expect(StreamText.visible(raw) == "Hello from the model")
         #expect(StreamText.visible("<think>still thinking") == "")
     }
+
+    @Test("rejects a vault-write claim without an ok tool result")
+    func vaultClaimWithoutWriteFails() async throws {
+        let client = QueueChatClient([
+            ChatCompletionResponse(text: "Vault note written: Inbox/GitHub Desktop Agents 2026-08-20.md"),
+        ])
+        let endpoint = ModelEndpoint(
+            provider: "openrouter",
+            model: "test",
+            baseURL: "https://example.com/v1",
+            apiKey: "k"
+        )
+        let result = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: endpoint,
+                botName: "Researcher",
+                prompt: "scan github",
+                tools: AgentToolCatalog.chatTools(enabledIds: ["mcp_call"]),
+                maxSteps: 1
+            )
+        ) { _, _ in
+            AgentToolCallResult(output: "unused")
+        }
+        #expect(result.failed)
+        #expect(result.failureReason?.contains("vault") == true)
+        #expect(AgentCompletionGate.claimsVaultWrite(result.text))
+    }
+
+    @Test("nudges the model to actually write when it claims a vault save")
+    func vaultClaimContinuesForWrite() async throws {
+        let client = QueueChatClient([
+            ChatCompletionResponse(text: "Vault note written: Inbox/GitHub Desktop Agents 2026-08-20.md"),
+            ChatCompletionResponse(
+                toolCalls: [LLMToolCall(
+                    id: "1",
+                    name: "mcp_call",
+                    arguments: "{\"tool\":\"mcp_obsidian_advanced__obsidian_put_file\"}"
+                )]
+            ),
+            ChatCompletionResponse(text: "Vault note written: Inbox/GitHub Desktop Agents 2026-08-20.md"),
+        ])
+        let endpoint = ModelEndpoint(
+            provider: "openrouter",
+            model: "test",
+            baseURL: "https://example.com/v1",
+            apiKey: "k"
+        )
+        let result = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: endpoint,
+                botName: "Researcher",
+                prompt: "scan github",
+                tools: AgentToolCatalog.chatTools(enabledIds: ["mcp_call"]),
+                maxSteps: 6
+            )
+        ) { _, _ in
+            AgentToolCallResult(
+                output: "Successfully uploaded content to Inbox/GitHub Desktop Agents 2026-08-20.md",
+                blocks: [.card(lines: [
+                    CardLine(k: "tool", v: "mcp_obsidian_advanced__obsidian_put_file"),
+                    CardLine(k: "status", v: "ok"),
+                ])]
+            )
+        }
+        #expect(!result.failed)
+        #expect(client.requests.count == 3)
+        #expect(client.requests[1].messages.contains(where: {
+            $0.role == "user" && ($0.content ?? "").contains("obsidian_put_file")
+        }))
+    }
+
+    @Test("marks step-budget exhaustion as failed")
+    func stepBudgetFails() async throws {
+        let ping = LLMToolCall(id: "1", name: "web_search", arguments: "{\"query\":\"x\"}")
+        let client = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [ping]),
+            ChatCompletionResponse(toolCalls: [LLMToolCall(id: "2", name: "web_search", arguments: "{\"query\":\"y\"}")]),
+        ])
+        let endpoint = ModelEndpoint(
+            provider: "openrouter",
+            model: "test",
+            baseURL: "https://example.com/v1",
+            apiKey: "k"
+        )
+        let result = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: endpoint,
+                botName: "Researcher",
+                prompt: "go",
+                tools: AgentToolCatalog.chatTools(enabledIds: ["web_search"]),
+                maxSteps: 2
+            )
+        ) { _, _ in
+            AgentToolCallResult(output: "hits")
+        }
+        #expect(result.failed)
+        #expect(result.failureReason == "step budget")
+        #expect(result.steps == 2)
+    }
 }
 
 @Suite("Agent chat tools")
@@ -384,6 +516,22 @@ struct AgentChatToolTests {
         #expect(names.contains("mcp_call"))
         #expect(!names.contains("shell"))
         #expect(!names.contains("spawn_bot"))
+        let call = tools.first { $0.function.name == "mcp_call" }
+        #expect(call?.function.description.contains("filepath") == true || call?.function.description.contains("arguments") == true)
+    }
+
+    @Test("Toolport MCP wrappers mention the lazy gateway")
+    func toolportSchemas() {
+        let server = McpServer(id: "tp", name: "Toolport", command: "toolport-gateway")
+        let tools = AgentToolCatalog.chatTools(
+            enabledIds: [server.toolId],
+            mcpServers: [server]
+        )
+        let call = tools.first { $0.function.name == "mcp_call" }
+        #expect(call?.function.description.contains("github__search_repositories") == true)
+        #expect(call?.function.description.contains("never id") == true)
+        let list = tools.first { $0.function.name == "mcp_list_tools" }
+        #expect(list?.function.description.contains("meta-tools") == true)
     }
 }
 

@@ -199,6 +199,13 @@ public enum Cron {
         return from.addingTimeInterval(60)
     }
 
+    /// After a failed routine run: 15m, 30m, 1h, 2h, then cap at 4h.
+    public static func backoffDate(failCount: Int, from: Date) -> Date {
+        let n = max(1, failCount)
+        let minutes = min(240, 15 * (1 << min(n - 1, 4)))
+        return from.addingTimeInterval(TimeInterval(minutes * 60))
+    }
+
     static func matchField(_ expr: String, _ value: Int, min: Int, max: Int) -> Bool {
         if expr == "*" { return true }
         if expr.hasPrefix("*/") {
