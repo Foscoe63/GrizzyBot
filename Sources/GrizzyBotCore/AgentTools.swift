@@ -667,11 +667,18 @@ extension AgentToolCatalog {
         let mcpEnabled = mcpServers.filter { enabled.contains($0.toolId) }
         if !mcpEnabled.isEmpty {
             let names = mcpEnabled.map(\.name).joined(separator: ", ")
+            let hasGateway = mcpEnabled.contains { McpGatewayCall.isGateway($0) }
+            let listDescription = hasGateway
+                ? "List tools on an MCP server. Servers: \(names). Toolport returns gateway meta-tools (status/search/call), not GitHub or Obsidian — search once, then mcp_call. Do not list the same server again this turn."
+                : "List tools on an MCP server. Servers: \(names). Call mcp_list_tools once, then mcp_call. Do not list the same server again this turn."
+            let callDescription = hasGateway
+                ? "Call a tool on an MCP server. Servers: \(names). `tool` is a name from mcp_list_tools, or a Toolport catalog name like github__search_repositories (wrapped for you). For Toolport call_tool, pass arguments.name — never id. Do not use shell/curl when an MCP tool exists. write_file cannot write an Obsidian vault."
+                : "Call a tool on an MCP server. Servers: \(names). Pass the MCP tool's own fields (filepath, content, …) nested in arguments or as top-level parameters. write_file cannot write an Obsidian vault."
             tools.append(
                 ChatTool(
                     function: ChatToolFunction(
                         name: "mcp_list_tools",
-                        description: "List tools exposed by a configured MCP server. Servers: \(names).",
+                        description: listDescription,
                         parameters: objectSchema(
                             ["server": stringProp("MCP server name or id")],
                             required: ["server"]
@@ -683,18 +690,26 @@ extension AgentToolCatalog {
                 ChatTool(
                     function: ChatToolFunction(
                         name: "mcp_call",
-                        description: "Call a tool on a configured MCP server. Servers: \(names). Pass the MCP tool's own fields (filepath, content, …) either nested in arguments or as top-level parameters. write_file cannot write an Obsidian vault.",
+                        description: callDescription,
                         parameters: objectSchema(
                             [
                                 "server": stringProp("MCP server name or id"),
-                                "tool": stringProp("Tool name from mcp_list_tools"),
+                                "tool": stringProp(
+                                    hasGateway
+                                        ? "MCP tool name, or a Toolport catalog name such as github__search_repositories"
+                                        : "Tool name from mcp_list_tools"
+                                ),
                                 "arguments": .object([
                                     "type": .string("object"),
-                                    "description": .string("Arguments object for the MCP tool"),
+                                    "description": .string(
+                                        hasGateway
+                                            ? "Arguments for the MCP tool. Toolport call_tool needs name plus nested arguments."
+                                            : "Arguments object for the MCP tool"
+                                    ),
                                 ]),
                                 "prompt": stringProp("Fallback text if the server expects a single prompt"),
                             ],
-                            required: ["server"]
+                            required: ["server", "tool"]
                         )
                     )
                 )

@@ -273,16 +273,17 @@ public enum StreamText {
 
 /// OpenAI/Anthropic tool-calling loop. The store supplies tool execution.
 public enum AgentLoop {
-    public static func systemPrompt(for request: AgentLoopRequest) -> String {
+    public static func systemPrompt(for request: AgentLoopRequest, now: Date = .now) -> String {
         var lines: [String] = [
             "You are \(request.botName), a GrizzyBot agent running on this Mac.",
+            utcDateLine(now: now),
             "You are a fully capable agent: think, use tools, and keep going until the user's request is done or you must wait for them.",
             "Be concise. Prefer tools over guessing. Never claim you wrote a file, ran a command, searched, signed in, or called a plugin unless a tool result says so.",
             "Shell runs inside a macOS seatbelt sandbox rooted at your home. Destructive shell and plugin writes pause for user approval unless always-allowed.",
             "Shell default timeout is \(Int(BotHomeStore.ShellTimeout.default))s. For multi-step research (curl loops, sleeps), pass timeout_seconds up to \(Int(BotHomeStore.ShellTimeout.max)) or split into shorter commands.",
             "Keep going across many tool rounds. If context is compacted, trust the remaining transcript and continue the job.",
             "Memory in this prompt is pinned standing rules plus the newest facts. Use search_memory for older facts. Use forget when a fact is wrong or outdated.",
-            "read_file and list_files read the bot home, or an absolute/~ path on this Mac when the user named a folder (for example ~/.agents/skills). Prefer them over shell cat. write_file only writes the bot sandbox (Home path), not the user's Obsidian vault. To write Obsidian or other MCP apps, call mcp_list_tools then mcp_call with that server's write/append tool and its arguments (filepath/filename + content). Shell ~ is the bot home, not the Mac home.",
+            "read_file and list_files read the bot home, or an absolute/~ path on this Mac when the user named a folder (for example ~/.agents/skills). Prefer them over shell cat. write_file only writes the bot sandbox (Home path), not the user's Obsidian vault. MCP: mcp_list_tools once, then mcp_call. Toolport is a lazy gateway — list returns search/call meta-tools, not GitHub or Obsidian. Pass a catalog name like github__search_repositories as mcp_call's tool, or as arguments.name on toolport_call_tool (not id). Do not list or search Toolport again this turn after you have a name. Do not curl those APIs when an MCP tool exists. Shell ~ is the bot home, not the Mac home. Never claim an Obsidian write unless the tool result names obsidian_put_file (or that server's write tool) and status is ok.",
             AppConfig.keysHelp,
         ]
         let computer = request.computerNote.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -317,6 +318,16 @@ public enum AgentLoop {
             lines.append("You are a short-lived helper for one task. Do not spawn bots.")
         }
         return lines.joined(separator: "\n\n")
+    }
+
+    public static func utcDateLine(now: Date = .now) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: now)
+        let yesterday = formatter.string(from: now.addingTimeInterval(-86_400))
+        return "Today is \(today) (UTC). Yesterday UTC is \(yesterday). Use these dates in search filters; do not call shell for the date."
     }
 
     public static let parallelSafeTools: Set<String> = [
@@ -465,7 +476,7 @@ public enum AgentLoop {
             for (call, result) in zip(response.toolCalls, results) {
                 blocks.append(contentsOf: result.blocks)
                 let raw = result.output.isEmpty ? "(empty tool result)" : result.output
-                var output = raw.count > 3_500
+                var output = (call.name != "mcp_list_tools" && raw.count > 3_500)
                     ? ContextCompactor.summarizePayload(raw, head: 2_000, tail: 1_000)
                     : raw
                 let vision = LLMRouting.supportsVisionImages(

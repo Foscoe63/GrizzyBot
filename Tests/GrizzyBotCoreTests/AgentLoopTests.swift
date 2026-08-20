@@ -230,6 +230,27 @@ struct AgentLoopTests {
         }) == true)
     }
 
+    @Test("system prompt includes UTC today and yesterday")
+    func utcDatesInPrompt() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 8, day: 19, hour: 19))!
+        #expect(AgentLoop.utcDateLine(now: now).contains("2026-08-19"))
+        #expect(AgentLoop.utcDateLine(now: now).contains("2026-08-18"))
+        let prompt = AgentLoop.systemPrompt(
+            for: AgentLoopRequest(
+                endpoint: ModelEndpoint(provider: "x", model: "y", baseURL: "https://x", apiKey: "k"),
+                botName: "Scout",
+                prompt: "hi",
+                tools: []
+            ),
+            now: now
+        )
+        #expect(prompt.contains("Today is 2026-08-19 (UTC)"))
+        #expect(prompt.contains("Yesterday UTC is 2026-08-18"))
+        #expect(prompt.contains("obsidian_put_file"))
+    }
+
     @Test("drops web tools after repeated empty searches")
     func stallsWebRetries() async throws {
         let search = LLMToolCall(id: "1", name: "web_search", arguments: "{\"query\":\"box key\"}")
@@ -384,6 +405,22 @@ struct AgentChatToolTests {
         #expect(names.contains("mcp_call"))
         #expect(!names.contains("shell"))
         #expect(!names.contains("spawn_bot"))
+        let call = tools.first { $0.function.name == "mcp_call" }
+        #expect(call?.function.description.contains("filepath") == true || call?.function.description.contains("arguments") == true)
+    }
+
+    @Test("Toolport MCP wrappers mention the lazy gateway")
+    func toolportSchemas() {
+        let server = McpServer(id: "tp", name: "Toolport", command: "toolport-gateway")
+        let tools = AgentToolCatalog.chatTools(
+            enabledIds: [server.toolId],
+            mcpServers: [server]
+        )
+        let call = tools.first { $0.function.name == "mcp_call" }
+        #expect(call?.function.description.contains("github__search_repositories") == true)
+        #expect(call?.function.description.contains("never id") == true)
+        let list = tools.first { $0.function.name == "mcp_list_tools" }
+        #expect(list?.function.description.contains("meta-tools") == true)
     }
 }
 

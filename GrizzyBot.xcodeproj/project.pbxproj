@@ -71,6 +71,7 @@
 		8ABB3A13219B3D5D73205E6D /* McpClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EAA172FAC1AB99A08E6AC55 /* McpClient.swift */; };
 		8C6BB9D1322D8E9C76424977 /* AccountLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5376343DCD2146F6E92EE20A /* AccountLayout.swift */; };
 		90FE300FCFE71BB659CBFBBF /* ProductSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9073EF84B672BC0253421319 /* ProductSurface.swift */; };
+		972DF04DE576CF2FEBC3C6C0 /* McpGatewayCall.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAAAF7AB908DE6EBB68D5394 /* McpGatewayCall.swift */; };
 		97CC4700DE1377D590B135D2 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F3B6B0B59AA23B0584273B /* Theme.swift */; };
 		9E2708F345079F8E2E71CDB9 /* LocalProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A13665DC7A54059575E9646 /* LocalProviders.swift */; };
 		A084036EA9D1A3FE50831272 /* ProductSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 046251ABA24371B25741F1D9 /* ProductSurfaceTests.swift */; };
@@ -291,6 +292,7 @@
 		F7CA677539969350DA5AACF6 /* WindowChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowChrome.swift; sourceTree = "<group>"; };
 		F90EA06CDFEC030B799F2E34 /* ModelProviderProfiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProviderProfiles.swift; sourceTree = "<group>"; };
 		F91A2645D5698998169C03B8 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		FAAAF7AB908DE6EBB68D5394 /* McpGatewayCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpGatewayCall.swift; sourceTree = "<group>"; };
 		FB44D631A1BFEC6A49332CEF /* CronTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -506,6 +508,7 @@
 				E0BAC0485B69EE9D834F1421 /* LLMClient.swift */,
 				3A13665DC7A54059575E9646 /* LocalProviders.swift */,
 				1EAA172FAC1AB99A08E6AC55 /* McpClient.swift */,
+				FAAAF7AB908DE6EBB68D5394 /* McpGatewayCall.swift */,
 				5FC2BCBCCEAF080C3034CD88 /* MemoryIndex.swift */,
 				0DB2D2419378187A5D98A63A /* MemoryLedger.swift */,
 				EA45AF3D349EA5C61D89CA03 /* ModelCatalog.swift */,
@@ -765,6 +768,7 @@
 				A87D9D20E3EA567B5A64D60F /* LLMClient.swift in Sources */,
 				9E2708F345079F8E2E71CDB9 /* LocalProviders.swift in Sources */,
 				8ABB3A13219B3D5D73205E6D /* McpClient.swift in Sources */,
+				972DF04DE576CF2FEBC3C6C0 /* McpGatewayCall.swift in Sources */,
 				B5F54CF7C94AF3A43DA1DCF2 /* MemoryIndex.swift in Sources */,
 				54A30211DE3B9E02D99E087A /* MemoryLedger.swift in Sources */,
 				B64BB9DAF2F3CC51CA893DEC /* ModelCatalog.swift in Sources */,

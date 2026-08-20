@@ -1792,29 +1792,67 @@ public final class AppStore {
             let toolName = s("tool", "name")
             let prompt = s("prompt", "query", "text")
             do {
-                let result: McpCallResult
                 if toolName.isEmpty {
-                    result = try await McpClient.invoke(server: server, prompt: prompt.isEmpty ? argumentsJSON : prompt)
-                } else {
-                    var callArgs = McpCallArguments.resolve(args)
-                    if callArgs.isEmpty, !prompt.isEmpty {
-                        callArgs = ["prompt": .string(prompt)]
-                    }
-                    result = try await McpClient.call(server: server, toolName: toolName, arguments: callArgs)
+                    let result = try await McpClient.invoke(
+                        server: server,
+                        prompt: prompt.isEmpty ? argumentsJSON : prompt
+                    )
+                    let prepared = McpPreparedCall(toolName: result.toolName, arguments: [:])
+                    return AgentToolCallResult(
+                        output: McpGatewayCall.modelOutput(
+                            prepared: prepared,
+                            isError: result.isError,
+                            text: result.text
+                        ),
+                        blocks: [.card(lines: McpGatewayCall.cardLines(
+                            serverName: server.name,
+                            catalogTool: result.toolName,
+                            gatewayTool: result.toolName,
+                            isError: result.isError,
+                            text: result.text
+                        ))]
+                    )
                 }
+                var prepared = McpGatewayCall.prepare(
+                    server: server,
+                    toolName: toolName,
+                    raw: args
+                )
+                if prepared.arguments.isEmpty, !prompt.isEmpty {
+                    prepared.arguments = ["prompt": .string(prompt)]
+                }
+                let result = try await McpClient.call(
+                    server: server,
+                    toolName: prepared.toolName,
+                    arguments: prepared.arguments
+                )
                 return AgentToolCallResult(
-                    output: result.text.isEmpty ? (result.isError ? "MCP tool error" : "ok") : result.text,
-                    blocks: [.card(lines: [
-                        CardLine(k: "mcp", v: server.name),
-                        CardLine(k: "tool", v: result.toolName),
-                        CardLine(k: "status", v: result.isError ? "tool error" : "ok"),
-                    ])]
+                    output: McpGatewayCall.modelOutput(
+                        prepared: prepared,
+                        isError: result.isError,
+                        text: result.text
+                    ),
+                    blocks: [.card(lines: McpGatewayCall.cardLines(
+                        serverName: server.name,
+                        prepared: prepared,
+                        isError: result.isError,
+                        text: result.text
+                    ))]
                 )
             } catch {
                 let command = ([server.command] + server.args).joined(separator: " ")
                 let output = "MCP call failed: \(error.localizedDescription) [\(command)]"
                 appendRunLog(botId: botId, kind: "mcp", text: output)
-                return AgentToolCallResult(output: output)
+                return AgentToolCallResult(
+                    output: output,
+                    blocks: [.card(lines: McpGatewayCall.cardLines(
+                        serverName: server.name,
+                        catalogTool: toolName,
+                        gatewayTool: toolName,
+                        isError: true,
+                        text: output
+                    ))]
+                )
             }
 
         case "computer_screenshot":

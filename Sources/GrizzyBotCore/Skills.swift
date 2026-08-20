@@ -220,17 +220,19 @@ public enum BundledSkills {
 
         ## Workflow
         1. If the question is about GrizzyBot or this Mac (Settings, Keys, plugins, bots), answer from the system prompt and local files. Do not web-search for those labels.
-        2. Otherwise call `web_search` once with a precise query. One follow-up is allowed only if results are thin but non-empty.
-        3. `web_fetch` the 2–4 best URLs. Quote or paraphrase; do not invent citations.
-        4. Write the answer with short bullets, then a **Sources** list of title + URL.
-        5. If the user asked for a file, `write_file` a markdown brief under `notes/`.
+        2. If GitHub, Obsidian, or another app is on MCP/Toolport, `mcp_list_tools` once then `mcp_call`. Do not `web_search` or curl those APIs. Do not `write_file` into an Obsidian vault.
+        3. Otherwise call `web_search` once with a precise query. One follow-up is allowed only if results are thin but non-empty.
+        4. `web_fetch` the 2–4 best URLs. Quote or paraphrase; do not invent citations.
+        5. Write the answer with short bullets, then a **Sources** list of title + URL.
+        6. If the user asked for a file, `write_file` a markdown brief under `notes/` — unless they asked to save in Obsidian, then use the vault's MCP write tool.
 
         ## Rules
         - Prefer primary sources over aggregators.
         - If search fails, is blocked, or returns no results twice, stop. Say so and work from what you have (including this Mac Settings). Do not keep retrying similar queries.
+        - For Toolport, search once and call with the exact catalog name (`github__search_repositories`). After a tool error, stop; do not grep binaries or retry similar searches.
         - Never claim you visited a page unless `web_fetch` returned it.
         """,
-        allowedTools: ["web_search", "web_fetch", "write_file"]
+        allowedTools: ["web_search", "web_fetch", "write_file", "mcp_list_tools", "mcp_call"]
     )
 
     public static let browser = AgentSkill(
