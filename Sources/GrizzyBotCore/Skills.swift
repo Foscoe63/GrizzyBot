@@ -224,7 +224,7 @@ public enum BundledSkills {
         3. Otherwise call `web_search` once with a precise query. One follow-up is allowed only if results are thin but non-empty.
         4. `web_fetch` the 2–4 best URLs. Quote or paraphrase; do not invent citations.
         5. Write the answer with short bullets, then a **Sources** list of title + URL.
-        6. If the user asked for a file, `write_file` a markdown brief under `notes/` — unless they asked to save in Obsidian, then use the vault's MCP write tool. For multi-day jobs, keep `PLAN.md` in the bot home.
+        6. If the user asked for a file, `write_file` a markdown brief under `notes/` — unless they asked to save in Obsidian, then use the vault's MCP write tool. If `write_file` is disabled, `mcp_call` Toolport `fast-filesystem` with the same path and content. For multi-day jobs, keep `PLAN.md` in the bot home.
 
         ## Rules
         - Prefer primary sources over aggregators.

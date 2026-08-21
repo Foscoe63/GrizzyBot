@@ -34,6 +34,8 @@ struct RightPanelView: View {
                             settingsPanel
                         case .routine:
                             routinePanel
+                        case .canvas:
+                            CanvasPanelView()
                         }
                     }
                     .padding(.horizontal, 20)
@@ -71,6 +73,8 @@ struct RightPanelView: View {
                         .foregroundStyle(Theme.textMuted)
                         .multilineTextAlignment(.center)
                         .padding(16)
+                } else if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+                    ThisMacScreenPreview(botId: bot.id, pollSeconds: 3, fill: true)
                 } else if let bot, let data = AppComputerRuntime.shared.cachedJPEG(for: bot.id),
                           let image = NSImage(data: data) {
                     Image(nsImage: image)
@@ -102,13 +106,19 @@ struct RightPanelView: View {
                         }
                     } else {
                         GrizzyButton(title: "Take control", variant: .outline, size: .sm) {
-                            // rakazo: Take control opens the full computer (boot + takeover).
                             store.openComputerOverlay()
                         }
                     }
                 }
             }
             .padding(.top, 12)
+
+            if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+                Text("Preview only — the bot clicks your real Mac. Take control to type passwords yourself.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 8)
+            }
 
             Text("Routines")
                 .font(.system(size: 14))
@@ -223,11 +233,10 @@ struct RightPanelView: View {
 
     @ViewBuilder
     private var screenLabel: some View {
-        // rakazo: when the full overlay is open, the preview says "Open in full window".
         if store.computerOpen {
             Text("Open in full window")
-        } else if computer?.kind == .desktop {
-            Text("This bot runs on this computer, not a Linux desktop. Shell and files use your home folder.")
+        } else if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+            Text("This Mac preview — Screen Recording required")
         } else if store.booting || computer?.state == .booting {
             Text("Booting live desktop…")
         } else if computer?.state == .running {
@@ -242,7 +251,10 @@ struct RightPanelView: View {
     }
 
     private var statusCaption: String {
-        if computer?.controlHolder == .user { return "You have control" }
+        if computer?.controlHolder == .user { return "You have control (real Mac)" }
+        if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+            return "This Mac · live preview"
+        }
         if computer?.state == .suspended { return "Asleep" }
         return "\(bot?.name ?? "Bot")'s screen"
     }

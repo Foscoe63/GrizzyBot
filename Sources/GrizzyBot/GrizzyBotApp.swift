@@ -130,6 +130,12 @@ struct GrizzyBotApp: App {
 
     @CommandsBuilder
     private var appCommands: some Commands {
+        CommandGroup(after: .windowArrangement) {
+            Button("Canvas") {
+                store.toggleCanvasPanel()
+            }
+            .keyboardShortcut("k", modifiers: [.command, .shift])
+        }
         CommandGroup(after: .pasteboard) {
             Button("Find in Chats") {
                 store.openChatSearch()

@@ -497,6 +497,7 @@ public enum McpClient {
                 "2. toolport_search_tools once (server: \"github\" with an empty query lists that server).",
                 "3. mcp_call with tool=toolport_call_tool and arguments.name = the exact catalog name (not id). Passing github__search_repositories as mcp_call's tool is also fine — it is wrapped.",
                 "4. Do not search again this turn. Do not curl or shell those APIs when a catalog tool exists.",
+                "5. If a GrizzyBot builtin is off, use Toolport for that job (fast-filesystem for files, web search for news). After you have titles or a dataset, summarize and write — do not toolport_fetch_result (cursors expire) or toolport_run_script.",
                 "",
             ])
         }
@@ -548,7 +549,47 @@ public enum McpCallArguments {
                 }
             }
         }
-        return call
+        return applyAliases(call)
+    }
+
+    /// Fill required MCP/Toolport fields from common LLM aliases (`path` → `filepath`, etc.).
+    public static func applyAliases(_ args: [String: JSONValue]) -> [String: JSONValue] {
+        var out = args
+        fill(&out, canonical: "filepath", aliases: [
+            "path", "file", "filename", "file_path", "note_path", "relative_path", "vault_path",
+        ])
+        fill(&out, canonical: "dirpath", aliases: [
+            "dir", "directory", "folder", "folder_path", "path",
+        ])
+        fill(&out, canonical: "content", aliases: [
+            "text", "body", "markdown", "data", "note", "value",
+        ])
+        fill(&out, canonical: "query", aliases: [
+            "search", "q", "prompt", "term",
+        ])
+        fill(&out, canonical: "url", aliases: [
+            "href", "link", "uri",
+        ])
+        return out
+    }
+
+    private static func fill(
+        _ out: inout [String: JSONValue],
+        canonical: String,
+        aliases: [String]
+    ) {
+        if out[canonical] != nil { return }
+        for alias in aliases {
+            guard let value = out[alias] else { continue }
+            if case .string(let text) = value {
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                out[canonical] = .string(trimmed)
+                return
+            }
+            out[canonical] = value
+            return
+        }
     }
 }
 

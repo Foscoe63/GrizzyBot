@@ -1,3 +1,4 @@
+import AppKit
 import GrizzyBotCore
 import SwiftUI
 
@@ -64,12 +65,20 @@ struct ShellView: View {
                 ComputerFullWindowOverlay()
                     .zIndex(40)
             }
+            if store.canvasOpen {
+                CanvasEditorOverlay()
+                    .zIndex(41)
+            }
         }
         .background(Theme.bgApp)
         .focusable()
         .onKeyPress(.escape) {
             if store.computerOpen {
                 store.closeComputerOverlay()
+                return .handled
+            }
+            if store.canvasOpen {
+                store.closeCanvasOverlay()
                 return .handled
             }
             if store.appSettingsOpen {
@@ -241,11 +250,13 @@ private struct ComputerFullWindowOverlay: View {
                     Text("✕")
                         .font(.system(size: 16))
                         .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 18)
-            .padding(.vertical, 14)
+            .padding(.top, 36)
+            .padding(.bottom, 14)
             .background(Theme.bgApp)
             .overlay(alignment: .bottom) {
                 Rectangle().fill(Theme.borderSidebar).frame(height: 1)
@@ -253,15 +264,25 @@ private struct ComputerFullWindowOverlay: View {
 
             ZStack {
                 Theme.bgScreen
-                if let bot, computer?.state == .running || computer?.kind == .desktop {
-                    ComputerDesktopView(
-                        botId: bot.id,
-                        userHasControl: computer?.controlHolder == .user
-                    )
-                    .allowsHitTesting(computer?.controlHolder == .user)
-                    if computer?.controlHolder != .user {
-                        Color.black.opacity(0.12)
-                            .allowsHitTesting(true)
+                if let bot {
+                    if store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+                        ThisMacComputerSurface(
+                            botId: bot.id,
+                            botName: bot.name,
+                            userHasControl: computer?.controlHolder == .user
+                        )
+                    } else if computer?.state == .running {
+                        ComputerDesktopView(
+                            botId: bot.id,
+                            userHasControl: computer?.controlHolder == .user
+                        )
+                        .allowsHitTesting(computer?.controlHolder == .user)
+                        if computer?.controlHolder != .user {
+                            Color.black.opacity(0.12)
+                                .allowsHitTesting(true)
+                        }
+                    } else {
+                        bodyContent
                     }
                 } else {
                     bodyContent
@@ -271,18 +292,15 @@ private struct ComputerFullWindowOverlay: View {
         }
         .background(Theme.bgApp)
         .ignoresSafeArea()
+        .onAppear {
+            guard let botId = bot?.id else { return }
+            Task { await AppComputerRuntime.shared.prepareForDisplay(botId: botId) }
+        }
     }
 
     @ViewBuilder
     private var bodyContent: some View {
-        if let computer, computer.kind == .desktop {
-            Text("This bot runs on this computer. There is no separate Linux desktop. Ask it to use the shell; working directories under your home folder are allowed.")
-                .font(.system(size: 13.5))
-                .foregroundStyle(Theme.textMuted)
-                .multilineTextAlignment(.center)
-                .padding(40)
-                .frame(maxWidth: 520)
-        } else if computer?.state == .suspended {
+        if computer?.state == .suspended {
             Text("Computer is asleep")
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.textMuted)
@@ -294,6 +312,43 @@ private struct ComputerFullWindowOverlay: View {
             Text("Computer is stopped")
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.textMuted)
+        }
+    }
+}
+
+/// Full-window This Mac view: live screenshot poll + takeover copy. Not clickable.
+private struct ThisMacComputerSurface: View {
+    let botId: String
+    let botName: String
+    let userHasControl: Bool
+
+    var body: some View {
+        ZStack {
+            ThisMacScreenPreview(botId: botId, pollSeconds: 3, fill: false)
+                .background(Color.black.opacity(0.35))
+                .allowsHitTesting(false)
+
+            VStack(spacing: 14) {
+                Spacer()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(userHasControl ? "You have control of this Mac" : "\(botName) can drive this Mac")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.textBright)
+                    Text(
+                        userHasControl
+                            ? "This window is a live preview only — it is not a remote desktop. Use your real screen for login, captcha, or 2FA. When you’re done, tap Release so the bot can use computer tools again."
+                            : "Preview updates every few seconds. The bot drives via screenshot/click tools on your real Mac. Take control when you need to type a password yourself."
+                    )
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(18)
+                .frame(maxWidth: 520, alignment: .leading)
+                .background(Theme.bgApp.opacity(0.92))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.bottom, 28)
+            }
         }
     }
 }

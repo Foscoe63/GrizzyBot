@@ -354,9 +354,10 @@ struct PromptComposer: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
     var onSend: () -> Void
+    var onTabComplete: (() -> Bool)? = nil
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, onSend: onSend)
+        Coordinator(text: $text, onSend: onSend, onTabComplete: onTabComplete)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -373,6 +374,9 @@ struct PromptComposer: NSViewRepresentable {
         textView.delegate = context.coordinator
         textView.onSend = { [weak coordinator = context.coordinator] in
             coordinator?.onSend()
+        }
+        textView.onTabComplete = { [weak coordinator = context.coordinator] in
+            coordinator?.onTabComplete?() ?? false
         }
         textView.isRichText = false
         textView.font = NSFont.systemFont(ofSize: 15.5)
@@ -405,10 +409,14 @@ struct PromptComposer: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.text = $text
         context.coordinator.onSend = onSend
+        context.coordinator.onTabComplete = onTabComplete
         context.coordinator.placeholder = placeholder
         guard let textView = context.coordinator.textView else { return }
         textView.onSend = { [weak coordinator = context.coordinator] in
             coordinator?.onSend()
+        }
+        textView.onTabComplete = { [weak coordinator = context.coordinator] in
+            coordinator?.onTabComplete?() ?? false
         }
         if textView.string != text {
             let selected = textView.selectedRange()
@@ -423,13 +431,15 @@ struct PromptComposer: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var text: Binding<String>
         var onSend: () -> Void
+        var onTabComplete: (() -> Bool)?
         var placeholder: String = ""
         weak var textView: PromptTextView?
         private var placeholderView: NSTextField?
 
-        init(text: Binding<String>, onSend: @escaping () -> Void) {
+        init(text: Binding<String>, onSend: @escaping () -> Void, onTabComplete: (() -> Bool)?) {
             self.text = text
             self.onSend = onSend
+            self.onTabComplete = onTabComplete
         }
 
         func textDidChange(_ notification: Notification) {
@@ -464,6 +474,12 @@ struct PromptComposer: NSViewRepresentable {
 
 final class PromptTextView: NSTextView {
     var onSend: (() -> Void)?
+    var onTabComplete: (() -> Bool)?
+
+    override func insertTab(_ sender: Any?) {
+        if onTabComplete?() == true { return }
+        super.insertTab(sender)
+    }
 
     override func insertNewline(_ sender: Any?) {
         if hasMarkedText() {

@@ -76,6 +76,9 @@ struct AgentToolsTests {
         #expect(bot.noToolsEnabled)
         bot.setAllTools(enabled: true)
         #expect(bot.allToolsEnabled)
+        #expect(bot.isToolEnabled("canvas_list"))
+        bot.setTool("canvas_list", enabled: false)
+        #expect(bot.isToolEnabled("canvas_list"))
     }
 
     @Test("MCP env and header text round-trips")
@@ -93,5 +96,27 @@ struct AgentToolsTests {
         #expect(McpConfigText.headerLines(["Z": "9", "A": "1"]) == "A: 1\nZ: 9")
         #expect(McpConfigText.parseArgs(" -y  @pkg  /tmp ") == ["-y", "@pkg", "/tmp"])
         #expect(McpConfigText.argsLine(["-y", "@pkg"]) == "-y @pkg")
+    }
+
+    @Test("disabled builtins point at Toolport instead of Settings")
+    func disabledBuiltinUsesToolport() {
+        let write = DisabledBuiltinFallback.toolResult(
+            tool: "write_file",
+            argumentsJSON: "{\"path\":\"Iran 2026-08-20.md\",\"content\":\"brief\"}",
+            hasMcp: true
+        )
+        #expect(write.contains("disabled"))
+        #expect(write.contains("fast-filesystem"))
+        #expect(write.contains("mcp_call"))
+        #expect(write.contains("Iran 2026-08-20.md"))
+        #expect(!write.contains("Enable it in Settings → Tools."))
+        #expect(DisabledBuiltinFallback.searchQuery(for: "web_search") == "web search")
+        #expect(DisabledBuiltinFallback.toolResult(tool: "write_file", argumentsJSON: "{}", hasMcp: false)
+            .contains("add Toolport"))
+        #expect(DisabledBuiltinFallback.toolResult(tool: "computer_click", argumentsJSON: "{}", hasMcp: true)
+            .contains("no Toolport equivalent"))
+        let note = DisabledBuiltinFallback.promptNote(available: ["mcp_call"])
+        #expect(note?.contains("write_file") == true)
+        #expect(note?.contains("Do not ask to enable") == true)
     }
 }

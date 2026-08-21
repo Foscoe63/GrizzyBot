@@ -1,6 +1,9 @@
+import CoreGraphics
 import Foundation
 import GrizzyBotCore
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 
 @Suite("AppStore")
 @MainActor
@@ -372,5 +375,64 @@ struct StoreTests {
         #expect(store.addToolkit(slug: "  ") == nil)
         #expect(store.addToolkit(slug: "ClickUp")?.slug == "clickup")
         #expect(store.connections.filter { $0.slug == "clickup" }.count == 1)
+    }
+
+    @Test("shared canvas save open delete is visible to the store")
+    func canvasCrud() {
+        let store = tempStore()
+        let created = store.createCanvas(title: "Iran 2026-08-20")
+        #expect(store.canvases.contains(where: { $0.id == created.id }))
+        store.openCanvas(id: created.id)
+        #expect(store.canvasOpen)
+        #expect(store.activeCanvas()?.title == "Iran 2026-08-20")
+        store.deleteCanvas(id: created.id)
+        #expect(store.canvases.isEmpty)
+    }
+
+    @Test("opening canvas after a screenshot places the jpeg")
+    func canvasOpenPlacesScreenshot() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = AppStore(dataDirectory: dir, delayScale: 0.01)
+        store.pluginClient = AlwaysAllowPlugins()
+        let bot = store.createBot(name: "Cam", title: "cam")
+        let userId = try #require(store.session?.userId)
+        let userDir = AccountLayout.userDirectory(global: dir, userId: userId)
+        let home = try BotHomeStore(root: userDir).homeURL(botId: bot.id)
+        let shotDir = home.appendingPathComponent(".computer", isDirectory: true)
+        try FileManager.default.createDirectory(at: shotDir, withIntermediateDirectories: true)
+        let jpeg = try #require(Self.testJPEG())
+        try jpeg.write(to: shotDir.appendingPathComponent("screen.jpg"))
+        store.openCanvas(id: nil, placingScreenshotFrom: bot.id)
+        let opened = try #require(store.activeCanvas())
+        #expect(!opened.images.isEmpty)
+        #expect(store.canvasOpen)
+    }
+
+    private static func testJPEG() -> Data? {
+        let context = CGContext(
+            data: nil,
+            width: 32,
+            height: 24,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+        guard let context else { return nil }
+        context.setFillColor(CGColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 32, height: 24))
+        guard let image = context.makeImage() else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data,
+            UTType.jpeg.identifier as CFString,
+            1,
+            nil
+        ) else { return nil }
+        CGImageDestinationAddImage(destination, image, nil)
+        CGImageDestinationFinalize(destination)
+        return data as Data
     }
 }

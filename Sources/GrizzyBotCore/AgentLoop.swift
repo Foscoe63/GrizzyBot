@@ -81,17 +81,21 @@ public struct AgentToolCallResult: Sendable {
     public var blocks: [MessageBlock]
     public var pause: AgentPause?
     public var imageJPEGBase64: String?
+    /// First-class MCP catalog tools discovered this call (Toolport search / MacUse definitions).
+    public var promotedMcpTools: [McpPromotedTool]
 
     public init(
         output: String,
         blocks: [MessageBlock] = [],
         pause: AgentPause? = nil,
-        imageJPEGBase64: String? = nil
+        imageJPEGBase64: String? = nil,
+        promotedMcpTools: [McpPromotedTool] = []
     ) {
         self.output = output
         self.blocks = blocks
         self.pause = pause
         self.imageJPEGBase64 = imageJPEGBase64
+        self.promotedMcpTools = promotedMcpTools
     }
 }
 
@@ -338,7 +342,7 @@ public enum AgentLoop {
         }
 
         public static func honesty() -> String {
-            "Be concise. Prefer tools over guessing. Never claim you wrote a file, ran a command, searched, signed in, or called a plugin unless a tool result says so."
+            "Be concise. Prefer tools over guessing. Never claim you wrote a file, saved a canvas, ran a command, searched, signed in, or called a plugin unless a tool result says so."
         }
 
         public static func sandbox() -> String {
@@ -357,11 +361,20 @@ public enum AgentLoop {
             "For jobs that span turns, keep PLAN.md in your home with read_file/write_file and update it as you go."
         }
 
+        public static func builtinAvailability(tools: [ChatTool]) -> String? {
+            DisabledBuiltinFallback.promptNote(available: Set(tools.map(\.function.name)))
+        }
+
         public static func filesAndMcp() -> String {
             """
             read_file and list_files read the bot home. Absolute/~ paths on this Mac pause for approval (for example ~/.agents/skills). Prefer them over shell cat.
             write_file only writes the bot sandbox (Home path), not the user's Obsidian vault.
-            MCP: mcp_list_tools once, then mcp_call. Toolport is a lazy gateway — list returns search/call meta-tools, not GitHub or Obsidian. Pass a catalog name like github__search_repositories as mcp_call's tool, or as arguments.name on toolport_call_tool (not id). Do not list or search Toolport again this turn after you have a name. Do not curl those APIs when an MCP tool exists.
+            MCP: Prefer first-class catalog tools when they appear in your tool list (e.g. gmail__messages_list or macuse__mail_search_messages) — call them directly with their arguments. Otherwise mcp_list_tools once (server optional when Toolport is enabled), then mcp_call. Toolport is a lazy gateway — list returns search/call meta-tools. Pass a catalog name as mcp_call's tool, or as arguments.name on toolport_call_tool (not id, never empty). Prefer filepath+content; path maps to filepath. Do not invent catalog names. Do not curl those APIs when an MCP tool exists.
+            If a tool result reports validation, no route, or connection refused, follow the recovery hint in that result — fix args, re-search once, or fall back to write_file/web — do not repeat the identical failing call.
+            If a builtin is missing or a tool result says it is disabled, do not ask the user to enable it. mcp_call Toolport for that job: search once (fast-filesystem for files, web search for news), then call the catalog tool with the same arguments. Do not paste the deliverable in chat until Toolport succeeds.
+            Canvas is shared on this Mac: canvas_list, canvas_open, canvas_save, canvas_delete, canvas_place_image. write_file cannot write a canvas. After computer_screenshot, call canvas_open (it places the last screenshot) or canvas_place_image.
+            When Toolport already returned article titles or a dataset, summarize and write. Do not call toolport_fetch_result (cursors expire). Do not toolport_run_script to inspect JSON.
+            If the user asked you to write a prompt or instructions for an agent, write that prompt. Do not run the job unless they asked you to execute it.
             Shell ~ is the bot home, not the Mac home.
             Never claim an Obsidian write unless the tool result names obsidian_put_file (or that server's write tool) and status is ok.
             """
@@ -397,6 +410,9 @@ public enum AgentLoop {
             AppConfig.keysHelp,
             PromptSection.computer(request.computerNote),
         ]
+        if let builtinNote = PromptSection.builtinAvailability(tools: request.tools) {
+            lines.append(builtinNote)
+        }
         if !request.homePath.isEmpty {
             lines.append("Home path: \(request.homePath)")
         }
@@ -438,6 +454,7 @@ public enum AgentLoop {
     public static let parallelSafeTools: Set<String> = [
         "web_search", "web_fetch", "read_file", "list_files", "search_memory",
         "computer_screenshot", "mcp_list_tools", "read_skill", "search_knowledge",
+        "canvas_list",
     ]
 
     public static func run(
@@ -476,6 +493,9 @@ public enum AgentLoop {
         let maxSteps = max(1, request.maxSteps)
         var tools = request.tools
         var webFails = 0
+        var mcpDeadEnds = 0
+        var warnedMcpStall = false
+        let hasMcpTools = tools.contains { $0.function.name == "mcp_call" }
 
         func persistable() -> [ChatMessage] {
             Array(messages.drop(while: { $0.role == "system" }).prefix(200))
@@ -616,6 +636,7 @@ public enum AgentLoop {
                 onTool: onTool,
                 execute: execute
             )
+            var disabledThisStep: [String] = []
             for (call, result) in zip(response.toolCalls, results) {
                 blocks.append(contentsOf: result.blocks)
                 let raw = result.output.isEmpty ? "(empty tool result)" : result.output
@@ -646,6 +667,28 @@ public enum AgentLoop {
                         webFails = 0
                     }
                 }
+                if DisabledBuiltinFallback.isDisabledResult(result.output) {
+                    disabledThisStep.append(call.name)
+                }
+                if call.name == "mcp_call" || call.name == "mcp_list_tools" {
+                    if McpGatewayCall.isDeadEnd(result.output) {
+                        mcpDeadEnds += 1
+                    } else {
+                        mcpDeadEnds = 0
+                    }
+                }
+                if !result.promotedMcpTools.isEmpty {
+                    let newcomers = result.promotedMcpTools.filter { promo in
+                        !tools.contains(where: { $0.function.name == promo.chatName })
+                    }
+                    if !newcomers.isEmpty {
+                        tools.append(contentsOf: McpCatalogPromote.chatTools(from: newcomers))
+                        let names = newcomers.map(\.chatName).prefix(8).joined(separator: ", ")
+                        messages.append(.user(
+                            "First-class MCP tools are now available this turn: \(names). Call them directly by name with their arguments — do not wrap in toolport_call_tool or call_tool_by_name."
+                        ))
+                    }
+                }
                 if let nextPause = result.pause {
                     pause = nextPause
                     let text = lastText.isEmpty ? "Waiting on you to continue." : lastText
@@ -661,10 +704,25 @@ public enum AgentLoop {
                     )
                 }
             }
+            if !disabledThisStep.isEmpty, hasMcpTools {
+                messages.append(.user(DisabledBuiltinFallback.loopNudge(tools: disabledThisStep)))
+            }
             if webFails >= 3, tools.contains(where: { $0.function.name == "web_search" || $0.function.name == "web_fetch" }) {
                 tools.removeAll { $0.function.name == "web_search" || $0.function.name == "web_fetch" }
                 messages.append(.user(
                     "Web search and fetch failed \(webFails) times. Those tools are disabled for the rest of this turn. Answer from this Mac (Settings → Connections → Keys, files, skills) or say you could not reach the web."
+                ))
+            }
+            if !warnedMcpStall, mcpDeadEnds >= 3 {
+                warnedMcpStall = true
+                messages.append(.user(
+                    "MCP/Toolport hit repeated dead ends (expired cursor, no route, missing args, or connection failure). Stop retrying the same gateway call. Fix args from the last recovery hint, use web_search/web_fetch/write_file if enabled, or finish from data you already have."
+                ))
+            }
+            if mcpDeadEnds >= 5, tools.contains(where: { $0.function.name == "mcp_call" || $0.function.name == "mcp_list_tools" }) {
+                tools.removeAll { $0.function.name == "mcp_call" || $0.function.name == "mcp_list_tools" }
+                messages.append(.user(
+                    "MCP tools are disabled for the rest of this turn after \(mcpDeadEnds) gateway dead ends. Finish with web_search, write_file, or a direct answer. Do not call Toolport again."
                 ))
             }
         }

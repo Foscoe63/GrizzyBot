@@ -1,5 +1,7 @@
+import CoreGraphics
 import Foundation
 import GrizzyBotCore
+import ImageIO
 import Testing
 
 @Suite("Computer coordinates")
@@ -298,6 +300,38 @@ struct RoutineTickPolicyTests {
     func skipNoModel() {
         #expect(RoutineTickPolicy.skipReason(canRunLLM: true) == nil)
         #expect(RoutineTickPolicy.skipReason(canRunLLM: false)?.contains("no model") == true)
+    }
+}
+
+@Suite("Screenshot quality")
+struct ScreenshotQualityTests {
+    @Test("detects all-white jpeg as blank and painted desktop as not blank")
+    func blankDetection() {
+        let white = Self.solidJPEG(red: 1, green: 1, blue: 1)
+        let painted = Self.solidJPEG(red: 0.1, green: 0.2, blue: 0.3)
+        #expect(ScreenshotQuality.isBlankJPEG(white))
+        #expect(!ScreenshotQuality.isBlankJPEG(painted))
+        #expect(ScreenshotQuality.isBlankJPEG(Data()))
+    }
+
+    private static func solidJPEG(red: CGFloat, green: CGFloat, blue: CGFloat) -> Data {
+        let context = CGContext(
+            data: nil,
+            width: 64,
+            height: 40,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        context.setFillColor(CGColor(red: red, green: green, blue: blue, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 64, height: 40))
+        let image = context.makeImage()!
+        let data = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil)!
+        CGImageDestinationAddImage(destination, image, nil)
+        CGImageDestinationFinalize(destination)
+        return data as Data
     }
 }
 

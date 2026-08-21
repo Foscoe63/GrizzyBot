@@ -266,6 +266,11 @@ public enum AgentToolCatalog {
         .init(id: "search_knowledge", label: "Search knowledge", subtitle: "Search granted knowledge sources"),
         .init(id: "present_component", label: "Present component", subtitle: "Show a form, gallery, or audit component"),
         .init(id: "report_decline", label: "Report decline", subtitle: "Audit that this bot declined a request"),
+        .init(id: "canvas_list", label: "Canvas list", subtitle: "List shared canvases on this Mac"),
+        .init(id: "canvas_open", label: "Canvas open", subtitle: "Open a shared canvas in the editor"),
+        .init(id: "canvas_save", label: "Canvas save", subtitle: "Create or update a shared canvas"),
+        .init(id: "canvas_delete", label: "Canvas delete", subtitle: "Delete a shared canvas"),
+        .init(id: "canvas_place_image", label: "Canvas place image", subtitle: "Drop a screenshot or image onto a canvas"),
     ]
 
     /// Back-compat alias.
@@ -329,6 +334,7 @@ extension Bot {
     public func isToolEnabled(_ toolId: String) -> Bool {
         if enabledTools.contains(toolId) { return true }
         if toolId.hasPrefix("computer_"), enabledTools.contains("request_takeover") { return true }
+        if CanvasBoardStore.toolIds.contains(toolId) { return true }
         if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
         if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
         if toolId == "import_skills", enabledTools.contains("read_file") { return true }
@@ -406,7 +412,8 @@ extension AgentToolCatalog {
         enabledIds: [String],
         mcpServers: [McpServer] = [],
         includeDelegation: Bool = true,
-        skills: [AgentSkill] = []
+        skills: [AgentSkill] = [],
+        promotedMcp: [McpPromotedTool] = []
     ) -> [ChatTool] {
         let enabled = Set(enabledIds)
             .union(enabledIds.contains("read_file") ? ["import_skills"] : [])
@@ -414,6 +421,7 @@ extension AgentToolCatalog {
                 (enabledIds.contains("remember") || enabledIds.contains("search_memory"))
                     ? ["search_knowledge"] : []
             )
+            .union(CanvasBoardStore.toolIds)
         var tools: [ChatTool] = []
 
         func add(_ id: String, name: String? = nil, description: String, properties: [String: JSONValue], required: [String]) {
@@ -571,6 +579,43 @@ extension AgentToolCatalog {
             required: ["reason"]
         )
         add(
+            "canvas_list",
+            description: "List shared canvases on this Mac. Every bot can see the same boards.",
+            properties: [:],
+            required: []
+        )
+        add(
+            "canvas_open",
+            description: "Open a shared canvas in the GrizzyBot editor. Pass id or title from canvas_list. If the bot just took a screenshot, this places it on the board.",
+            properties: ["id": stringProp("Canvas id or title")],
+            required: []
+        )
+        add(
+            "canvas_save",
+            description: "Create or update a shared canvas. write_file cannot write these boards.",
+            properties: [
+                "id": stringProp("Existing canvas id or title to update"),
+                "title": stringProp("Canvas name, e.g. Iran 2026-08-20"),
+            ],
+            required: []
+        )
+        add(
+            "canvas_delete",
+            description: "Delete a shared canvas by id or title.",
+            properties: ["id": stringProp("Canvas id or title")],
+            required: ["id"]
+        )
+        add(
+            "canvas_place_image",
+            description: "Place the latest computer screenshot (or a bot-home image path) onto a shared canvas. Creates a canvas if id is omitted.",
+            properties: [
+                "id": stringProp("Canvas id or title; omit to create one"),
+                "title": stringProp("Name when creating a canvas"),
+                "path": stringProp("Optional bot-home or absolute image path; default is the last screenshot"),
+            ],
+            required: []
+        )
+        add(
             "request_takeover",
             description: "Ask the user to take over the computer for login or human judgment.",
             properties: ["reason": stringProp("Why you need the user")],
@@ -702,19 +747,19 @@ extension AgentToolCatalog {
             let names = mcpEnabled.map(\.name).joined(separator: ", ")
             let hasGateway = mcpEnabled.contains { McpGatewayCall.isGateway($0) }
             let listDescription = hasGateway
-                ? "List tools on an MCP server. Servers: \(names). Toolport returns gateway meta-tools (status/search/call), not GitHub or Obsidian — search once, then mcp_call. Do not list the same server again this turn."
-                : "List tools on an MCP server. Servers: \(names). Call mcp_list_tools once, then mcp_call. Do not list the same server again this turn."
+                ? "List tools on an MCP server. Servers: \(names). Omit server when Toolport is the only/default gateway. Toolport returns gateway meta-tools (status/search/call), not GitHub or Obsidian — search once, then mcp_call. Do not list the same server again this turn."
+                : "List tools on an MCP server. Servers: \(names). Omit server when only one MCP is enabled. Call mcp_list_tools once, then mcp_call. Do not list the same server again this turn."
             let callDescription = hasGateway
-                ? "Call a tool on an MCP server. Servers: \(names). `tool` is a name from mcp_list_tools, or a Toolport catalog name like github__search_repositories (wrapped for you). For Toolport call_tool, pass arguments.name — never id. Do not use shell/curl when an MCP tool exists. write_file cannot write an Obsidian vault."
-                : "Call a tool on an MCP server. Servers: \(names). Pass the MCP tool's own fields (filepath, content, …) nested in arguments or as top-level parameters. write_file cannot write an Obsidian vault."
+                ? "Call a tool on an MCP server. Servers: \(names). Omit server to use Toolport. `tool` is a name from mcp_list_tools, or a Toolport catalog name like github__search_repositories / mcp_obsidian_advanced__obsidian_put_file (wrapped for you). For toolport_call_tool, arguments.name must be non-empty — never id, never blank. Prefer filepath+content (path aliases to filepath). If write_file or web_search is disabled, use Toolport for that job. Do not call toolport_fetch_result after you already have results. Do not invent catalog names — search once if unsure."
+                : "Call a tool on an MCP server. Servers: \(names). Omit server when only one MCP is enabled. Pass the MCP tool's own fields (filepath, content, …) nested in arguments or as top-level parameters. path aliases to filepath."
             tools.append(
                 ChatTool(
                     function: ChatToolFunction(
                         name: "mcp_list_tools",
                         description: listDescription,
                         parameters: objectSchema(
-                            ["server": stringProp("MCP server name or id")],
-                            required: ["server"]
+                            ["server": stringProp("MCP server name or id; omit to use Toolport / the only enabled server")],
+                            required: []
                         )
                     )
                 )
@@ -726,7 +771,7 @@ extension AgentToolCatalog {
                         description: callDescription,
                         parameters: objectSchema(
                             [
-                                "server": stringProp("MCP server name or id"),
+                                "server": stringProp("MCP server name or id; omit to use Toolport / the only enabled server"),
                                 "tool": stringProp(
                                     hasGateway
                                         ? "MCP tool name, or a Toolport catalog name such as github__search_repositories"
@@ -736,17 +781,23 @@ extension AgentToolCatalog {
                                     "type": .string("object"),
                                     "description": .string(
                                         hasGateway
-                                            ? "Arguments for the MCP tool. Toolport call_tool needs name plus nested arguments."
+                                            ? "Arguments for the MCP tool. Toolport call_tool needs non-empty name plus nested arguments (filepath/content, etc.)."
                                             : "Arguments object for the MCP tool"
                                     ),
                                 ]),
                                 "prompt": stringProp("Fallback text if the server expects a single prompt"),
                             ],
-                            required: ["server", "tool"]
+                            required: ["tool"]
                         )
                     )
                 )
             )
+        }
+
+        let existingNames = Set(tools.map(\.function.name))
+        for promoted in McpCatalogPromote.chatTools(from: promotedMcp) {
+            guard !existingNames.contains(promoted.function.name) else { continue }
+            tools.append(promoted)
         }
 
         return tools

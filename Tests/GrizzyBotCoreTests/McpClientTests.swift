@@ -15,6 +15,7 @@ struct McpClientTests {
             ]),
         ])
         #expect(nested["filename"] == .string("a.md"))
+        #expect(nested["filepath"] == .string("a.md"))
         #expect(nested["content"] == .string("hello"))
         #expect(nested["server"] == nil)
 
@@ -25,6 +26,7 @@ struct McpClientTests {
             "content": .string("# hi"),
         ])
         #expect(flat["path"] == .string("Inbox/a.md"))
+        #expect(flat["filepath"] == .string("Inbox/a.md"))
         #expect(flat["content"] == .string("# hi"))
 
         let named = McpCallArguments.resolve([
@@ -36,6 +38,23 @@ struct McpClientTests {
         #expect(named["name"] == .string("github__search_repositories"))
         #expect(named["query"] == .string("swift mcp"))
         #expect(named["tool"] == nil)
+    }
+
+    @Test("aliases map path to filepath and dirpath")
+    func mcpCallAliases() {
+        let put = McpCallArguments.resolve([
+            "tool": .string("obsidian_put_file"),
+            "path": .string("Iran.md"),
+            "text": .string("# brief"),
+        ])
+        #expect(put["filepath"] == .string("Iran.md"))
+        #expect(put["content"] == .string("# brief"))
+
+        let list = McpCallArguments.resolve([
+            "tool": .string("obsidian_list_files_in_dir"),
+            "folder": .string("notes/"),
+        ])
+        #expect(list["dirpath"] == .string("notes/"))
     }
 
     @Test("Toolport catalog names wrap as toolport_call_tool")
@@ -162,6 +181,73 @@ struct McpClientTests {
             text: "failed to search repositories: 422 Validation Failed"
         )
         #expect(output.contains("[github__search_repositories] tool error"))
+    }
+
+    @Test("expired Toolport cursors count as gateway dead ends")
+    func expiredCursorIsDeadEnd() {
+        #expect(McpGatewayCall.failed(isError: false, text: "cursor r1 is unknown or expired"))
+        #expect(McpGatewayCall.isDeadEnd("cursor r1 is unknown or expired"))
+        #expect(McpGatewayCall.isDeadEnd("no route for tool duckduckgo__search"))
+        #expect(McpGatewayCall.isDeadEnd("fetch is not defined"))
+        #expect(McpGatewayCall.failed(isError: false, text: "Input validation error: 'filepath' is a required property"))
+        #expect(McpGatewayCall.isTransientFailure("Max retries exceeded with url: /vault/note.md (Caused by NewConnectionError"))
+        #expect(!McpGatewayCall.isDeadEnd("[apify__get_dataset_items] ok\nIran titles…"))
+    }
+
+    @Test("empty toolport_call_tool name is rejected before the gateway")
+    func emptyCatalogName() {
+        let server = McpServer(name: "Toolport", command: "toolport-gateway")
+        let prepared = McpGatewayCall.prepare(
+            server: server,
+            toolName: "toolport_call_tool",
+            raw: [
+                "tool": .string("toolport_call_tool"),
+                "arguments": .object([
+                    "filepath": .string("a.md"),
+                    "content": .string("x"),
+                ]),
+            ]
+        )
+        #expect(McpGatewayCall.missingCatalogName(prepared))
+        #expect(McpGatewayCall.missingCatalogNameMessage().contains("arguments.name"))
+    }
+
+    @Test("Toolport wraps path aliases into nested put_file args")
+    func gatewayAliasesPathForPutFile() {
+        let server = McpServer(name: "Toolport", command: "toolport-gateway")
+        let prepared = McpGatewayCall.prepare(
+            server: server,
+            toolName: "mcp_obsidian_advanced__obsidian_put_file",
+            raw: [
+                "tool": .string("mcp_obsidian_advanced__obsidian_put_file"),
+                "path": .string("Iran 2026-08-20.md"),
+                "text": .string("# Iran"),
+            ]
+        )
+        #expect(prepared.toolName == "toolport_call_tool")
+        let inner = prepared.arguments["arguments"]?.objectValue() ?? [:]
+        #expect(inner["filepath"] == .string("Iran 2026-08-20.md"))
+        #expect(inner["content"] == .string("# Iran"))
+    }
+
+    @Test("recovery hints cover Obsidian connection and missing args")
+    func recoveryHints() {
+        let conn = McpGatewayCall.recoveryHint(for: "HTTPSConnectionPool(host='127.0.0.1', port=27124): Max retries exceeded")
+        #expect(conn?.contains("27124") == true || conn?.contains("Obsidian") == true)
+        let ssl = McpGatewayCall.recoveryHint(for: "SSLError: WRONG_VERSION_NUMBER on 127.0.0.1:27123")
+        #expect(ssl?.contains("27123") == true)
+        #expect(ssl?.lowercased().contains("http") == true)
+        #expect(!McpGatewayCall.isTransientFailure("SSLError: WRONG_VERSION_NUMBER"))
+        let missing = McpGatewayCall.recoveryHint(for: "Input validation error: 'filepath' is a required property")
+        #expect(missing?.contains("filepath") == true)
+        let route = McpGatewayCall.recoveryHint(for: "no route for tool 'mcp_obsidian_advanced__obsidian_search'")
+        #expect(route?.contains("search") == true)
+        let output = McpGatewayCall.modelOutput(
+            prepared: McpPreparedCall(toolName: "toolport_call_tool", arguments: ["name": .string("x")]),
+            isError: true,
+            text: "no route for tool 'x'"
+        )
+        #expect(output.contains("catalog tool name"))
     }
 
     @Test("formatToolList includes required argument names")

@@ -256,6 +256,11 @@ struct AgentLoopTests {
         #expect(AgentLoop.PromptSection.filesAndMcp().contains("github__search_repositories"))
         #expect(prompt.contains("present_component"))
         #expect(prompt.contains("search_knowledge"))
+        #expect(prompt.contains("These builtins are off"))
+        #expect(AgentLoop.PromptSection.filesAndMcp().contains("toolport_fetch_result"))
+        #expect(AgentLoop.PromptSection.filesAndMcp().contains("fast-filesystem"))
+        #expect(AgentLoop.PromptSection.filesAndMcp().contains("canvas_place_image"))
+        #expect(AgentLoop.PromptSection.filesAndMcp().contains("write a prompt"))
     }
 
     @Test("drops web tools after repeated empty searches")
@@ -499,6 +504,103 @@ struct AgentLoopTests {
         #expect(result.failureReason == "step budget")
         #expect(result.steps == 2)
     }
+
+    @Test("nudge then drop MCP after consecutive gateway dead ends")
+    func stallsMcpDeadEnds() async throws {
+        func call(_ id: String) -> LLMToolCall {
+            LLMToolCall(
+                id: id,
+                name: "mcp_call",
+                arguments: "{\"server\":\"toolport\",\"tool\":\"toolport_fetch_result\"}"
+            )
+        }
+        let client = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [call("1")]),
+            ChatCompletionResponse(toolCalls: [call("2")]),
+            ChatCompletionResponse(toolCalls: [call("3")]),
+            ChatCompletionResponse(toolCalls: [call("4")]),
+            ChatCompletionResponse(toolCalls: [call("5")]),
+            ChatCompletionResponse(text: "Here is the prompt instead."),
+        ])
+        let endpoint = ModelEndpoint(
+            provider: "openrouter",
+            model: "test",
+            baseURL: "https://example.com/v1",
+            apiKey: "k"
+        )
+        let server = McpServer(id: "tp", name: "Toolport", command: "toolport-gateway")
+        let result = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: endpoint,
+                botName: "Orchestrator",
+                prompt: "Create me a prompt for an agent",
+                tools: AgentToolCatalog.chatTools(enabledIds: [server.toolId], mcpServers: [server]),
+                maxSteps: 8
+            )
+        ) { _, _ in
+            AgentToolCallResult(output: "[toolport_fetch_result] tool error\ncursor r1 is unknown or expired")
+        }
+        #expect(client.requests.count >= 6)
+        let stalled = client.requests.contains { request in
+            request.messages.contains {
+                $0.role == "user" && ($0.content ?? "").contains("expired cursor")
+            }
+        }
+        #expect(stalled)
+        let lastTools = client.requests.last?.tools.map(\.function.name) ?? []
+        #expect(!lastTools.contains("mcp_call"))
+        #expect(!lastTools.contains("mcp_list_tools"))
+        #expect(result.text.contains("prompt"))
+    }
+
+    @Test("disabled builtin nudges the model to use Toolport")
+    func disabledBuiltinNudge() async throws {
+        let write = LLMToolCall(
+            id: "1",
+            name: "write_file",
+            arguments: "{\"path\":\"Iran 2026-08-20.md\",\"content\":\"brief\"}"
+        )
+        let client = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [write]),
+            ChatCompletionResponse(text: "Calling Toolport fast-filesystem next."),
+        ])
+        let endpoint = ModelEndpoint(
+            provider: "openrouter",
+            model: "test",
+            baseURL: "https://example.com/v1",
+            apiKey: "k"
+        )
+        let server = McpServer(id: "tp", name: "Toolport", command: "toolport-gateway")
+        _ = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: endpoint,
+                botName: "Newsroom",
+                prompt: "Save the brief",
+                tools: AgentToolCatalog.chatTools(enabledIds: [server.toolId], mcpServers: [server]),
+                maxSteps: 4
+            )
+        ) { _, _ in
+            AgentToolCallResult(
+                output: DisabledBuiltinFallback.toolResult(
+                    tool: "write_file",
+                    argumentsJSON: "{\"path\":\"Iran 2026-08-20.md\",\"content\":\"brief\"}",
+                    hasMcp: true
+                )
+            )
+        }
+        #expect(client.requests.count >= 2)
+        #expect(client.requests[1].messages.contains(where: {
+            $0.role == "user" && ($0.content ?? "").contains("mcp_call Toolport")
+        }))
+        #expect(client.requests[1].messages.contains(where: {
+            $0.role == "user" && ($0.content ?? "").contains("fast-filesystem")
+        }))
+        #expect(client.requests[0].messages.contains(where: {
+            $0.role == "system" && ($0.content ?? "").contains("These builtins are off")
+        }))
+    }
 }
 
 @Suite("Agent chat tools")
@@ -518,6 +620,9 @@ struct AgentChatToolTests {
         #expect(!names.contains("spawn_bot"))
         let call = tools.first { $0.function.name == "mcp_call" }
         #expect(call?.function.description.contains("filepath") == true || call?.function.description.contains("arguments") == true)
+        let namesAlways = Set(AgentToolCatalog.chatTools(enabledIds: ["write_file"]).map(\.function.name))
+        #expect(namesAlways.contains("canvas_list"))
+        #expect(namesAlways.contains("canvas_place_image"))
     }
 
     @Test("Toolport MCP wrappers mention the lazy gateway")
@@ -530,6 +635,8 @@ struct AgentChatToolTests {
         let call = tools.first { $0.function.name == "mcp_call" }
         #expect(call?.function.description.contains("github__search_repositories") == true)
         #expect(call?.function.description.contains("never id") == true)
+        #expect(call?.function.description.contains("web_search") == true)
+        #expect(call?.function.description.contains("toolport_fetch_result") == true)
         let list = tools.first { $0.function.name == "mcp_list_tools" }
         #expect(list?.function.description.contains("meta-tools") == true)
     }

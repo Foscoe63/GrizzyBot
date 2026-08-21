@@ -16,6 +16,7 @@ public enum Panel: String, Sendable, Equatable {
     case create
     case settings
     case routine
+    case canvas
 }
 
 /// Heart of the app: local store mirroring rakazo Shell.tsx state + API behavior.
@@ -50,6 +51,8 @@ public final class AppStore {
     public var pluginGrants: [PluginGrant] = []
     public var sandboxComponents: [SandboxComponent] = []
     public var mcpAdvertisedTools: [String: [String]] = [:]
+    /// Session cache of Toolport/MacUse catalog tools promoted to first-class ChatTools.
+    public var mcpPromotedTools: [String: McpPromotedTool] = [:]
     public var auditEvents: [AuditEvent] = []
     public var appSettingsOpen: Bool = false
     public var appSettingsSection: AppSettingsSection = .general
@@ -84,6 +87,10 @@ public final class AppStore {
 
     public var panel: Panel? = nil
     public var computerOpen: Bool = false
+    public var canvasOpen: Bool = false
+    public var activeCanvasId: String?
+    public var canvases: [CanvasRecord] = []
+    public var canvasRevision: Int = 0
     public var booting: Bool = false
     public var pluginsOpen: Bool = false
     public var skillsOpen: Bool = false
@@ -114,6 +121,7 @@ public final class AppStore {
     private var userPersistence: Persistence
     private var botHome: BotHomeStore
     private var destinations: DestinationStore
+    private var canvasBoard: CanvasBoardStore
     private var runTasks: [String: Task<Void, Never>] = [:]
     private var bootTasks: [String: Task<Void, Never>] = [:]
     private var pluginTasks: [String: Task<Void, Never>] = [:]
@@ -165,16 +173,21 @@ public final class AppStore {
         self.userPersistence = Persistence(root: root)
         self.botHome = BotHomeStore(root: root)
         self.destinations = DestinationStore(root: root)
+        self.canvasBoard = CanvasBoardStore(root: root)
         self.computerRuntime = FileDesktopRuntime()
         self.delayScale = delayScale
         bootstrap()
         reloadSkills()
+        reloadCanvases()
         optInNewTool("import_skills")
         optInNewTool("forget")
         optInNewTool("computer_scroll")
         optInNewTool("search_knowledge")
         optInNewTool("present_component")
         optInNewTool("report_decline")
+        for id in CanvasBoardStore.toolIds {
+            optInNewTool(id)
+        }
         if delayScale >= 1 {
             startRoutineScheduler()
         }
@@ -278,6 +291,7 @@ public final class AppStore {
         pluginGrants = []
         sandboxComponents = []
         mcpAdvertisedTools = [:]
+        mcpPromotedTools = [:]
         auditEvents = []
         oauthJSON = nil
         connectionSecrets = [:]
@@ -285,6 +299,7 @@ public final class AppStore {
         activeGroupId = nil
         panel = nil
         computerOpen = false
+        canvasOpen = false
         booting = false
         pluginsOpen = false
         showHostPrompt = false
@@ -353,6 +368,7 @@ public final class AppStore {
         activeGroupId = nil
         panel = nil
         computerOpen = false
+        canvasOpen = false
         booting = false
         pluginsOpen = false
         skillsOpen = false
@@ -618,6 +634,7 @@ public final class AppStore {
         bootTasks.removeAll()
         panel = nil
         computerOpen = false
+        canvasOpen = false
         booting = false
         pluginsOpen = false
         showHostPrompt = false
@@ -824,6 +841,7 @@ public final class AppStore {
             panel = nil
         }
         computerOpen = false
+        canvasOpen = false
         if bots.isEmpty {
             route = .onboarding
             showHostPrompt = false
@@ -873,8 +891,30 @@ public final class AppStore {
             trimmed = trimmed.isEmpty ? note : "\(trimmed)\n\n\(note)"
         }
         guard !trimmed.isEmpty else { return }
+        guard let bot = bots.first(where: { $0.id == botId }) else { return }
+        let botSkills = skills(for: bot)
+
+        switch SlashCommand.resolve(trimmed, skills: botSkills) {
+        case .help(let listed):
+            appendLocalAssistant(
+                botId: botId,
+                userText: trimmed,
+                reply: SlashCommand.helpText(skills: listed)
+            )
+            return
+        case .unknown(let name):
+            appendLocalAssistant(
+                botId: botId,
+                userText: trimmed,
+                reply: "Unknown command `/\(name)`. Type `/help` to list skills enabled for this bot."
+            )
+            return
+        case .skill, .plain:
+            break
+        }
+
         let threadKey: String = {
-            if let bot = bots.first(where: { $0.id == botId }), let taskId = bot.activeTaskId {
+            if let taskId = bot.activeTaskId {
                 return taskId
             }
             return botId
@@ -900,6 +940,44 @@ public final class AppStore {
         bots[botIdx].updatedAt = .now
         save()
         launchRun(botId: botId, threadKey: threadKey, prompt: trimmed)
+    }
+
+    /// Slash / local replies that do not start an LLM run.
+    private func appendLocalAssistant(botId: String, userText: String, reply: String) {
+        let threadKey: String = {
+            if let bot = bots.first(where: { $0.id == botId }), let taskId = bot.activeTaskId {
+                return taskId
+            }
+            return botId
+        }()
+        guard var thread = threads[threadKey] ?? threads[botId] else { return }
+        if threads[threadKey] == nil {
+            threads[threadKey] = thread
+        }
+        guard let botIdx = bots.firstIndex(where: { $0.id == botId }) else { return }
+
+        let userMsg = ThreadMessage(
+            id: Ids.new(),
+            threadId: thread.threadId,
+            seq: thread.nextSeq,
+            role: .user,
+            blocks: [.text(userText)]
+        )
+        thread.messages.append(userMsg)
+        thread.cursor = userMsg.seq
+        let assistant = ThreadMessage(
+            id: Ids.new(),
+            threadId: thread.threadId,
+            seq: thread.nextSeq,
+            role: .bot,
+            blocks: [.text(reply)]
+        )
+        thread.messages.append(assistant)
+        thread.cursor = assistant.seq
+        threads[threadKey] = thread
+        bots[botIdx].preview = reply.count > 80 ? String(reply.prefix(80)) + "…" : reply
+        bots[botIdx].updatedAt = .now
+        save()
     }
 
     private func launchRun(botId: String, threadKey: String, prompt: String) {
@@ -966,11 +1044,13 @@ public final class AppStore {
         let providerSettings = modelProviderSettings(for: provider ?? ModelCatalog.defaultProvider)
         let selectedModel = bot.modelId ?? providerSettings.modelId ?? modelId
         let client: any ChatCompleting = chatCompleter ?? OpenAIChatClient.shared
+        await warmMcpCatalog(bot: bot, prompt: prompt)
         let tools = AgentToolCatalog.chatTools(
             enabledIds: bot.enabledTools,
             mcpServers: mcpServers,
             includeDelegation: true,
-            skills: skills(for: bot)
+            skills: skills(for: bot),
+            promotedMcp: Array(mcpPromotedTools.values)
         )
         var prior = thread.messages.filter { $0.id != progressMsg.id }
         if prior.last?.role == .user {
@@ -987,7 +1067,22 @@ public final class AppStore {
         )
         let sharedText = MemoryIndex.excerpt(sharedMemory)
         let botSkills = skills(for: bot)
-        let injected = SkillMarkdown.matching(botSkills, prompt: prompt)
+        let slash = SlashCommand.resolve(prompt, skills: botSkills)
+        let agentPrompt: String
+        let injected: [AgentSkill]
+        switch slash {
+        case .skill(let skill, let skillPrompt):
+            agentPrompt = skillPrompt
+            var matched = SkillMarkdown.matching(botSkills, prompt: skillPrompt)
+            matched.removeAll { $0.id == skill.id }
+            injected = [skill] + matched
+        case .plain(let plain):
+            agentPrompt = plain
+            injected = SkillMarkdown.matching(botSkills, prompt: plain)
+        case .unknown, .help:
+            agentPrompt = prompt
+            injected = SkillMarkdown.matching(botSkills, prompt: prompt)
+        }
         let skillText = SkillMarkdown.catalogPrompt(from: botSkills, injected: injected)
         let homePath = (try? botHome.homeURL(botId: botId).path) ?? ""
         let computerNote = computerNote(for: bot)
@@ -1045,7 +1140,7 @@ public final class AppStore {
                 homePath: homePath,
                 history: textHistory,
                 priorMessages: priorLLM,
-                prompt: prompt,
+                prompt: agentPrompt,
                 tools: tools,
                 maxSteps: 48,
                 charBudget: AgentLoopRequest.charBudget(provider: provider),
@@ -1069,7 +1164,7 @@ public final class AppStore {
             if bot.runtime == .agui, let agui = bot.aguiURL?.trimmingCharacters(in: .whitespacesAndNewlines), !agui.isEmpty {
                 var aguiMessages: [ChatMessage] = [.system(AgentLoop.systemPrompt(for: loopRequest))]
                 aguiMessages.append(contentsOf: priorLLM.filter { $0.role != "system" })
-                aguiMessages.append(.user(prompt))
+                aguiMessages.append(.user(agentPrompt))
                 var headers: [String: String] = [:]
                 if let token = connectionSecrets["agui:\(botId)"], !token.isEmpty {
                     headers["Authorization"] = "Bearer \(token)"
@@ -1437,13 +1532,39 @@ public final class AppStore {
             switch name {
             case "web_fetch": return "web_search"
             case "mcp_list_tools", "mcp_call": return ""
-            default: return name
+            default:
+                if CanvasBoardStore.toolIds.contains(name) { return "" }
+                if mcpPromotedTools[name] != nil { return "" }
+                return name
             }
         }()
         if !catalogId.isEmpty, !bot.isToolEnabled(catalogId) {
-            let output = "Tool \(name) is disabled for this bot. Enable it in Settings → Tools."
+            let hasMcp = mcpServers.contains { bot.isToolEnabled($0.toolId) }
+            let output = DisabledBuiltinFallback.toolResult(
+                tool: name,
+                argumentsJSON: argumentsJSON,
+                hasMcp: hasMcp
+            )
             appendRunLog(botId: botId, kind: "tool", text: output)
-            return AgentToolCallResult(output: output)
+            return AgentToolCallResult(
+                output: output,
+                blocks: [.card(lines: [
+                    CardLine(k: name, v: hasMcp ? "disabled — use Toolport" : output),
+                ])]
+            )
+        }
+
+        if let promoted = mcpPromotedTools[name] {
+            let rewritten = McpCatalogPromote.mcpCallArguments(promoted: promoted, raw: args)
+            return await executeAgentTool(
+                name: "mcp_call",
+                argumentsJSON: JSONValue.object(rewritten).jsonString(),
+                botId: botId,
+                depth: depth,
+                endpoint: endpoint,
+                client: client,
+                approved: approved
+            )
         }
 
         if ActionGateway.isComputerTool(name), computers[botId]?.controlHolder == .user {
@@ -1511,6 +1632,12 @@ public final class AppStore {
             guard name == "mcp_call", let server = mcpServer else { return false }
             let toolName = s("tool", "name")
             return mcpAdvertisedTools[server.id]?.contains(toolName) == true
+                || mcpPromotedTools.values.contains {
+                    $0.serverId == server.id
+                        && ($0.chatName == toolName
+                            || $0.executeTool == toolName
+                            || $0.injectName == toolName)
+                }
         }()
         let resolved = resolvePolicyElement(tool: name, argumentsJSON: argumentsJSON, botId: botId)
         let pageURL = computers[botId]?.lastPageURL ?? ""
@@ -1907,6 +2034,95 @@ public final class AppStore {
                 blocks: [.card(lines: [CardLine(k: "declined", v: reason)])]
             )
 
+        case "canvas_list":
+            reloadCanvases()
+            if canvases.isEmpty {
+                return AgentToolCallResult(output: "No canvases yet. canvas_save or canvas_place_image to create one.")
+            }
+            let text = canvases.map { "• \($0.title) (\($0.id))" }.joined(separator: "\n")
+            return AgentToolCallResult(
+                output: text,
+                blocks: [.card(lines: canvases.prefix(8).map { CardLine(k: $0.title, v: $0.id) })]
+            )
+
+        case "canvas_open":
+            let id = s("id", "title", "name")
+            openCanvas(id: id.isEmpty ? nil : id, placingScreenshotFrom: botId)
+            let opened = activeCanvas()
+            let placed = opened.map { $0.images.isEmpty ? "No screenshot to place." : "Showing \($0.images.count) image(s)." } ?? ""
+            return AgentToolCallResult(
+                output: [opened.map { "Opened canvas \($0.title) (\($0.id))." }, placed]
+                    .compactMap { $0 }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " "),
+                blocks: [.card(lines: [
+                    CardLine(k: "canvas", v: opened?.title ?? "open"),
+                    CardLine(k: "id", v: opened?.id ?? ""),
+                    CardLine(k: "images", v: "\(opened?.images.count ?? 0)"),
+                ])]
+            )
+
+        case "canvas_save":
+            let id = s("id")
+            let title = s("title", "name")
+            var record = id.isEmpty ? nil : canvasBoard.load(id: id)
+            if record == nil, !title.isEmpty {
+                record = canvasBoard.load(id: title)
+            }
+            if var existing = record {
+                if !title.isEmpty { existing.title = title }
+                let saved = saveCanvas(existing)
+                return AgentToolCallResult(
+                    output: saved.map { "Saved canvas \($0.title) (\($0.id))." } ?? "Save failed.",
+                    blocks: [.card(lines: [CardLine(k: "canvas", v: saved?.title ?? title), CardLine(k: "id", v: saved?.id ?? "")])]
+                )
+            }
+            let created = createCanvas(title: title)
+            return AgentToolCallResult(
+                output: "Saved canvas \(created.title) (\(created.id)).",
+                blocks: [.card(lines: [CardLine(k: "canvas", v: created.title), CardLine(k: "id", v: created.id)])]
+            )
+
+        case "canvas_delete":
+            let id = s("id", "title", "name")
+            guard let match = canvasBoard.load(id: id) else {
+                return AgentToolCallResult(output: "No canvas named \(id).")
+            }
+            deleteCanvas(id: match.id)
+            return AgentToolCallResult(
+                output: "Deleted canvas \(match.title).",
+                blocks: [.card(lines: [CardLine(k: "deleted", v: match.title)])]
+            )
+
+        case "canvas_place_image":
+            let id = s("id")
+            let title = s("title", "name")
+            let path = s("path", "file")
+            guard let jpeg = canvasImageData(botId: botId, path: path) else {
+                return AgentToolCallResult(output: "No image to place. Take a computer_screenshot first, or pass path to a JPEG/PNG in the bot home.")
+            }
+            let name = title.isEmpty ? (id.isEmpty ? "Screenshot" : id) : title
+            do {
+                let saved = try canvasBoard.placeImage(
+                    canvasId: id.isEmpty ? nil : canvasBoard.load(id: id)?.id,
+                    title: name,
+                    jpeg: jpeg
+                )
+                reloadCanvases()
+                activeCanvasId = saved.id
+                canvasOpen = true
+                canvasRevision += 1
+                return AgentToolCallResult(
+                    output: "Placed image on canvas \(saved.title) (\(saved.id)).",
+                    blocks: [.card(lines: [
+                        CardLine(k: "canvas", v: saved.title),
+                        CardLine(k: "images", v: "\(saved.images.count)"),
+                    ])]
+                )
+            } catch {
+                return AgentToolCallResult(output: "Could not place image: \(error.localizedDescription)")
+            }
+
         case "read_skill":
             let id = SkillMarkdown.slug(s("id", "name", "skill"))
             guard !id.isEmpty else { return AgentToolCallResult(output: "id is required") }
@@ -2132,40 +2348,69 @@ public final class AppStore {
 
         case "mcp_list_tools":
             guard let server = resolveMcpServer(s("server"), bot: bot) else {
-                return AgentToolCallResult(output: "Unknown or disabled MCP server.")
+                return AgentToolCallResult(output: mcpServerResolveError(requested: s("server"), bot: bot))
             }
             do {
                 let listed = try await McpClient.listTools(server: server)
                 mcpAdvertisedTools[server.id] = listed.map(\.name)
+                let harvested = listed.compactMap { info -> McpPromotedTool? in
+                    guard !McpCatalogPromote.isDispatcher(info.name) else { return nil }
+                    return McpPromotedTool(
+                        chatName: info.name,
+                        serverId: server.id,
+                        executeTool: info.name,
+                        description: info.description,
+                        inputSchema: info.inputSchema
+                    )
+                }
+                rememberPromoted(harvested, serverId: server.id)
                 save()
                 let text = McpClient.formatToolList(listed)
+                var output = text
+                if !harvested.isEmpty {
+                    output += "\n\nPromoted \(min(harvested.count, McpCatalogPromote.maxPromoted)) catalog tools as first-class ChatTools this session."
+                }
                 return AgentToolCallResult(
-                    output: text,
+                    output: output,
                     blocks: [.card(lines: [
                         CardLine(k: "mcp", v: server.name),
                         CardLine(k: "tools", v: "\(listed.count)"),
-                    ])]
+                    ])],
+                    promotedMcpTools: harvested
                 )
             } catch {
                 let command = ([server.command] + server.args).joined(separator: " ")
-                let output = "MCP list failed: \(error.localizedDescription) [\(command)]"
+                var output = "MCP list failed: \(error.localizedDescription) [\(command)]"
+                if let hint = McpGatewayCall.recoveryHint(for: output) {
+                    output += "\n\(hint)"
+                }
                 appendRunLog(botId: botId, kind: "mcp", text: output)
                 return AgentToolCallResult(output: output)
             }
 
         case "mcp_call":
             guard let server = resolveMcpServer(s("server"), bot: bot) else {
-                return AgentToolCallResult(output: "Unknown or disabled MCP server.")
+                return AgentToolCallResult(output: mcpServerResolveError(requested: s("server"), bot: bot))
             }
             let toolName = s("tool", "name")
             let prompt = s("prompt", "query", "text")
             do {
                 if toolName.isEmpty {
+                    if prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        return AgentToolCallResult(
+                            output: "mcp_call needs tool=<catalog or meta tool name>. Example: tool=toolport_search_tools with query, or tool=mcp_obsidian_advanced__obsidian_put_file with filepath+content."
+                        )
+                    }
                     let result = try await McpClient.invoke(
                         server: server,
                         prompt: prompt.isEmpty ? argumentsJSON : prompt
                     )
                     let prepared = McpPreparedCall(toolName: result.toolName, arguments: [:])
+                    let harvested = rememberHarvest(
+                        serverId: server.id,
+                        catalogTool: result.toolName,
+                        text: result.text
+                    )
                     return AgentToolCallResult(
                         output: McpGatewayCall.modelOutput(
                             prepared: prepared,
@@ -2178,7 +2423,8 @@ public final class AppStore {
                             gatewayTool: result.toolName,
                             isError: result.isError,
                             text: result.text
-                        ))]
+                        ))],
+                        promotedMcpTools: harvested
                     )
                 }
                 var prepared = McpGatewayCall.prepare(
@@ -2186,30 +2432,62 @@ public final class AppStore {
                     toolName: toolName,
                     raw: args
                 )
+                if McpGatewayCall.missingCatalogName(prepared) {
+                    return AgentToolCallResult(
+                        output: McpGatewayCall.missingCatalogNameMessage(),
+                        blocks: [.card(lines: [
+                            CardLine(k: "mcp", v: server.name),
+                            CardLine(k: "tool", v: "toolport_call_tool"),
+                            CardLine(k: "status", v: "tool error"),
+                            CardLine(k: "out", v: "empty catalog name"),
+                        ])]
+                    )
+                }
                 if prepared.arguments.isEmpty, !prompt.isEmpty {
                     prepared.arguments = ["prompt": .string(prompt)]
                 }
-                let result = try await McpClient.call(
+                var result = try await McpClient.call(
                     server: server,
                     toolName: prepared.toolName,
                     arguments: prepared.arguments
                 )
+                if McpGatewayCall.failed(isError: result.isError, text: result.text),
+                   McpGatewayCall.isTransientFailure(result.text) {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    result = try await McpClient.call(
+                        server: server,
+                        toolName: prepared.toolName,
+                        arguments: prepared.arguments
+                    )
+                }
+                let catalog = McpGatewayCall.catalogToolName(prepared)
+                let harvested = McpGatewayCall.failed(isError: result.isError, text: result.text)
+                    ? []
+                    : rememberHarvest(serverId: server.id, catalogTool: catalog, text: result.text)
+                var output = McpGatewayCall.modelOutput(
+                    prepared: prepared,
+                    isError: result.isError,
+                    text: result.text
+                )
+                if !harvested.isEmpty {
+                    output += "\nPromoted \(harvested.count) catalog tool(s) as first-class ChatTools — call them directly next."
+                }
                 return AgentToolCallResult(
-                    output: McpGatewayCall.modelOutput(
-                        prepared: prepared,
-                        isError: result.isError,
-                        text: result.text
-                    ),
+                    output: output,
                     blocks: [.card(lines: McpGatewayCall.cardLines(
                         serverName: server.name,
                         prepared: prepared,
                         isError: result.isError,
                         text: result.text
-                    ))]
+                    ))],
+                    promotedMcpTools: harvested
                 )
             } catch {
                 let command = ([server.command] + server.args).joined(separator: " ")
-                let output = "MCP call failed: \(error.localizedDescription) [\(command)]"
+                var output = "MCP call failed: \(error.localizedDescription) [\(command)]"
+                if let hint = McpGatewayCall.recoveryHint(for: output) {
+                    output += "\n\(hint)"
+                }
                 appendRunLog(botId: botId, kind: "mcp", text: output)
                 return AgentToolCallResult(
                     output: output,
@@ -2225,10 +2503,15 @@ public final class AppStore {
 
         case "computer_screenshot":
             if let blocked = computerBlockedIfHeadless(bot: bot) { return blocked }
-            let home = (try? botHome.homeURL(botId: botId)) ?? userPersistence.root
-            await computerRuntime?.attach(botId: botId, homeURL: home)
+            _ = await prepareComputerSurface(botId: botId, bot: bot)
             guard let snap = await computerRuntime?.snapshot(botId: botId) else {
                 return AgentToolCallResult(output: "No computer surface is attached. Enable Screen Recording (This Mac) or open the in-app browser.")
+            }
+            if ScreenshotQuality.isBlankJPEG(snap.jpeg) {
+                return AgentToolCallResult(
+                    output: "Screenshot capture returned a blank image. For This Mac: grant Screen Recording to GrizzyBot and open the computer overlay once. For in-app browser: open a URL with computer_open, then screenshot again.",
+                    blocks: [.card(lines: [CardLine(k: "screen", v: "blank")])]
+                )
             }
             let path = ".computer/screen.jpg"
             if let url = try? botHome.homeURL(botId: botId).appendingPathComponent(path) {
@@ -2248,6 +2531,9 @@ public final class AppStore {
                 computer.screenAvailable = true
                 computers[botId] = computer
             }
+            if canvasOpen {
+                _ = placeActiveScreenshot(botId: botId)
+            }
             return AgentToolCallResult(
                 output: output,
                 blocks: [.card(lines: [
@@ -2262,8 +2548,7 @@ public final class AppStore {
             if let blocked = computerBlockedIfHeadless(bot: bot) { return blocked }
             let url = s("url")
             guard !url.isEmpty else { return AgentToolCallResult(output: "url is required") }
-            let home = (try? botHome.homeURL(botId: botId)) ?? userPersistence.root
-            await computerRuntime?.attach(botId: botId, homeURL: home)
+            _ = await prepareComputerSurface(botId: botId, bot: bot)
             let action = await computerRuntime?.send(ComputerInput(kind: .open, text: url), botId: botId)
             if var computer = computers[botId] {
                 computer.state = .running
@@ -2373,15 +2658,119 @@ public final class AppStore {
         }
     }
 
+    private func enabledMcpServers(bot: Bot) -> [McpServer] {
+        mcpServers.filter { bot.isToolEnabled($0.toolId) }
+    }
+
     private func resolveMcpServer(_ raw: String, bot: Bot) -> McpServer? {
+        let enabled = enabledMcpServers(bot: bot)
         let needle = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let match = mcpServers.first { server in
+        if needle.isEmpty {
+            if let gateway = enabled.first(where: { McpGatewayCall.isGateway($0) }) {
+                return gateway
+            }
+            return enabled.count == 1 ? enabled.first : nil
+        }
+        let match = enabled.first { server in
             server.id.lowercased() == needle
                 || server.name.lowercased() == needle
                 || server.toolId.lowercased() == needle
+                || server.toolId.lowercased() == "mcp:\(needle)"
         }
-        guard let match, bot.isToolEnabled(match.toolId) else { return nil }
         return match
+    }
+
+    private func mcpServerResolveError(requested: String, bot: Bot) -> String {
+        let enabled = enabledMcpServers(bot: bot)
+        let names = enabled.map(\.name).joined(separator: ", ")
+        let needle = requested.trimmingCharacters(in: .whitespacesAndNewlines)
+        if enabled.isEmpty {
+            return "No MCP servers are enabled for this bot. Add Toolport (or another MCP) under Settings → MCP and enable it on the bot."
+        }
+        if needle.isEmpty {
+            return "mcp_list_tools / mcp_call need server=\(enabled.first?.name ?? "toolport") (or omit server when only one MCP / Toolport is enabled). Available: \(names)."
+        }
+        return "Unknown or disabled MCP server '\(needle)'. Available: \(names). Pass server by name (e.g. toolport)."
+    }
+
+    private func rememberPromoted(_ tools: [McpPromotedTool], serverId: String) {
+        guard !tools.isEmpty else { return }
+        mcpPromotedTools = McpCatalogPromote.merge(existing: mcpPromotedTools, adding: tools)
+        var advertised = mcpAdvertisedTools[serverId] ?? []
+        for tool in tools {
+            if !advertised.contains(tool.chatName) { advertised.append(tool.chatName) }
+            if !advertised.contains(tool.executeTool) { advertised.append(tool.executeTool) }
+        }
+        mcpAdvertisedTools[serverId] = advertised
+    }
+
+    @discardableResult
+    private func rememberHarvest(serverId: String, catalogTool: String, text: String) -> [McpPromotedTool] {
+        let harvested = McpCatalogPromote.harvest(
+            serverId: serverId,
+            catalogTool: catalogTool,
+            text: text
+        )
+        rememberPromoted(harvested, serverId: serverId)
+        return harvested
+    }
+
+    /// Prefetch Toolport catalog matches from the user prompt so Gmail/MacUse tools are first-class on step 1.
+    private func warmMcpCatalog(bot: Bot, prompt: String) async {
+        let queries = McpCatalogPromote.warmQueries(from: prompt)
+        guard !queries.isEmpty else { return }
+        guard let server = enabledMcpServers(bot: bot).first(where: { McpGatewayCall.isGateway($0) })
+                ?? enabledMcpServers(bot: bot).first
+        else { return }
+        for item in queries {
+            var args: [String: JSONValue] = ["query": .string(item.query)]
+            if let filter = item.server {
+                args["server"] = .string(filter)
+            }
+            let prepared = McpGatewayCall.prepare(
+                server: server,
+                toolName: "toolport_search_tools",
+                raw: ["tool": .string("toolport_search_tools"), "arguments": .object(args)]
+            )
+            guard let result = try? await McpClient.call(
+                server: server,
+                toolName: prepared.toolName,
+                arguments: prepared.arguments
+            ), !McpGatewayCall.failed(isError: result.isError, text: result.text)
+            else { continue }
+            rememberHarvest(serverId: server.id, catalogTool: "toolport_search_tools", text: result.text)
+        }
+
+        let lower = prompt.lowercased()
+        let wantsMail = lower.contains("gmail") || lower.contains("email") || lower.contains("inbox")
+            || lower.contains("macuse")
+        guard wantsMail else { return }
+        let mailNames: [JSONValue] = [
+            .string("mail_list_accounts"),
+            .string("mail_list_mailboxes"),
+            .string("mail_search_messages"),
+            .string("mail_get_messages"),
+            .string("mail_get_message"),
+        ]
+        let defsPrepared = McpGatewayCall.prepare(
+            server: server,
+            toolName: "macuse__get_tool_definitions",
+            raw: [
+                "tool": .string("macuse__get_tool_definitions"),
+                "arguments": .object(["names": .array(mailNames)]),
+            ]
+        )
+        guard let defs = try? await McpClient.call(
+            server: server,
+            toolName: defsPrepared.toolName,
+            arguments: defsPrepared.arguments
+        ), !McpGatewayCall.failed(isError: defs.isError, text: defs.text)
+        else { return }
+        rememberHarvest(
+            serverId: server.id,
+            catalogTool: "macuse__get_tool_definitions",
+            text: defs.text
+        )
     }
 
     private func applyAction(
@@ -2869,6 +3258,12 @@ public final class AppStore {
         skills.filter { bot.enabledSkills.contains($0.id) }
     }
 
+    /// Skills enabled for a bot (composer `/` autocomplete).
+    public func enabledSkills(for botId: String) -> [AgentSkill] {
+        guard let bot = bots.first(where: { $0.id == botId }) else { return [] }
+        return skills(for: bot)
+    }
+
     public func reloadSkills() {
         skills = SkillLibrary.load(root: userPersistence.root)
     }
@@ -2940,7 +3335,7 @@ public final class AppStore {
 
     /// Mirrors rakazo `openComputer`: boot if needed, take control, open full-window overlay.
     public func openComputerOverlay() {
-        guard let botId = activeBotId else { return }
+        guard let botId = activeBotId, let bot = bots.first(where: { $0.id == botId }) else { return }
         let computer = computers[botId]
         let needsTakeover = computer?.controlHolder != .user
         let needsBoot = computer?.state != .running || computer?.screenAvailable != true
@@ -2952,10 +3347,133 @@ public final class AppStore {
         }
         computerOpen = true
         heartbeat(botId: botId)
+        Task { @MainActor in
+            _ = await prepareComputerSurface(botId: botId, bot: bot)
+            await computerRuntime?.prepareForDisplay(botId: botId)
+        }
     }
 
     public func closeComputerOverlay() {
         computerOpen = false
+    }
+
+    public func reloadCanvases() {
+        canvases = canvasBoard.list()
+    }
+
+    public func toggleCanvasPanel() {
+        if panel == .canvas {
+            panel = nil
+        } else {
+            reloadCanvases()
+            openPanel(.canvas)
+        }
+    }
+
+    public func openCanvas(id: String?, placingScreenshotFrom botId: String? = nil) {
+        reloadCanvases()
+        let screenshotBot = botId ?? activeBotId
+        let hasShot = screenshotBot.map { canvasImageData(botId: $0, path: "") != nil } ?? false
+        if let id, let match = canvasBoard.load(id: id) {
+            activeCanvasId = match.id
+        } else if hasShot {
+            if let empty = canvases.first(where: { $0.images.isEmpty }) {
+                activeCanvasId = empty.id
+            } else {
+                activeCanvasId = createCanvas(title: "Screenshot").id
+            }
+        } else if let first = canvases.first {
+            activeCanvasId = first.id
+        } else {
+            activeCanvasId = createCanvas(title: "Untitled").id
+        }
+        if hasShot, let screenshotBot, let board = activeCanvas(), board.images.isEmpty {
+            _ = placeActiveScreenshot(botId: screenshotBot)
+        }
+        canvasOpen = true
+        if panel != .canvas {
+            openPanel(.canvas)
+        }
+    }
+
+    public func closeCanvasOverlay() {
+        canvasOpen = false
+    }
+
+    @discardableResult
+    public func createCanvas(title: String) -> CanvasRecord {
+        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let record = CanvasRecord(title: name.isEmpty ? "Untitled" : name)
+        let saved = (try? canvasBoard.save(record)) ?? record
+        reloadCanvases()
+        activeCanvasId = saved.id
+        canvasRevision += 1
+        return saved
+    }
+
+    @discardableResult
+    public func saveCanvas(_ record: CanvasRecord) -> CanvasRecord? {
+        let saved = try? canvasBoard.save(record)
+        reloadCanvases()
+        if let saved {
+            activeCanvasId = saved.id
+        }
+        canvasRevision += 1
+        return saved
+    }
+
+    public func deleteCanvas(id: String) {
+        try? canvasBoard.delete(id: id)
+        if activeCanvasId == id {
+            activeCanvasId = canvases.first(where: { $0.id != id })?.id
+            if activeCanvasId == nil { canvasOpen = false }
+        }
+        reloadCanvases()
+        canvasRevision += 1
+    }
+
+    public func previewURL(forCanvas id: String) -> URL {
+        canvasBoard.previewURL(id: id)
+    }
+
+    public func canvasImageURL(id: String, fileName: String) -> URL {
+        canvasBoard.imageURL(id: id, fileName: fileName)
+    }
+
+    public func activeCanvas() -> CanvasRecord? {
+        activeCanvasId.flatMap { canvasBoard.load(id: $0) } ?? canvases.first
+    }
+
+    @discardableResult
+    public func placeActiveScreenshot(botId: String) -> CanvasRecord? {
+        guard let jpeg = canvasImageData(botId: botId, path: "") else { return nil }
+        let title = activeCanvas()?.title ?? "Screenshot"
+        let saved = try? canvasBoard.placeImage(canvasId: activeCanvasId, title: title, jpeg: jpeg)
+        reloadCanvases()
+        if let saved {
+            activeCanvasId = saved.id
+        }
+        canvasRevision += 1
+        return saved
+    }
+
+    private func canvasImageData(botId: String, path: String) -> Data? {
+        if !path.isEmpty {
+            let url: URL
+            if BotHomeStore.isHostPath(path) {
+                url = URL(fileURLWithPath: BotHomeStore.expandPath(path))
+            } else if let home = try? botHome.homeURL(botId: botId) {
+                url = home.appendingPathComponent(path)
+            } else {
+                return nil
+            }
+            return try? Data(contentsOf: url)
+        }
+        if let home = try? botHome.homeURL(botId: botId) {
+            let shot = home.appendingPathComponent(".computer/screen.jpg")
+            if let data = try? Data(contentsOf: shot), !data.isEmpty { return data }
+        }
+        return nil
     }
 
     private func autoBootIfNeeded(botId: String) {
@@ -3033,6 +3551,7 @@ public final class AppStore {
         computer.controlHolder = .bot
         computers[botId] = computer
         computerOpen = false
+        canvasOpen = false
         recordAudit(
             type: .computerControlReleased,
             botId: botId,
@@ -3826,12 +4345,37 @@ public final class AppStore {
         return deployment.normalizedHost == .thisMac ? .thisMac : .inAppBrowser
     }
 
+    /// UI: This Mac is preview-only (screenshot poll); drive happens on the real desktop.
+    public func isThisMacComputer(botId: String) -> Bool {
+        guard let bot = bots.first(where: { $0.id == botId }) else { return false }
+        return resolvedComputerMode(for: bot) == .thisMac
+    }
+
     private func computerBlockedIfHeadless(bot: Bot) -> AgentToolCallResult? {
         guard headlessRoutineTick else { return nil }
         guard resolvedComputerMode(for: bot) == .thisMac else { return nil }
         return AgentToolCallResult(
             output: "This Mac computer is unavailable during a background routine tick. Screen Recording and Accessibility need GrizzyBot in the foreground. Open the app to run computer tools, or switch this bot to In-app browser."
         )
+    }
+
+    /// Applies computer mode to the runtime and attaches the bot home before screen I/O.
+    @discardableResult
+    private func prepareComputerSurface(botId: String, bot: Bot) async -> URL {
+        let home = (try? botHome.homeURL(botId: botId)) ?? userPersistence.root
+        let mode = resolvedComputerMode(for: bot)
+        await computerRuntime?.setSession(
+            botId: botId,
+            thisMac: mode == .thisMac,
+            persistent: mode != .off
+        )
+        await computerRuntime?.attach(botId: botId, homeURL: home)
+        if var computer = computers[botId], computer.state != .running {
+            computer.state = .running
+            computer.screenAvailable = true
+            computers[botId] = computer
+        }
+        return home
     }
 
     private func computerNote(for bot: Bot) -> String {
@@ -4228,6 +4772,7 @@ public final class AppStore {
         skillsOpen = false
         appSettingsOpen = false
         computerOpen = false
+        canvasOpen = false
     }
 
     public func closeAppSettings() {
@@ -4287,6 +4832,7 @@ public final class AppStore {
         mainView = .chat
         panel = nil
         computerOpen = false
+        canvasOpen = false
         if let idx = groups.firstIndex(where: { $0.id == groupId }) {
             groups[idx].unread = false
             save()
@@ -4299,6 +4845,7 @@ public final class AppStore {
         mainView = .chat
         panel = nil
         computerOpen = false
+        canvasOpen = false
         if let idx = bots.firstIndex(where: { $0.id == botId }) {
             bots[idx].unread = false
             save()

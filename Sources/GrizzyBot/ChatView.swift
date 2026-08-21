@@ -6,6 +6,7 @@ struct ChatView: View {
     @Environment(AppStore.self) private var store
     @State private var draft = ""
     @State private var hoverComputer = false
+    @State private var hoverCanvas = false
     @State private var showTaskPicker = false
     @State private var newTaskTitle = ""
     @State private var confirmClearChat = false
@@ -140,6 +141,22 @@ struct ChatView: View {
                 .buttonStyle(.plain)
                 .onHover { hoverComputer = $0 }
                 .opacity(hoverComputer || store.panel == .computer ? 1 : 0.9)
+                Button {
+                    store.toggleCanvasPanel()
+                } label: {
+                    Image(systemName: "paintbrush.pointed")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.textSub)
+                        .frame(width: 30, height: 34)
+                        .background(
+                            store.panel == .canvas || store.canvasOpen ? Color(hex: "#1B1B1E") : Color.clear
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .help("Canvas")
+                .onHover { hoverCanvas = $0 }
+                .opacity(hoverCanvas || store.panel == .canvas || store.canvasOpen ? 1 : 0.9)
             }
         }
         .padding(.horizontal, 22)
@@ -452,6 +469,56 @@ struct ChatView: View {
         return PasteGuard.warning(for: draft, localModel: local)
     }
 
+    private var slashSuggestions: [AgentSkill] {
+        guard let bot else { return [] }
+        return SlashCommand.suggestions(draft: draft, skills: store.enabledSkills(for: bot.id))
+    }
+
+    private var slashMenu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Skills")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Theme.textMuted)
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
+            ForEach(slashSuggestions) { skill in
+                Button {
+                    draft = "/\(skill.id) "
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("/\(skill.id)")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Theme.orange)
+                        Text(skill.description)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Text("Tab or click to insert · /help lists all")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textMuted)
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+                .padding(.bottom, 10)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.bgCard)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Theme.borderSearch, lineWidth: 1)
+        }
+        .padding(.horizontal, 28)
+    }
+
     private var inputBar: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let pasteWarning {
@@ -512,6 +579,9 @@ struct ChatView: View {
                     .foregroundStyle(Theme.redError)
                     .padding(.horizontal, 28)
             }
+            if !slashSuggestions.isEmpty {
+                slashMenu
+            }
             HStack(spacing: 14) {
                 Button {
                     if let urls = SessionFilePanel.openFiles() {
@@ -531,8 +601,9 @@ struct ChatView: View {
 
                 PromptComposer(
                     text: $draft,
-                    placeholder: bot.map { "Message \($0.name)" } ?? "Message",
-                    onSend: send
+                    placeholder: bot.map { "Message \($0.name) · / for skills" } ?? "Message",
+                    onSend: send,
+                    onTabComplete: completeSlashSuggestion
                 )
                 .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 110, alignment: .leading)
 
@@ -713,6 +784,13 @@ struct ChatView: View {
             return
         }
         store.send(botId: bot.id, text: text, attaching: files)
+    }
+
+    @discardableResult
+    private func completeSlashSuggestion() -> Bool {
+        guard let first = slashSuggestions.first else { return false }
+        draft = "/\(first.id) "
+        return true
     }
 
     private func sendGroup(_ group: GroupRoom) {

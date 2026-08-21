@@ -18,6 +18,8 @@ final class AppComputerRuntime: ComputerRuntime, @unchecked Sendable {
     private var primaryMaxY: [String: CGFloat] = [:]
     private var thisMac: Set<String> = []
     private var persistent: Set<String> = []
+    /// Keeps off-screen WKWebViews in a real NSWindow so `takeSnapshot` can paint.
+    private var hostWindows: [String: NSWindow] = [:]
 
     func cachedJPEG(for botId: String) -> Data? { lastJPEG[botId] }
 
@@ -63,10 +65,46 @@ final class AppComputerRuntime: ComputerRuntime, @unchecked Sendable {
         homes[botId] = homeURL
         guard !thisMac.contains(botId) else { return }
         let web = webView(for: botId)
+        ensureHosted(web, botId: botId)
         if web.url == nil {
             let desktop = BotDesktopHTML.page(homeURL: homeURL)
             web.loadHTMLString(desktop, baseURL: homeURL)
+            await waitForPaint(web)
         }
+    }
+
+    /// Load browser desktop (or refresh This Mac preview) and free the WebView for the overlay.
+    func prepareForDisplay(botId: String) async {
+        if thisMac.contains(botId) {
+            if let snap = await MacDesktop.snapshot() {
+                lastJPEG[botId] = snap.snapshot.jpeg
+                lastFrames[botId] = snap.snapshot.frame
+                cocoaFrames[botId] = snap.cocoaFrame
+                primaryMaxY[botId] = snap.primaryMaxY
+            }
+            return
+        }
+        if let home = homes[botId] {
+            await attach(botId: botId, homeURL: home)
+        }
+        unhost(botId: botId)
+        let web = webView(for: botId)
+        if web.url == nil, let home = homes[botId] {
+            let desktop = BotDesktopHTML.page(homeURL: home)
+            web.loadHTMLString(desktop, baseURL: home)
+            await waitForPaint(web)
+        } else {
+            await waitForPaint(web)
+        }
+    }
+
+    /// Detach the shared WKWebView from the off-screen host so SwiftUI can embed it.
+    func unhost(botId: String) {
+        guard let window = hostWindows.removeValue(forKey: botId) else { return }
+        if window.contentView === webs[botId] {
+            window.contentView = nil
+        }
+        window.orderOut(nil)
     }
 
     func lastFrame(botId: String) async -> ComputerScreenFrame? {
@@ -83,12 +121,37 @@ final class AppComputerRuntime: ComputerRuntime, @unchecked Sendable {
             return snap.snapshot
         }
         let web = webView(for: botId)
-        web.frame = CGRect(x: 0, y: 0, width: 1280, height: 800)
-        guard let image = try? await web.takeSnapshot(configuration: nil) else {
-            return nil
+        if let home = homes[botId], web.url == nil {
+            let desktop = BotDesktopHTML.page(homeURL: home)
+            web.loadHTMLString(desktop, baseURL: home)
         }
-        let jpeg = jpegData(image) ?? Data()
-        lastJPEG[botId] = jpeg
+        ensureHosted(web, botId: botId)
+        web.frame = CGRect(x: 0, y: 0, width: 1280, height: 800)
+        web.layoutSubtreeIfNeeded()
+        await waitForPaint(web)
+
+        var image = try? await web.takeSnapshot(configuration: nil)
+        var jpeg = image.flatMap { jpegData($0) } ?? Data()
+        if ScreenshotQuality.isBlankJPEG(jpeg) {
+            try? await Task.sleep(for: .milliseconds(350))
+            web.layoutSubtreeIfNeeded()
+            image = try? await web.takeSnapshot(configuration: nil)
+            jpeg = image.flatMap { jpegData($0) } ?? Data()
+        }
+        if ScreenshotQuality.isBlankJPEG(jpeg), let drawn = cacheDisplayJPEG(web) {
+            jpeg = drawn
+            image = NSImage(data: drawn)
+        }
+        // Last resort: real Mac desktop (Screen Recording). Better than a white board.
+        if ScreenshotQuality.isBlankJPEG(jpeg), let mac = await MacDesktop.snapshot() {
+            lastJPEG[botId] = mac.snapshot.jpeg
+            lastFrames[botId] = mac.snapshot.frame
+            cocoaFrames[botId] = mac.cocoaFrame
+            primaryMaxY[botId] = mac.primaryMaxY
+            return mac.snapshot
+        }
+        guard !jpeg.isEmpty, let image else { return nil }
+
         let pixelW = Int((image.representations.first as? NSBitmapImageRep)?.pixelsWide ?? Int(image.size.width))
         let pixelH = Int((image.representations.first as? NSBitmapImageRep)?.pixelsHigh ?? Int(image.size.height))
         let frame = ComputerScreenFrame(
@@ -97,6 +160,7 @@ final class AppComputerRuntime: ComputerRuntime, @unchecked Sendable {
             pixelWidth: max(1, pixelW),
             pixelHeight: max(1, pixelH)
         )
+        lastJPEG[botId] = jpeg
         lastFrames[botId] = frame
         let scaleX = frame.pointWidth > 0 ? Double(frame.pixelWidth) / frame.pointWidth : 1
         let scaleY = frame.pointHeight > 0 ? Double(frame.pixelHeight) / frame.pointHeight : 1
@@ -110,6 +174,43 @@ final class AppComputerRuntime: ComputerRuntime, @unchecked Sendable {
             frame: frame,
             outline: outline
         )
+    }
+
+    private func ensureHosted(_ web: WKWebView, botId: String) {
+        if web.window != nil { return }
+        if let existing = hostWindows[botId] {
+            existing.contentView = web
+            existing.setContentSize(NSSize(width: 1280, height: 800))
+            return
+        }
+        let window = NSWindow(
+            contentRect: NSRect(x: -12_000, y: -12_000, width: 1280, height: 800),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.isOpaque = true
+        window.backgroundColor = .black
+        window.contentView = web
+        window.orderBack(nil)
+        hostWindows[botId] = window
+    }
+
+    private func waitForPaint(_ web: WKWebView) async {
+        for _ in 0..<40 {
+            if !web.isLoading { break }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        try? await Task.sleep(for: .milliseconds(120))
+    }
+
+    private func cacheDisplayJPEG(_ web: WKWebView) -> Data? {
+        let bounds = web.bounds
+        guard bounds.width > 1, bounds.height > 1 else { return nil }
+        guard let rep = web.bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+        web.cacheDisplay(in: bounds, to: rep)
+        return rep.representation(using: .jpeg, properties: [.compressionFactor: 0.55])
     }
 
     func send(_ input: ComputerInput, botId: String) async -> ComputerActionResult {
@@ -400,7 +501,10 @@ enum MacDesktop {
             pixelWidth: image.width,
             pixelHeight: image.height
         )
-        let outline = MacAccessibility.outline(cocoaFrame: cocoa, frame: frame, primaryMaxY: primaryMaxY)
+        // AX outline off the agent cooperative executor; never walks this process (see MacAccessibility.outline).
+        let outline = await Task.detached(priority: .utility) {
+            MacAccessibility.outline(cocoaFrame: cocoa, frame: frame, primaryMaxY: primaryMaxY)
+        }.value
         return MacDesktopCapture(
             snapshot: ComputerSnapshot(
                 jpeg: jpeg,
@@ -437,6 +541,7 @@ struct ComputerDesktopView: NSViewRepresentable {
     let userHasControl: Bool
 
     func makeNSView(context: Context) -> WKWebView {
+        AppComputerRuntime.shared.unhost(botId: botId)
         let web = AppComputerRuntime.shared.webView(for: botId)
         web.allowsMagnification = true
         return web
@@ -444,5 +549,67 @@ struct ComputerDesktopView: NSViewRepresentable {
 
     func updateNSView(_ web: WKWebView, context: Context) {
         web.allowsBackForwardNavigationGestures = userHasControl
+        web.isHidden = false
+    }
+}
+
+/// OpenMaus-style This Mac preview: polled screenshots only. Drive the real Mac outside GrizzyBot.
+struct ThisMacScreenPreview: View {
+    let botId: String
+    var pollSeconds: Double = 3
+    var fill: Bool = false
+
+    @State private var preview: NSImage?
+    @State private var missCount = 0
+    @State private var refreshing = false
+
+    var body: some View {
+        ZStack {
+            if let preview {
+                Image(nsImage: preview)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: fill ? .fill : .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Theme.bgScreen
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(missCount >= 3
+                        ? "No frames yet — grant Screen Recording, then relaunch."
+                        : "Capturing this Mac’s screen…")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                }
+            }
+        }
+        .clipped()
+        .task(id: botId) {
+            await refresh(force: true)
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(pollSeconds))
+                guard !Task.isCancelled else { return }
+                await refresh(force: false)
+            }
+        }
+    }
+
+    @MainActor
+    private func refresh(force: Bool) async {
+        if refreshing, !force { return }
+        refreshing = true
+        defer { refreshing = false }
+        await AppComputerRuntime.shared.prepareForDisplay(botId: botId)
+        if let data = AppComputerRuntime.shared.cachedJPEG(for: botId),
+           let image = NSImage(data: data),
+           !ScreenshotQuality.isBlankJPEG(data) {
+            preview = image
+            missCount = 0
+        } else {
+            missCount += 1
+        }
     }
 }

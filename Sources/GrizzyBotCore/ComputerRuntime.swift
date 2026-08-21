@@ -125,6 +125,8 @@ public protocol ComputerRuntime: AnyObject, Sendable {
     func currentURL(botId: String) async -> String
     func setSession(botId: String, thisMac: Bool, persistent: Bool) async
     func sessionDescription(botId: String) async -> String
+    /// Ready the surface for the full-window overlay (load browser page / refresh This Mac preview).
+    func prepareForDisplay(botId: String) async
 }
 
 public extension ComputerRuntime {
@@ -142,6 +144,10 @@ public extension ComputerRuntime {
     func sessionDescription(botId: String) async -> String {
         _ = botId
         return "ephemeral desktop (logins do not persist)"
+    }
+
+    func prepareForDisplay(botId: String) async {
+        _ = botId
     }
 }
 
@@ -232,5 +238,40 @@ enum DesktopImage {
         CGImageDestinationAddImage(destId, image, [kCGImageDestinationLossyCompressionQuality: 0.5] as CFDictionary)
         CGImageDestinationFinalize(destId)
         return dest as Data
+    }
+}
+
+/// Detects empty / all-white JPEG captures from a failed WebView snapshot.
+public enum ScreenshotQuality: Sendable {
+    public static func isBlankJPEG(_ data: Data) -> Bool {
+        guard !data.isEmpty,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return true }
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0 else { return true }
+        let sampleW = min(32, width)
+        let sampleH = min(24, height)
+        var pixels = [UInt8](repeating: 0, count: sampleW * sampleH * 4)
+        guard let ctx = CGContext(
+            data: &pixels,
+            width: sampleW,
+            height: sampleH,
+            bitsPerComponent: 8,
+            bytesPerRow: sampleW * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return true }
+        ctx.interpolationQuality = .low
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: sampleW, height: sampleH))
+        var nonWhite = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            if pixels[i] < 250 || pixels[i + 1] < 250 || pixels[i + 2] < 250 {
+                nonWhite += 1
+                if nonWhite >= 8 { return false }
+            }
+        }
+        return true
     }
 }

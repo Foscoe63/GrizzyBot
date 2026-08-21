@@ -165,6 +165,7 @@ struct MessageView: View {
                         .padding(.vertical, 12)
                         .background(Theme.bgBubble)
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    bubbleCopyButton(text)
                     Button {
                         ReplySpeaker.speak(text, voiceName: store.appConfig.ttsVoice, apiKey: store.appConfig.ttsKey)
                     } label: {
@@ -179,26 +180,29 @@ struct MessageView: View {
             }
 
         case .card(let lines):
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                    HStack(alignment: .top, spacing: 6) {
-                        Text("✓")
-                            .foregroundStyle(Theme.greenAlt)
-                        Text(line.k)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.white)
-                        Text("→")
-                            .foregroundStyle(Theme.textSecondary)
-                        Text(line.v)
-                            .font(.system(size: 15))
-                            .foregroundStyle(Theme.textPrimary)
+            HStack(alignment: .bottom, spacing: 8) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("✓")
+                                .foregroundStyle(Theme.greenAlt)
+                            Text(line.k)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text("→")
+                                .foregroundStyle(Theme.textSecondary)
+                            Text(line.v)
+                                .font(.system(size: 15))
+                                .foregroundStyle(Theme.textPrimary)
+                        }
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .background(Theme.bgBubble)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                bubbleCopyButton(lines.map { "\($0.k): \($0.v)" }.joined(separator: "\n"))
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(Theme.bgBubble)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
 
         case .ask(let text, let detail):
@@ -235,18 +239,36 @@ struct MessageView: View {
             case .choice(let q, _, _): return q
             case .approval(let tool, let detail, _): return "\(tool)\n\(detail)"
             case .component(let payload): return payload.title
+            case .card(let lines):
+                let body = lines.map { "\($0.k): \($0.v)" }.joined(separator: "\n")
+                return body.isEmpty ? nil : body
+            case .meta(let t): return t
             default: return nil
             }
-        }.joined(separator: "\n")
+        }.joined(separator: "\n\n")
     }
 
     private var canCopy: Bool {
-        !copyableText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        message.role == .bot || message.role == .user
+            ? !copyableText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            : false
     }
 
     private var copyButton: some View {
-        Button {
-            copyMessage()
+        bubbleCopyButton(copyableText)
+    }
+
+    private func bubbleCopyButton(_ text: String) -> some View {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Button {
+            guard !trimmed.isEmpty else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(trimmed, forType: .string)
+            copied = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.2))
+                copied = false
+            }
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .font(.system(size: 11, weight: .medium))
@@ -257,6 +279,8 @@ struct MessageView: View {
         .buttonStyle(.plain)
         .help(copied ? "Copied" : "Copy")
         .accessibilityLabel("Copy")
+        .disabled(trimmed.isEmpty)
+        .opacity(trimmed.isEmpty ? 0.35 : 1)
     }
 
     private func copyMessage() {
