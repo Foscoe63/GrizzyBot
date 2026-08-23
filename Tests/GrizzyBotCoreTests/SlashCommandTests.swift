@@ -54,6 +54,20 @@ struct SlashCommandTests {
         #expect(SlashCommand.suggestions(draft: "/research more", skills: skills).isEmpty)
     }
 
+    @Test("absolute paths are not slash commands")
+    func absolutePathsArePlain() {
+        let path = "/Users/ewg/Desktop/Screenshot 2026-08-21 at 1.15.00 PM.png"
+        #expect(SlashCommand.parse(path) == nil)
+        if case .plain(let text) = SlashCommand.resolve(path, skills: BundledSkills.all) {
+            #expect(text.contains("Screenshot"))
+        } else {
+            Issue.record("expected plain for absolute path")
+        }
+        #expect(SlashCommand.suggestions(draft: path, skills: BundledSkills.all).isEmpty)
+        #expect(SlashCommand.parse("/research")?.name == "research")
+        #expect(SlashCommand.parse("/tmp") == nil)
+    }
+
     @Test("send /help replies locally without a run")
     @MainActor
     func sendHelp() {

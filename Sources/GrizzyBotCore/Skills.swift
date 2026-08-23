@@ -13,6 +13,8 @@ public struct AgentSkill: Codable, Sendable, Hashable, Identifiable {
     public var body: String
     public var source: SkillSource
     public var allowedTools: [String]
+    /// Discovery keywords (SKILL.md `keywords`); kept out of the body index.
+    public var keywords: [String]
 
     public init(
         id: String,
@@ -20,7 +22,8 @@ public struct AgentSkill: Codable, Sendable, Hashable, Identifiable {
         description: String,
         body: String,
         source: SkillSource = .bundled,
-        allowedTools: [String] = []
+        allowedTools: [String] = [],
+        keywords: [String] = []
     ) {
         self.id = id
         self.name = name
@@ -28,10 +31,26 @@ public struct AgentSkill: Codable, Sendable, Hashable, Identifiable {
         self.body = body
         self.source = source
         self.allowedTools = allowedTools
+        self.keywords = keywords
     }
 
     public var catalogLine: String {
         "- \(id): \(description)"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, description, body, source, allowedTools, keywords
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        description = try c.decode(String.self, forKey: .description)
+        body = try c.decode(String.self, forKey: .body)
+        source = try c.decodeIfPresent(SkillSource.self, forKey: .source) ?? .user
+        allowedTools = try c.decodeIfPresent([String].self, forKey: .allowedTools) ?? []
+        keywords = try c.decodeIfPresent([String].self, forKey: .keywords) ?? []
     }
 }
 
@@ -68,13 +87,15 @@ public enum SkillMarkdown {
         guard !description.isEmpty else { throw SkillParseError.missingDescription }
         let name = fields["name"] ?? id
         let tools = parseList(fields["allowed-tools"] ?? fields["allowed_tools"] ?? "")
+        let keywords = parseList(fields["keywords"] ?? "")
         return AgentSkill(
             id: id.isEmpty ? fallbackId : id,
             name: name,
             description: description,
             body: body.trimmingCharacters(in: .whitespacesAndNewlines),
             source: source,
-            allowedTools: tools
+            allowedTools: tools,
+            keywords: keywords
         )
     }
 
@@ -86,6 +107,9 @@ public enum SkillMarkdown {
         ]
         if !skill.allowedTools.isEmpty {
             lines.append("allowed-tools: [\(skill.allowedTools.joined(separator: ", "))]")
+        }
+        if !skill.keywords.isEmpty {
+            lines.append("keywords: [\(skill.keywords.joined(separator: ", "))]")
         }
         lines.append("---")
         lines.append("")
@@ -116,12 +140,20 @@ public enum SkillMarkdown {
         return parts.joined(separator: "\n\n")
     }
 
-    /// Rank skills whose id, name, or description overlap the user prompt.
+    /// Rank skills whose id, name, description, or keywords overlap the user prompt.
     public static func matching(_ skills: [AgentSkill], prompt: String, limit: Int = 2) -> [AgentSkill] {
+        let entries = CapabilitySearch.entries(skills: skills, builtins: [], mcpAdvertised: [:], promotedMcp: [])
+        let hits = CapabilitySearch.search(prompt, in: entries, topK: limit, kinds: [.skill])
+        if !hits.isEmpty {
+            let byId = Dictionary(uniqueKeysWithValues: skills.map { ($0.id, $0) })
+            return hits.compactMap { byId[$0.entry.id] }
+        }
         let tokens = Set(MemoryIndex.tokenize(prompt))
         guard !tokens.isEmpty else { return [] }
         let ranked: [(AgentSkill, Int)] = skills.compactMap { skill in
-            let hay = MemoryIndex.tokenize("\(skill.id) \(skill.name) \(skill.description)")
+            let hay = MemoryIndex.tokenize(
+                "\(skill.id) \(skill.name) \(skill.description) \(skill.keywords.joined(separator: " "))"
+            )
             let score = hay.reduce(0) { $0 + (tokens.contains($1) ? 2 : 0) }
             let bodyHits = MemoryIndex.tokenize(String(skill.body.prefix(400)))
                 .reduce(0) { $0 + (tokens.contains($1) ? 1 : 0) }
@@ -220,16 +252,16 @@ public enum BundledSkills {
 
         ## Workflow
         1. If the question is about GrizzyBot or this Mac (Settings, Keys, plugins, bots), answer from the system prompt and local files. Do not web-search for those labels.
-        2. If GitHub, Obsidian, or another app is on MCP/Toolport, `mcp_list_tools` once then `mcp_call`. Do not `web_search` or curl those APIs. Do not `write_file` into an Obsidian vault.
+        2. If GitHub, Obsidian, or another app is on an enabled MCP server, `mcp_list_tools` once with that server name then `mcp_call`. Do not `web_search` or curl those APIs. Do not `write_file` into an Obsidian vault.
         3. Otherwise call `web_search` once with a precise query. One follow-up is allowed only if results are thin but non-empty.
         4. `web_fetch` the 2–4 best URLs. Quote or paraphrase; do not invent citations.
         5. Write the answer with short bullets, then a **Sources** list of title + URL.
-        6. If the user asked for a file, `write_file` a markdown brief under `notes/` — unless they asked to save in Obsidian, then use the vault's MCP write tool. If `write_file` is disabled, `mcp_call` Toolport `fast-filesystem` with the same path and content. For multi-day jobs, keep `PLAN.md` in the bot home.
+        6. If the user asked for a file, `write_file` a markdown brief under `notes/` — unless they asked to save in Obsidian, then use the vault's MCP write tool. If `write_file` is disabled, `mcp_call` the filesystem MCP (fast-filesystem) with the same path and content — do not assume Toolport is connected. For multi-day jobs, keep `PLAN.md` in the bot home.
 
         ## Rules
         - Prefer primary sources over aggregators.
         - If search fails, is blocked, or returns no results twice, stop. Say so and work from what you have (including this Mac Settings). Do not keep retrying similar queries.
-        - For Toolport, search once and call with the exact catalog name (`github__search_repositories`). After a tool error, stop; do not grep binaries or retry similar searches.
+        - For MCP, list once then call with the exact tool name. After a tool error, stop; do not grep binaries or retry similar searches.
         - Never claim you visited a page unless `web_fetch` returned it.
         - Never claim an Obsidian write unless the tool result names `obsidian_put_file` and status is ok.
         """,

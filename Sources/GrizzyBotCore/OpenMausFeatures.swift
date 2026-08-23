@@ -85,6 +85,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var defaultComputerMode: ComputerMode
     /// Tool ids enabled for newly created bots.
     public var defaultEnabledTools: [String]
+    /// Tool ids already offered for default opt-in. Absent from `defaultEnabledTools` means off — do not revive.
+    public var seenToolIds: [String]
     public var launchAtLogin: Bool
     public var showMenuBar: Bool
     /// Hide the main window at launch; GrizzyBot stays in the menu bar until opened.
@@ -97,6 +99,13 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var activeThemePresetId: String?
     /// Silence limit for model streams. 0 disables. Default 60s.
     public var agentStallTimeoutMs: Int
+    /// Scrub / block PII before cloud model sends.
+    public var privacyFilter: PrivacyFilterSettings
+    /// Lean memory injection gate.
+    public var memoryRelevanceMode: MemoryRelevanceGateMode
+    /// Local OpenAI-compatible gateway for Cursor / external clients.
+    public var localGateway: LocalOpenAIGateway.Settings
+    public var enableFolderWatchers: Bool
 
     public init(
         profileName: String = "",
@@ -110,13 +119,18 @@ public struct AppConfig: Codable, Sendable, Equatable {
         ttsVoice: String? = nil,
         defaultComputerMode: ComputerMode = .auto,
         defaultEnabledTools: [String] = AgentToolCatalog.allIds,
+        seenToolIds: [String] = [],
         launchAtLogin: Bool = false,
         showMenuBar: Bool = true,
         menuBarOnly: Bool = false,
         backgroundRoutines: Bool = false,
         themeAppearanceMode: ThemeAppearanceMode = .dark,
         activeThemePresetId: String? = "grizzy-default",
-        agentStallTimeoutMs: Int = 60_000
+        agentStallTimeoutMs: Int = 60_000,
+        privacyFilter: PrivacyFilterSettings = .default,
+        memoryRelevanceMode: MemoryRelevanceGateMode = .heuristic,
+        localGateway: LocalOpenAIGateway.Settings = .default,
+        enableFolderWatchers: Bool = true
     ) {
         self.profileName = profileName
         self.profileEmail = profileEmail
@@ -129,6 +143,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         self.ttsVoice = ttsVoice
         self.defaultComputerMode = defaultComputerMode
         self.defaultEnabledTools = defaultEnabledTools
+        self.seenToolIds = seenToolIds
         self.launchAtLogin = launchAtLogin
         self.showMenuBar = showMenuBar
         self.menuBarOnly = menuBarOnly
@@ -136,12 +151,17 @@ public struct AppConfig: Codable, Sendable, Equatable {
         self.themeAppearanceMode = themeAppearanceMode
         self.activeThemePresetId = activeThemePresetId
         self.agentStallTimeoutMs = agentStallTimeoutMs
+        self.privacyFilter = privacyFilter
+        self.memoryRelevanceMode = memoryRelevanceMode
+        self.localGateway = localGateway
+        self.enableFolderWatchers = enableFolderWatchers
     }
 
     enum CodingKeys: String, CodingKey {
         case profileName, profileEmail, composioConnectKey, composioApiKey, boxToken
-        case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
+        case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
         case themeAppearanceMode, activeThemePresetId, agentStallTimeoutMs
+        case privacyFilter, memoryRelevanceMode, localGateway, enableFolderWatchers
     }
 
     public init(from decoder: Decoder) throws {
@@ -158,6 +178,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         defaultComputerMode = try c.decodeIfPresent(ComputerMode.self, forKey: .defaultComputerMode) ?? .auto
         defaultEnabledTools = try c.decodeIfPresent([String].self, forKey: .defaultEnabledTools)
             ?? AgentToolCatalog.allIds
+        seenToolIds = try c.decodeIfPresent([String].self, forKey: .seenToolIds) ?? []
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         showMenuBar = try c.decodeIfPresent(Bool.self, forKey: .showMenuBar) ?? true
         menuBarOnly = try c.decodeIfPresent(Bool.self, forKey: .menuBarOnly) ?? false
@@ -165,6 +186,10 @@ public struct AppConfig: Codable, Sendable, Equatable {
         themeAppearanceMode = try c.decodeIfPresent(ThemeAppearanceMode.self, forKey: .themeAppearanceMode) ?? .dark
         activeThemePresetId = try c.decodeIfPresent(String.self, forKey: .activeThemePresetId) ?? "grizzy-default"
         agentStallTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .agentStallTimeoutMs) ?? 60_000
+        privacyFilter = try c.decodeIfPresent(PrivacyFilterSettings.self, forKey: .privacyFilter) ?? .default
+        memoryRelevanceMode = try c.decodeIfPresent(MemoryRelevanceGateMode.self, forKey: .memoryRelevanceMode) ?? .heuristic
+        localGateway = try c.decodeIfPresent(LocalOpenAIGateway.Settings.self, forKey: .localGateway) ?? .default
+        enableFolderWatchers = try c.decodeIfPresent(Bool.self, forKey: .enableFolderWatchers) ?? true
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -180,6 +205,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encodeIfPresent(ttsVoice, forKey: .ttsVoice)
         try c.encode(defaultComputerMode, forKey: .defaultComputerMode)
         try c.encode(defaultEnabledTools, forKey: .defaultEnabledTools)
+        try c.encode(seenToolIds, forKey: .seenToolIds)
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
         try c.encode(showMenuBar, forKey: .showMenuBar)
         try c.encode(menuBarOnly, forKey: .menuBarOnly)
@@ -187,6 +213,10 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encode(themeAppearanceMode, forKey: .themeAppearanceMode)
         try c.encodeIfPresent(activeThemePresetId, forKey: .activeThemePresetId)
         try c.encode(agentStallTimeoutMs, forKey: .agentStallTimeoutMs)
+        try c.encode(privacyFilter, forKey: .privacyFilter)
+        try c.encode(memoryRelevanceMode, forKey: .memoryRelevanceMode)
+        try c.encode(localGateway, forKey: .localGateway)
+        try c.encode(enableFolderWatchers, forKey: .enableFolderWatchers)
     }
 
     public var composioConfigured: Bool {

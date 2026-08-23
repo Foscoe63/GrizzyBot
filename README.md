@@ -18,6 +18,9 @@
 
 <p align="center">
   <a href="#what-you-get">Product</a> ·
+  <a href="#chat">Chat</a> ·
+  <a href="#tools">Tools</a> ·
+  <a href="#plugins-mcp-destinations">MCP</a> ·
   <a href="#governance">Governance</a> ·
   <a href="#computer">Computer</a> ·
   <a href="#models">Models</a> ·
@@ -46,7 +49,7 @@ Local or named accounts. Separate files, chats, and secrets per user. Passwords 
 Templates for coworker, research, writing, coding, and computer use. Per-bot model, tools, skills, and home folder. Rooms, spawn, and short-lived subagents.
 
 **Chat**
-Markdown, tool cards, live step progress. Slash skills (`/research …`). Search, edit, regenerate, branch, undo. Attachments, dictation, spoken replies.
+Markdown, tool cards, live step progress. Per-bot model picker and token stats on the composer. Slash skills (`/research …`). Search, edit, regenerate, branch, undo. Files and images, dictation, spoken replies.
 
 </td>
 <td width="50%" valign="top">
@@ -77,11 +80,13 @@ OpenRouter, OpenAI, Anthropic, local Ollama/LM Studio, Composio plugins, MCP / T
   users.json / session.json / governance.json / audit.json
   canvases/             shared boards (screenshots, strokes) for every bot on this Mac
   users/<userId>/
-    workspace.json      bots, threads, routines, settings
+    workspace.json      main config: bots, MCP servers, tools, model, routines
     SHARED.md           memory every bot on this account can read
-    homes/<botId>/      that bot’s private files (MEMORY.md, notes, shell cwd)
+    homes/<botId>/      that bot’s private sandbox (MEMORY.md, PLAN.md, shell cwd)
     skills/             imported SKILL.md folders
 ```
+
+The file you usually want is **`users/<userId>/workspace.json`**. API keys and OAuth tokens are **not** in that JSON — they live in Keychain (`com.grizzybot.app.secrets`). MCP command/args (including `fast-filesystem-mcp --allow` paths) are in `workspace.json` under `mcpServers`.
 
 ---
 
@@ -97,7 +102,9 @@ Create from a template or from scratch.
 | Coder | Read, edit, and run code in the bot home |
 | Operator | Drive the in-app browser or this Mac |
 
-Each bot has a name, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), and its own home folder. Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation.
+Each bot has a name, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), a private **home** folder, and an optional **working folder**. Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation.
+
+**Home vs working folder.** Home is the sandbox (`users/<userId>/homes/<botId>/`): `MEMORY.md`, `PLAN.md`, and shell `~`. The profile **Working folder** is the project tree on this Mac. When it is set, relative `read_file` / `write_file` / `edit_file` / `move_file` / `delete_file` / `list_files` read and write that folder (empty `list_files` lists it). Absolute/`~` paths outside it still pause for approval. Shell does **not** move there. MCP does **not** inherit it — pass absolute paths (or add `--allow` on `fast-filesystem-mcp`).
 
 ---
 
@@ -105,12 +112,24 @@ Each bot has a name, instructions, enabled skills and tools, optional per-bot mo
 
 - Markdown replies, tool cards, component cards, and live “thinking… step *N*” while the agent runs.
 - Search chats (⌘F), edit a send, regenerate, branch, undo send (⌘⇧Z).
-- Attach files into the bot home (`inbox/`).
+- Attach files into the bot home (`inbox/`). Drop or paste an image (or put a filesystem path in the box) and vision models receive JPEG.
 - Dictation, speak replies (ElevenLabs or macOS TTS), and a finish notification when a run completes.
+
+### Composer
+
+The model menu sits on the **top-left** of the composer capsule. Token stats sit on the **same row, top-right**:
+
+| Label | Meaning |
+|---|---|
+| **Prompt** | While you type: live estimate of this box (~4 characters per token, including dictation). After a reply: billed input of the **first** model call that turn (system + history + this message) — not the summed agent-loop total. |
+| **Sent** | Billed input tokens for **this chat** (every run on this bot). |
+| **Recv** | Billed output tokens for **this chat**. |
+
+Hover the numbers for the same explanation. Switching bots does not mix totals. Sidebar **Weekly usage** is still the last seven days across the workspace.
 
 ### Agent loop
 
-When a model is connected, each send runs a tool-calling loop (up to 48 steps) with context compaction on long threads. Screenshots attach only when the model can actually see images. Empty web searches stop instead of retrying forever. Transient 429/5xx errors retry. MCP/Toolport dead ends (no route, missing args, expired cursors, connection failures) get recovery hints and stop looping after a few strikes. A **stall watchdog** (default 60s, configurable) ends a turn when the stream goes silent.
+When a model is connected, each send runs a tool-calling loop (up to 48 steps) with context compaction on long threads. Screenshots and composer images attach only when the model can actually see images. Empty web searches stop instead of retrying forever. Transient 429/5xx errors retry. MCP dead ends (no route, missing args, expired cursors, connection failures) get recovery hints and stop looping after a few strikes. Identical MCP calls in the same step are skipped. A **stall watchdog** (default 60s, configurable) ends a turn when the stream goes silent.
 
 Without a model, scripted replies still create files, open the computer, and exercise the UI.
 
@@ -120,21 +139,24 @@ Without a model, scripted replies still create files, open the computer, and exe
 
 ## Tools
 
-Bots only get the tools you enable.
+Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (live probe, green/red, per-tool toggles), then workspace defaults for builtins. New advertised MCP tools stay **off** until you turn them on; a tool you already disabled stays off when the catalog refreshes.
 
 | Group | Tools |
 |---|---|
-| **Files** | `write_file`, `read_file`, `edit_file`, `move_file`, `delete_file`, `list_files` — default cwd is the bot home. Absolute paths on this Mac are allowed for reads/lists; shell writes stay sandboxed. |
-| **Shell** | `shell` runs `zsh -lc` in the bot home. Needs approval unless the bot is set to auto-approve. Timeout 5–300s (default 120). |
-| **Web** | `web_search` / `web_fetch`. Optional Brave Search key; otherwise DuckDuckGo + Wikipedia. |
+| **Files** | `write_file`, `read_file`, `edit_file`, `move_file`, `delete_file`, `list_files` — relative paths use the bot **working folder** when set, otherwise the bot home. Empty `list_files` lists that same root. Absolute/`~` paths outside the working folder pause for approval. `MEMORY.md` / `PLAN.md` (no slash) stay in home. |
+| **Shell** | `shell` runs `zsh -lc` in the bot home (not the working folder). Needs approval unless the bot is set to auto-approve. Timeout 5–300s (default 120). |
+| **Web** | `web_search` (search + fetch). Optional Brave Search key; otherwise DuckDuckGo + Wikipedia. |
 | **Memory** | `remember`, `search_memory`, `forget`. |
 | **Knowledge** | `search_knowledge` — granted folder and plugin corpora (Drive, OneDrive, Box). |
 | **Computer** | `computer_open`, `computer_screenshot`, `computer_click`, `computer_scroll`, `computer_type`, `computer_key`, `request_takeover`. |
 | **Canvas** | `canvas_list`, `canvas_open`, `canvas_save`, `canvas_delete`, `canvas_place_image` — shared boards on this Mac (not the bot home). `canvas_open` after a screenshot places the last capture. |
 | **Team** | `spawn_bot`, `delete_bot`, `run_subagent`. |
 | **UI** | `present_component` (form, gallery, activity, refusals, or a published card), `report_decline`. |
-| **MCP** | `mcp_list_tools`, `mcp_call` — see [Plugins, MCP, destinations](#plugins-mcp-destinations). |
+| **Loop** | `capabilities_discover`, `capabilities_load`, `todo`, `complete`, `clarify`. |
+| **MCP** | First-class `server-slug__tool` names plus `mcp_list_tools` / `mcp_call` — see [Plugins, MCP, destinations](#plugins-mcp-destinations). |
 | **Plugins & skills** | `plugin_call`, `destination_write`, `read_skill`, `import_skills`, plus any custom tools you add. |
+
+If a builtin file or web tool is off, the loop routes to a **connected MCP server that actually has that tool** (for example fast-filesystem or a search server). It does **not** send those calls to Toolport unless Toolport is enabled and listed.
 
 ---
 
@@ -224,9 +246,29 @@ Import a folder of `SKILL.md` files (for example `~/.agents/skills`) with `impor
 - **Bot** — `homes/<botId>/MEMORY.md`
 - **Shared** — `SHARED.md` at the workspace root (every bot on this account)
 
-`remember` upserts similar facts instead of duplicating. Standing rules go under `## Pin` (`pin: true` or `scope: pin`) and always load in the prompt. Recent facts go under `## Facts`. `search_memory` is BM25 over this bot plus shared — sibling bots are not leaked. Secret-shaped strings (API keys, passwords) are refused.
+`remember` upserts similar facts instead of duplicating. Standing rules go under `## Pin` (`pin: true` or `scope: pin`) and always load in the prompt. Recent facts go under `## Facts`. `search_memory` is hybrid BM25 + salience RRF over this bot plus shared — sibling bots are not leaked. Secret-shaped strings (API keys, passwords) are refused.
+
+Lean inject (Settings → Privacy): heuristic mode skips stuffing Facts on greetings; Settings can merge near-duplicate Facts.
 
 Edit memory in the bot panel or Settings → Shared memory.
+
+---
+
+## Capability discovery
+
+Agents call `capabilities_discover` / `capabilities_load` to find skills and MCP tools on demand (BM25 over skills, builtins, advertised MCP). Mid-turn load injects skill bodies and promotes MCP catalog tools.
+
+Loop helpers: `todo` / `complete` / `clarify`. Optional per-bot **working folder** (bot profile) is the project root for relative file tools; shell and `MEMORY.md` stay in the bot home.
+
+---
+
+## Privacy & local gateway
+
+Settings → Privacy: GrizzyClaw-style PII filter before cloud sends (redact or fail-closed). Detects email, phone, cards, SSN, keys, tokens, passwords, and similar.
+
+Settings → Watchers: FSEvents folder watchers → bot run (include/exclude globs, debounce). MCP Bonjour browse for `_mcp._tcp` on the local network; pick a hit to add as an HTTP MCP server.
+
+Local OpenAI-compatible gateway (default port **8787**) under Settings → Privacy: `POST /v1/chat/completions`, `GET /mcp/tools`, optional API key, default bot. Point Cursor or another client at it to talk to a GrizzyBot bot.
 
 ---
 
@@ -259,13 +301,19 @@ Each provider keeps its own profile. A bot can use the workspace default or a ca
 
 **Plugins** — Composio Connect OAuth, or paste a token. Catalog includes Gmail, Slack, GitHub, Notion, Linear, Google Calendar / Sheets / Docs / Drive, OneDrive, HubSpot, Salesforce, Jira, Trello, Asana, Intercom, Discord, X, Stripe, Dropbox, Box, Figma, Airtable. `plugin_call` can search/list/get or write.
 
-**MCP** — stdio, streamable HTTP, or legacy SSE. Each server is a toggleable tool (`mcp:<id>`). Homebrew is prepended on PATH for GUI-launched stdio servers. Calls go through the grant matrix and action policy.
+**MCP** — stdio, streamable HTTP, or legacy SSE. Settings → Tools probes each server (`tools/list`) and shows connected / failed. The parent toggle is `mcp:<serverId>`; each advertised tool is `mcp:<serverId>/<toolName>`. Homebrew is prepended on PATH for GUI-launched stdio servers. Calls go through the grant matrix and action policy.
+
+Connected catalogs are **promoted to first-class tools** the model can call by name (`fast-filesystem__write_file`, `gmail__messages_list`). Names that are already namespaced stay as advertised. Duplicate `server__tool` aliases of a name already in the list are collapsed — one Settings row and one model function; enablement still keys off the real MCP name.
+
+`fast-filesystem-mcp` ignores positional directory args. Extra roots must be `--allow /path` (GrizzyBot rewrites leftover paths on save and launch). Those flags add to the server’s defaults (`$HOME`, `/tmp`, `/Users`, `/home`); they do not replace them. MCP roots are account-wide, not per-bot.
 
 **Toolport (and similar gateways).** List returns meta-tools (`toolport_status`, `toolport_search_tools`, `toolport_call_tool`), not every app catalog at once. GrizzyBot **promotes** catalog matches to first-class ChatTools when it can:
 
-1. **Warm-up** — if your prompt mentions Gmail, MacUse, Obsidian, etc., it searches Toolport (and for mail, fetches MacUse tool definitions) before the first model step.
+1. **Warm-up** — if your prompt mentions Gmail, MacUse, Obsidian, etc. **and Toolport is connected**, it searches Toolport (and for mail, fetches MacUse tool definitions) before the first model step.
 2. **After search / definitions** — successful `toolport_search_tools` or `macuse__get_tool_definitions` results are merged into the tool list for the rest of the turn.
 3. **Call them like normal tools** — e.g. `gmail__messages_list` or `macuse__mail_search_messages` with that tool’s args. MacUse mail tools are dispatched through `call_tool_by_name` for you (you do not nest it).
+
+The model is **not** told to use Toolport when Toolport is not connected. MacUse, web search, crawl, and filesystem go to the servers that actually advertise those tools.
 
 Fallback when nothing is promoted yet: search once → `mcp_call` with the exact catalog name (or pass it as `mcp_call`’s `tool`; it is wrapped). On `toolport_call_tool`, put the name in `arguments.name` (never `id`, never blank).
 
@@ -273,14 +321,15 @@ Reliability built into `mcp_list_tools` / `mcp_call`:
 
 | Behavior | Detail |
 |---|---|
-| Default server | Omit `server` when Toolport is enabled (or when only one MCP is on) — it resolves automatically |
+| Omit `server` | With **one** MCP on, that server is used. With several, resolves by **tool identity** — never “first MCP” and never Toolport unless that name is listed. Ambiguous matches need `server` by name. |
+| First-class names | Prefer `server-slug__tool` already in the tool list over wrapping in `mcp_call`. |
 | Arg aliases | `path` / `filename` → `filepath`, `folder` / `dir` → `dirpath`, `text` / `body` → `content` |
 | Empty catalog name | Rejected before the gateway (avoids `no route for tool ''`) |
 | Transient failures | One automatic retry on connection / timeout-style errors |
 | Recovery hints | Tool results explain missing args, bad routes, or unreachable backends (Obsidian: `http://127.0.0.1:27123` vs `https://127.0.0.1:27124` — never HTTPS on `:27123`) |
-| Disabled builtins | If `write_file` or web tools are off, the loop nudges Toolport (e.g. fast-filesystem) instead of asking you to flip Settings |
+| Disabled builtins | If `write_file` or web tools are off, the loop calls the matching connected MCP tool — Toolport only if Toolport is on |
 
-`write_file` only writes the bot sandbox — not an Obsidian vault. Vault writes go through the vault’s MCP write tool (status `ok` on the card before claiming success).
+`write_file` writes the working folder when the bot has one, otherwise the bot sandbox. It does **not** write an Obsidian vault. Vault writes go through the vault’s MCP write tool (status `ok` on the card before claiming success).
 
 **Destinations** — `destination_write` for granted outbound sinks configured in the workspace.
 
@@ -292,7 +341,7 @@ Reliability built into `mcp_list_tools` / `mcp_call`:
 
 - Sidebar of bots, rooms, routines, plugins, skills, weekly usage.
 - Right panel: files, computer preview, shared canvas editor, memory.
-- Settings: General, Connections, Computer, Voice, Tools, Themes, Diagnostics, **Governance**, **Knowledge**, **Components**.
+- Settings: General, Connections, Computer, Voice, **Tools** (MCP first), Themes, Diagnostics, Privacy, Watchers, **Governance**, **Knowledge**, **Components**.
 - Themes: Grizzy (default), system, light, dark, and the built-in gallery.
 - Menu bar extra; optional menu-bar-only (no window until you open it).
 - Launch at login (signed Release; Debug/ad-hoc shows an honest status).
@@ -330,7 +379,7 @@ flowchart LR
 
 | Target | Role |
 |---|---|
-| `GrizzyBotCore` | Domain, agent loop, Keychain, persistence, MCP, Composio, policy, audit |
+| `GrizzyBotCore` | Domain, agent loop, token accounting, Keychain, persistence, MCP routing, Composio, policy, audit |
 | `GrizzyBot` | SwiftUI app, computer-use, TTS, Sentry |
 | `GrizzyBotRoutineAgent` | LaunchAgent helper for background routine ticks |
 | `GrizzyBotCoreTests` | Unit tests (Swift Testing) |

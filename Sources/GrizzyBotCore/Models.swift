@@ -52,6 +52,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var runtime: BotRuntime
     public var aguiURL: String?
     public var enabledComponents: [String]
+    /// Optional host folder; relative file tool paths resolve here.
+    public var workingFolder: String?
 
     public init(
         id: String,
@@ -85,7 +87,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         visibility: BotVisibility = .private,
         runtime: BotRuntime = .local,
         aguiURL: String? = nil,
-        enabledComponents: [String] = AgentComponentCatalog.allIds
+        enabledComponents: [String] = AgentComponentCatalog.allIds,
+        workingFolder: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -119,6 +122,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.runtime = runtime
         self.aguiURL = aguiURL
         self.enabledComponents = enabledComponents
+        self.workingFolder = workingFolder
     }
 
     enum CodingKeys: String, CodingKey {
@@ -126,7 +130,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case threadId, preview, status, updatedAt, createdAt
         case pinned, hidden, unread, autoApprove, speakReplies, notifications, chiefOfStaff
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
-        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents
+        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder
     }
 
     public init(from decoder: Decoder) throws {
@@ -163,6 +167,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         runtime = try c.decodeIfPresent(BotRuntime.self, forKey: .runtime) ?? .local
         aguiURL = try c.decodeIfPresent(String.self, forKey: .aguiURL)
         enabledComponents = try c.decodeIfPresent([String].self, forKey: .enabledComponents) ?? AgentComponentCatalog.allIds
+        workingFolder = try c.decodeIfPresent(String.self, forKey: .workingFolder)
     }
 }
 
@@ -610,6 +615,8 @@ public struct UsageRecord: Codable, Sendable, Hashable, Identifiable {
     public var runId: String?
     public var provider: String
     public var model: String
+    /// First LLM call of the run (system + history + this prompt). Nil on records saved before this field existed.
+    public var promptTokens: Int?
     public var inputTokens: Int
     public var outputTokens: Int
     public var createdAt: Date
@@ -620,6 +627,7 @@ public struct UsageRecord: Codable, Sendable, Hashable, Identifiable {
         runId: String? = nil,
         provider: String,
         model: String,
+        promptTokens: Int? = nil,
         inputTokens: Int,
         outputTokens: Int,
         createdAt: Date = .now
@@ -629,9 +637,14 @@ public struct UsageRecord: Codable, Sendable, Hashable, Identifiable {
         self.runId = runId
         self.provider = provider
         self.model = model
+        self.promptTokens = promptTokens
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.createdAt = createdAt
+    }
+
+    public var billedPromptTokens: Int {
+        promptTokens ?? inputTokens
     }
 }
 

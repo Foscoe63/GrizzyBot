@@ -36,7 +36,8 @@ public struct McpPromotedTool: Sendable, Equatable, Hashable {
 
 /// Promote Toolport/MacUse catalog tools to first-class LLM tools (one hop).
 public enum McpCatalogPromote {
-    public static let maxPromoted = 24
+    public static let maxPromoted = 80
+    public static let maxHarvested = 24
 
     public static func isDispatcher(_ name: String) -> Bool {
         let t = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -70,7 +71,7 @@ public enum McpCatalogPromote {
         Array(promoted.prefix(maxPromoted)).map(chatTool(for:))
     }
 
-    /// Merge newly discovered tools; prefer richer schemas; drop dispatchers.
+    /// Merge newly discovered tools; prefer richer schemas; drop dispatchers and namespaced aliases.
     public static func merge(
         existing: [String: McpPromotedTool],
         adding: [McpPromotedTool]
@@ -81,18 +82,83 @@ public enum McpCatalogPromote {
             // Bare dispatcher without injectName is not a usable first-class tool.
             if isDispatcher(tool.executeTool), tool.injectName == nil { continue }
             if let prev = out[tool.chatName] {
-                let prevProps = propertyCount(prev.inputSchema)
-                let nextProps = propertyCount(tool.inputSchema)
-                if nextProps >= prevProps {
-                    out[tool.chatName] = tool
-                }
+                out[tool.chatName] = prefer(prev, tool)
             } else {
                 out[tool.chatName] = tool
             }
         }
+        out = collapseAliases(out)
         if out.count > maxPromoted * 2 {
-            let trimmed = out.values.sorted { $0.chatName < $1.chatName }.suffix(maxPromoted)
+            let trimmed = out.values.sorted { $0.chatName < $1.chatName }.suffix(maxPromoted * 2)
             out = Dictionary(uniqueKeysWithValues: trimmed.map { ($0.chatName, $0) })
+        }
+        return out
+    }
+
+    /// One entry per advertised MCP tool. Drops exact dupes and `server__tool` aliases of a name already listed.
+    public static func uniqueAdvertisedNames(_ names: [String]) -> [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for raw in names {
+            let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, seen.insert(name).inserted else { continue }
+            ordered.append(name)
+        }
+        let set = Set(ordered)
+        return ordered.filter { name in
+            guard let split = McpNativeNaming.split(name) else { return true }
+            return !set.contains(split.tool)
+        }
+    }
+
+    /// Flatten a connected server's `list_tools` catalog into first-class namespaced tools.
+    public static func fromListed(
+        server: McpServer,
+        tools: [McpToolInfo],
+        reserved: Set<String> = []
+    ) -> [McpPromotedTool] {
+        _ = reserved
+        var seen = Set<String>()
+        return tools.compactMap { info in
+            guard !isDispatcher(info.name) else { return nil }
+            let chat = McpNativeNaming.chatName(server: server, tool: info.name)
+            guard seen.insert(chat).inserted else { return nil }
+            return McpPromotedTool(
+                chatName: chat,
+                serverId: server.id,
+                executeTool: info.name,
+                description: info.description.isEmpty
+                    ? "MCP tool \(info.name) on \(server.name). Pass this tool's args directly."
+                    : info.description,
+                inputSchema: info.inputSchema
+            )
+        }
+    }
+
+    /// Session-hydrate first-class tools from persisted advertised names (no schemas yet).
+    public static func fromAdvertised(
+        servers: [McpServer],
+        advertised: [String: [String]],
+        reserved: Set<String> = []
+    ) -> [McpPromotedTool] {
+        _ = reserved
+        var out: [McpPromotedTool] = []
+        var seen = Set<String>()
+        for server in servers {
+            let names = uniqueAdvertisedNames(advertised[server.id] ?? [])
+            for name in names {
+                guard !isDispatcher(name) else { continue }
+                let chat = McpNativeNaming.chatName(server: server, tool: name)
+                guard seen.insert("\(server.id)\0\(chat)").inserted else { continue }
+                out.append(
+                    McpPromotedTool(
+                        chatName: chat,
+                        serverId: server.id,
+                        executeTool: name,
+                        description: "MCP tool \(name) on \(server.name). Pass this tool's args directly."
+                    )
+                )
+            }
         }
         return out
     }
@@ -127,11 +193,11 @@ public enum McpCatalogPromote {
                     chatName: trimmed,
                     serverId: serverId,
                     executeTool: trimmed,
-                    description: "Toolport catalog tool. Call with this tool's arguments."
+                    description: "MCP catalog tool. Call with this tool's arguments."
                 )
             )
         }
-        return out
+        return Array(out.prefix(maxHarvested))
     }
 
     /// MacUse (and similar): definitions for concrete tools behind `call_tool_by_name`.
@@ -183,7 +249,7 @@ public enum McpCatalogPromote {
                 )
             )
         }
-        return out
+        return Array(out.prefix(maxHarvested))
     }
 
     public static func harvestBacktickNames(serverId: String, text: String) -> [McpPromotedTool] {
@@ -224,7 +290,10 @@ public enum McpCatalogPromote {
         promoted: McpPromotedTool,
         raw: [String: JSONValue]
     ) -> [String: JSONValue] {
-        var args = McpCallArguments.resolve(raw)
+        var args = McpCallArguments.applyToolDefaults(
+            toolName: promoted.executeTool,
+            args: McpCallArguments.resolve(raw)
+        )
         args.removeValue(forKey: "server")
         args.removeValue(forKey: "tool")
         if let inject = promoted.injectName {
@@ -273,6 +342,37 @@ public enum McpCatalogPromote {
 
     private static func propertyCount(_ schema: [String: AnyCodableMCP]) -> Int {
         ((schema["properties"]?.value as? [String: Any]) ?? [:]).count
+    }
+
+    private static func prefer(_ a: McpPromotedTool, _ b: McpPromotedTool) -> McpPromotedTool {
+        propertyCount(b.inputSchema) >= propertyCount(a.inputSchema) ? b : a
+    }
+
+    /// One first-class tool per MCP identity. Keeps the namespaced chat name when both exist.
+    private static func collapseAliases(_ tools: [String: McpPromotedTool]) -> [String: McpPromotedTool] {
+        var byIdentity: [String: McpPromotedTool] = [:]
+        for tool in tools.values {
+            let key = identityKey(tool)
+            if let prev = byIdentity[key] {
+                var winner = prefer(prev, tool)
+                let other = winner.chatName == tool.chatName ? prev : tool
+                if winner.chatName == winner.executeTool, other.chatName.contains(McpNativeNaming.separator) {
+                    winner.chatName = other.chatName
+                }
+                byIdentity[key] = winner
+            } else {
+                byIdentity[key] = tool
+            }
+        }
+        return Dictionary(uniqueKeysWithValues: byIdentity.values.map { ($0.chatName, $0) })
+    }
+
+    private static func identityKey(_ tool: McpPromotedTool) -> String {
+        if let inject = tool.injectName, !inject.isEmpty {
+            return "\(tool.serverId)\0inject:\(inject)"
+        }
+        let core = McpNativeNaming.split(tool.executeTool)?.tool ?? tool.executeTool
+        return "\(tool.serverId)\0\(core)"
     }
 
     private static func extractBacktickNames(_ text: String) -> [String] {

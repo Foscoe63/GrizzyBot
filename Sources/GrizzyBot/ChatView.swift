@@ -538,9 +538,13 @@ struct ChatView: View {
                 .padding(.horizontal, 28)
             }
             if let bot {
-                composerModelPicker(bot)
-                    .padding(.horizontal, 28)
-                    .padding(.top, pasteWarning == nil && pendingFiles.isEmpty ? 8 : 0)
+                HStack(alignment: .center, spacing: 12) {
+                    composerModelPicker(bot)
+                    Spacer(minLength: 8)
+                    composerTokenStats(bot)
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, pasteWarning == nil && pendingFiles.isEmpty ? 8 : 0)
             }
             if !pendingFiles.isEmpty {
                 HStack(spacing: 8) {
@@ -726,6 +730,46 @@ struct ChatView: View {
         }
         .menuStyle(.borderlessButton)
         .help("Model for this bot")
+    }
+
+    private func composerTokenStats(_ bot: Bot) -> some View {
+        let billed = store.chatTokenStats(botId: bot.id)
+        var liveDraft = draft
+        if dictation.isListening, !dictation.transcript.isEmpty {
+            liveDraft = liveDraft.isEmpty
+                ? dictation.transcript
+                : liveDraft + " " + dictation.transcript
+        }
+        let prompt = TokenAccounting.displayedPrompt(
+            draft: liveDraft,
+            lastBilledPrompt: billed.lastPromptTokens
+        )
+        return HStack(spacing: 12) {
+            composerTokenStat(label: "Prompt", value: prompt)
+            composerTokenStat(label: "Sent", value: billed.sentTokens)
+            composerTokenStat(label: "Recv", value: billed.receivedTokens)
+        }
+        .help(
+            "Prompt is this box (~4 characters per token) while you type, then the last billed prompt after a reply. Sent and Recv are billed tokens for this chat."
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "Prompt \(TokenAccounting.grouped(prompt)) tokens, \(TokenAccounting.grouped(billed.sentTokens)) sent, \(TokenAccounting.grouped(billed.receivedTokens)) received"
+        )
+    }
+
+    private func composerTokenStat(label: String, value: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Theme.textMuted)
+            Text(TokenAccounting.grouped(value))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
     }
 
     private func groupInputBar(_ group: GroupRoom) -> some View {

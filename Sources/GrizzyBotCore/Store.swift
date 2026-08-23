@@ -53,6 +53,11 @@ public final class AppStore {
     public var mcpAdvertisedTools: [String: [String]] = [:]
     /// Session cache of Toolport/MacUse catalog tools promoted to first-class ChatTools.
     public var mcpPromotedTools: [String: McpPromotedTool] = [:]
+    /// Live MCP connection probes (not persisted).
+    public var mcpProbeStatus: [String: McpProbeStatus] = [:]
+    /// Last successful `tools/list` payloads for UI subtitles (not persisted).
+    public var mcpListedTools: [String: [McpToolInfo]] = [:]
+    private var mcpProbeGeneration: [String: UInt64] = [:]
     public var auditEvents: [AuditEvent] = []
     public var appSettingsOpen: Bool = false
     public var appSettingsSection: AppSettingsSection = .general
@@ -67,7 +72,7 @@ public final class AppStore {
     public var pendingAuthEmail: String = ""
 
     public enum AppSettingsSection: String, Sendable, CaseIterable, Identifiable {
-        case general, connections, computer, voice, tools, themes, diagnostics, governance, knowledge, components
+        case general, connections, computer, voice, tools, themes, privacy, watchers, diagnostics, governance, knowledge, components
         public var id: String { rawValue }
         public var label: String {
             switch self {
@@ -77,6 +82,8 @@ public final class AppStore {
             case .voice: return "Voice"
             case .tools: return "Tools"
             case .themes: return "Themes"
+            case .privacy: return "Privacy"
+            case .watchers: return "Watchers"
             case .diagnostics: return "Diagnostics"
             case .governance: return "Governance"
             case .knowledge: return "Knowledge"
@@ -179,14 +186,13 @@ public final class AppStore {
         bootstrap()
         reloadSkills()
         reloadCanvases()
-        optInNewTool("import_skills")
-        optInNewTool("forget")
-        optInNewTool("computer_scroll")
-        optInNewTool("search_knowledge")
-        optInNewTool("present_component")
-        optInNewTool("report_decline")
-        for id in CanvasBoardStore.toolIds {
-            optInNewTool(id)
+        seedSeenToolIdsIfNeeded()
+        var catalogChanged = false
+        for id in AgentToolCatalog.builtinIds + CanvasBoardStore.toolIds {
+            if optInNewTool(id) { catalogChanged = true }
+        }
+        if catalogChanged {
+            save()
         }
         if delayScale >= 1 {
             startRoutineScheduler()
@@ -260,6 +266,7 @@ public final class AppStore {
         showHostPrompt = route == .shell && deployment.computerHost == nil
         globalPersistence.saveSession(session)
         recordBootBoundary()
+        refreshLocalIntegrations()
     }
 
     private func loadWorkspace(for userId: String) {
@@ -292,6 +299,9 @@ public final class AppStore {
         sandboxComponents = []
         mcpAdvertisedTools = [:]
         mcpPromotedTools = [:]
+        mcpProbeStatus = [:]
+        mcpListedTools = [:]
+        mcpProbeGeneration = [:]
         auditEvents = []
         oauthJSON = nil
         connectionSecrets = [:]
@@ -325,7 +335,11 @@ public final class AppStore {
         groups = ws.groups
         appConfig = ws.appConfig
         customTools = ws.customTools
-        mcpServers = ws.mcpServers
+        mcpServers = ws.mcpServers.map { server in
+            var copy = server
+            copy.args = FastFilesystemMcpArgs.normalize(command: copy.command, args: copy.args)
+            return copy
+        }
         actionPolicy = ws.actionPolicy
         knowledgeSources = ws.knowledgeSources
         pluginGrants = ws.pluginGrants
@@ -374,6 +388,7 @@ public final class AppStore {
         skillsOpen = false
         mainView = .chat
         hydrateMemoryFiles()
+        seedSeenToolIdsIfNeeded()
     }
 
     private func currentWorkspace() -> UserWorkspace {
@@ -816,13 +831,18 @@ public final class AppStore {
         name: String? = nil,
         title: String? = nil,
         description: String? = nil,
-        instructions: String? = nil
+        instructions: String? = nil,
+        workingFolder: String? = nil
     ) {
         guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
         if let name { bots[idx].name = name }
         if let title { bots[idx].title = title }
         if let description { bots[idx].description = description }
         if let instructions { bots[idx].instructions = instructions }
+        if let workingFolder {
+            let trimmed = workingFolder.trimmingCharacters(in: .whitespacesAndNewlines)
+            bots[idx].workingFolder = trimmed.isEmpty ? nil : trimmed
+        }
         bots[idx].updatedAt = .now
         save()
     }
@@ -885,12 +905,23 @@ public final class AppStore {
                 imported.append(path)
             }
         }
+        let attachedJPEG = ComposerImage.jpegBase64(from: files)
+            ?? ComposerImage.jpegBase64(fromPathInText: trimmed)
+        if let attachedJPEG, !attachedJPEG.isEmpty {
+            // Path-only paste (`/Users/…/Screenshot.png`) → treat as an image caption.
+            if ComposerImage.isImagePath(trimmed) || SlashCommand.looksLikeFilesystemPath(token: trimmed, full: trimmed) {
+                trimmed = "Please describe this image."
+            }
+        }
         if !imported.isEmpty {
             let list = imported.map { "- `\($0)`" }.joined(separator: "\n")
             let note = "Attached files (in your home):\n\(list)"
             trimmed = trimmed.isEmpty ? note : "\(trimmed)\n\n\(note)"
         }
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty || !(attachedJPEG?.isEmpty ?? true) else { return }
+        if trimmed.isEmpty {
+            trimmed = "Please describe this image."
+        }
         guard let bot = bots.first(where: { $0.id == botId }) else { return }
         let botSkills = skills(for: bot)
 
@@ -939,7 +970,7 @@ public final class AppStore {
         bots[botIdx].preview = trimmed.count > 80 ? String(trimmed.prefix(80)) + "…" : trimmed
         bots[botIdx].updatedAt = .now
         save()
-        launchRun(botId: botId, threadKey: threadKey, prompt: trimmed)
+        launchRun(botId: botId, threadKey: threadKey, prompt: trimmed, promptImageJPEGBase64: attachedJPEG)
     }
 
     /// Slash / local replies that do not start an LLM run.
@@ -980,7 +1011,12 @@ public final class AppStore {
         save()
     }
 
-    private func launchRun(botId: String, threadKey: String, prompt: String) {
+    private func launchRun(
+        botId: String,
+        threadKey: String,
+        prompt: String,
+        promptImageJPEGBase64: String? = nil
+    ) {
         guard var thread = threads[threadKey] else { return }
         guard let botIdx = bots.firstIndex(where: { $0.id == botId }) else { return }
         let run = Run(
@@ -996,18 +1032,37 @@ public final class AppStore {
         bots[botIdx].updatedAt = .now
         save()
         let runId = run.id
-        appendRunLog(botId: botId, kind: "run", text: "start \(String(prompt.prefix(240)))")
+        let imageNote = (promptImageJPEGBase64?.isEmpty == false) ? " +image" : ""
+        appendRunLog(botId: botId, kind: "run", text: "start \(String(prompt.prefix(240)))\(imageNote)")
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.runAgent(botId: botId, threadKey: threadKey, runId: runId, prompt: prompt)
+            await self.runAgent(
+                botId: botId,
+                threadKey: threadKey,
+                runId: runId,
+                prompt: prompt,
+                promptImageJPEGBase64: promptImageJPEGBase64
+            )
         }
         runTasks[runId] = task
     }
 
-    private func runAgent(botId: String, threadKey: String, runId: String, prompt: String) async {
+    private func runAgent(
+        botId: String,
+        threadKey: String,
+        runId: String,
+        prompt: String,
+        promptImageJPEGBase64: String? = nil
+    ) async {
         guard let bot = bots.first(where: { $0.id == botId }) else { return }
         if canRunLLM(for: bot) {
-            await runLLMAgent(botId: botId, threadKey: threadKey, runId: runId, prompt: prompt)
+            await runLLMAgent(
+                botId: botId,
+                threadKey: threadKey,
+                runId: runId,
+                prompt: prompt,
+                promptImageJPEGBase64: promptImageJPEGBase64
+            )
         } else {
             await runScriptedAgent(botId: botId, threadKey: threadKey, runId: runId, prompt: prompt)
         }
@@ -1024,7 +1079,13 @@ public final class AppStore {
         ) || !(settings.oauthJSON?.isEmpty ?? true)
     }
 
-    private func runLLMAgent(botId: String, threadKey: String, runId: String, prompt: String) async {
+    private func runLLMAgent(
+        botId: String,
+        threadKey: String,
+        runId: String,
+        prompt: String,
+        promptImageJPEGBase64: String? = nil
+    ) async {
         guard var thread = threads[threadKey], thread.run?.id == runId else { return }
         guard let bot = bots.first(where: { $0.id == botId }) else { return }
 
@@ -1045,12 +1106,14 @@ public final class AppStore {
         let selectedModel = bot.modelId ?? providerSettings.modelId ?? modelId
         let client: any ChatCompleting = chatCompleter ?? OpenAIChatClient.shared
         await warmMcpCatalog(bot: bot, prompt: prompt)
+        hydratePromotedFromAdvertised(bot: bot)
         let tools = AgentToolCatalog.chatTools(
             enabledIds: bot.enabledTools,
             mcpServers: mcpServers,
             includeDelegation: true,
             skills: skills(for: bot),
-            promotedMcp: Array(mcpPromotedTools.values)
+            promotedMcp: Array(mcpPromotedTools.values),
+            mcpAdvertised: mcpAdvertisedTools
         )
         var prior = thread.messages.filter { $0.id != progressMsg.id }
         if prior.last?.role == .user {
@@ -1062,35 +1125,72 @@ public final class AppStore {
             return AgentHistoryTurn(role: message.role, text: text)
         }
         let priorLLM = thread.llmMessages
-        let memoryText = MemoryIndex.excerpt(
-            memory.first(where: { $0.botId == botId && $0.path == "MEMORY.md" })?.content ?? ""
+        let memoryRaw = memory.first(where: { $0.botId == botId && $0.path == "MEMORY.md" })?.content ?? ""
+        let memoryText = MemoryLeanInject.excerpt(
+            content: memoryRaw,
+            query: prompt,
+            mode: appConfig.memoryRelevanceMode
         )
-        let sharedText = MemoryIndex.excerpt(sharedMemory)
+        let sharedText = MemoryLeanInject.excerpt(
+            content: sharedMemory,
+            query: prompt,
+            mode: appConfig.memoryRelevanceMode
+        )
         let botSkills = skills(for: bot)
         let slash = SlashCommand.resolve(prompt, skills: botSkills)
-        let agentPrompt: String
+        let agentPromptRaw: String
         let injected: [AgentSkill]
         switch slash {
         case .skill(let skill, let skillPrompt):
-            agentPrompt = skillPrompt
+            agentPromptRaw = skillPrompt
             var matched = SkillMarkdown.matching(botSkills, prompt: skillPrompt)
             matched.removeAll { $0.id == skill.id }
             injected = [skill] + matched
         case .plain(let plain):
-            agentPrompt = plain
+            agentPromptRaw = plain
             injected = SkillMarkdown.matching(botSkills, prompt: plain)
         case .unknown, .help:
-            agentPrompt = prompt
+            agentPromptRaw = prompt
             injected = SkillMarkdown.matching(botSkills, prompt: prompt)
+        }
+        let agentPrompt: String
+        do {
+            agentPrompt = try PrivacyFilter.applyForSend(
+                agentPromptRaw,
+                settings: appConfig.privacyFilter,
+                logDirectory: userPersistence.root,
+                logContext: "bot:\(botId)"
+            )
+        } catch {
+            let message = error.localizedDescription
+            let failMsg = ThreadMessage(
+                id: progressMsg.id,
+                threadId: thread.threadId,
+                seq: progressMsg.seq,
+                role: .bot,
+                blocks: [.text(message)],
+                runId: runId
+            )
+            if var t = threads[threadKey] {
+                if let idx = t.messages.firstIndex(where: { $0.id == progressMsg.id }) {
+                    t.messages[idx] = failMsg
+                }
+                t.run = nil
+                threads[threadKey] = t
+            }
+            save()
+            return
         }
         let skillText = SkillMarkdown.catalogPrompt(from: botSkills, injected: injected)
         let homePath = (try? botHome.homeURL(botId: botId).path) ?? ""
         let computerNote = computerNote(for: bot)
+        let workingFolderNote = WorkingFolder.promptNote(bot.workingFolder)
 
         var blocks: [MessageBlock] = []
         var pause: AgentPause?
         var inputTokens = 0
         var outputTokens = 0
+        var promptTokens = 0
         var steps = 0
         var replyText = ""
         var failed = false
@@ -1141,10 +1241,12 @@ public final class AppStore {
                 history: textHistory,
                 priorMessages: priorLLM,
                 prompt: agentPrompt,
+                promptImageJPEGBase64: promptImageJPEGBase64,
                 tools: tools,
                 maxSteps: 48,
                 charBudget: AgentLoopRequest.charBudget(provider: provider),
                 computerNote: computerNote,
+                workingFolderNote: workingFolderNote,
                 stallMs: stallMs
             )
             let execute: @Sendable (String, String) async -> AgentToolCallResult = { [weak self] name, arguments in
@@ -1164,7 +1266,9 @@ public final class AppStore {
             if bot.runtime == .agui, let agui = bot.aguiURL?.trimmingCharacters(in: .whitespacesAndNewlines), !agui.isEmpty {
                 var aguiMessages: [ChatMessage] = [.system(AgentLoop.systemPrompt(for: loopRequest))]
                 aguiMessages.append(contentsOf: priorLLM.filter { $0.role != "system" })
-                aguiMessages.append(.user(agentPrompt))
+                aguiMessages.append(
+                    ChatMessage(role: "user", content: agentPrompt, imageJPEGBase64: promptImageJPEGBase64)
+                )
                 var headers: [String: String] = [:]
                 if let token = connectionSecrets["agui:\(botId)"], !token.isEmpty {
                     headers["Authorization"] = "Bearer \(token)"
@@ -1225,6 +1329,7 @@ public final class AppStore {
             pause = result.pause
             inputTokens = result.inputTokens
             outputTokens = result.outputTokens
+            promptTokens = result.promptTokens
             steps = result.steps
             transcript = result.messages
             if result.failed {
@@ -1322,6 +1427,7 @@ public final class AppStore {
                 runId: runId,
                 provider: provider ?? ModelCatalog.defaultProvider,
                 model: selectedModel ?? ModelCatalog.defaultModelId,
+                promptTokens: promptTokens > 0 ? promptTokens : nil,
                 inputTokens: inputTokens,
                 outputTokens: outputTokens
             )
@@ -1443,6 +1549,7 @@ public final class AppStore {
                 runId: runId,
                 provider: modelProvider ?? ModelCatalog.defaultProvider,
                 model: modelId ?? ModelCatalog.defaultModelId,
+                promptTokens: 12,
                 inputTokens: 12,
                 outputTokens: 40
             )
@@ -1527,6 +1634,71 @@ public final class AppStore {
         guard let bot = bots.first(where: { $0.id == botId }) else {
             return AgentToolCallResult(output: "Unknown bot.")
         }
+        func resolveToolPath(_ raw: String) -> String {
+            WorkingFolder.resolve(raw, workingFolder: bot.workingFolder)
+        }
+        func hostGate(tool: String, paths: String..., argumentsJSON: String) -> AgentToolCallResult? {
+            for path in paths where BotHomeStore.isHostPath(path) {
+                if BotHomeStore.isDeniedHostPath(path) {
+                    return AgentToolCallResult(output: "\(tool) failed: \(BotHomeError.hostDenied.localizedDescription)")
+                }
+                if WorkingFolder.isTrusted(path, workingFolder: bot.workingFolder) {
+                    continue
+                }
+                if let gated = gatedWrite(
+                    tool: tool,
+                    detail: path,
+                    argumentsJSON: argumentsJSON,
+                    bot: bot,
+                    approved: approved
+                ) {
+                    return gated
+                }
+            }
+            return nil
+        }
+
+        let enabledMcp = enabledMcpServers(bot: bot)
+        if name != "mcp_call", name != "mcp_list_tools",
+           !AgentToolCatalog.builtinIds.contains(name),
+           name != "web_fetch",
+           let hit = McpToolRouting.resolveDirectTool(
+            name: name,
+            promoted: mcpPromotedTools,
+            servers: enabledMcp,
+            advertised: advertisedMcpTools(for: bot)
+           ) {
+            switch hit {
+            case .promoted(let promoted):
+                let rewritten = McpCatalogPromote.mcpCallArguments(promoted: promoted, raw: args)
+                return await executeAgentTool(
+                    name: "mcp_call",
+                    argumentsJSON: JSONValue.object(rewritten).jsonString(),
+                    botId: botId,
+                    depth: depth,
+                    endpoint: endpoint,
+                    client: client,
+                    approved: approved
+                )
+            case .advertised(let serverId, let toolName):
+                var rewritten = args
+                rewritten["server"] = .string(serverId)
+                rewritten["tool"] = .string(toolName)
+                return await executeAgentTool(
+                    name: "mcp_call",
+                    argumentsJSON: JSONValue.object(rewritten).jsonString(),
+                    botId: botId,
+                    depth: depth,
+                    endpoint: endpoint,
+                    client: client,
+                    approved: approved
+                )
+            case .missingGateway(let tool):
+                let output = McpToolRouting.missingGatewayMessage(tool: tool, enabled: enabledMcp)
+                appendRunLog(botId: botId, kind: "tool", text: output)
+                return AgentToolCallResult(output: output)
+            }
+        }
 
         let catalogId: String = {
             switch name {
@@ -1535,21 +1707,28 @@ public final class AppStore {
             default:
                 if CanvasBoardStore.toolIds.contains(name) { return "" }
                 if mcpPromotedTools[name] != nil { return "" }
-                return name
+                if AgentToolCatalog.builtinIds.contains(name) { return name }
+                return ""
             }
         }()
         if !catalogId.isEmpty, !bot.isToolEnabled(catalogId) {
-            let hasMcp = mcpServers.contains { bot.isToolEnabled($0.toolId) }
+            let hasMcp = !enabledMcp.isEmpty
+            let context = McpFallbackContext.from(
+                servers: enabledMcp,
+                advertised: advertisedMcpTools(for: bot),
+                firstClassNames: Array(mcpPromotedTools.keys)
+            )
             let output = DisabledBuiltinFallback.toolResult(
                 tool: name,
                 argumentsJSON: argumentsJSON,
-                hasMcp: hasMcp
+                hasMcp: hasMcp,
+                context: context
             )
             appendRunLog(botId: botId, kind: "tool", text: output)
             return AgentToolCallResult(
                 output: output,
                 blocks: [.card(lines: [
-                    CardLine(k: name, v: hasMcp ? "disabled — use Toolport" : output),
+                    CardLine(k: name, v: hasMcp ? "disabled — use MCP" : output),
                 ])]
             )
         }
@@ -1584,7 +1763,7 @@ public final class AppStore {
         }
 
         if name == "mcp_call" || name == "mcp_list_tools" {
-            let server = resolveMcpServer(s("server"), bot: bot)
+            let server = resolveMcpServer(s("server"), toolName: s("tool", "name"), bot: bot)
             if let server {
                 let plugin = server.toolId
                 let toolName = name == "mcp_list_tools" ? nil : s("tool", "name")
@@ -1626,7 +1805,9 @@ public final class AppStore {
             }
         }
 
-        let mcpServer = (name == "mcp_call" || name == "mcp_list_tools") ? resolveMcpServer(s("server"), bot: bot) : nil
+        let mcpServer = (name == "mcp_call" || name == "mcp_list_tools")
+            ? resolveMcpServer(s("server"), toolName: s("tool", "name"), bot: bot)
+            : nil
         let advertised: Bool = {
             if name == "mcp_list_tools" { return true }
             guard name == "mcp_call", let server = mcpServer else { return false }
@@ -1679,36 +1860,37 @@ public final class AppStore {
 
         switch name {
         case "write_file":
-            let path = s("path")
+            let path = resolveToolPath(s("path"))
             let content = s("content")
             guard !path.isEmpty else { return AgentToolCallResult(output: "path is required") }
-            let before = (try? botHome.read(botId: botId, path: path)) ?? ""
-            writeBotFile(botId: botId, path: path, content: content)
-            let diff = TextDiff.unified(before: before, after: content, path: path)
-            return AgentToolCallResult(
-                output: "Wrote \(path) (\(content.count) chars).\n\(diff)",
-                blocks: [.card(lines: [
-                    CardLine(k: "wrote", v: path),
-                    CardLine(k: "diff", v: String(diff.prefix(400))),
-                ])]
-            )
+            if let gated = hostGate(tool: "write_file.host", paths: path, argumentsJSON: argumentsJSON) {
+                return gated
+            }
+            do {
+                let before = (try? botHome.readFlexible(botId: botId, path: path)) ?? ""
+                try botHome.writeFlexible(botId: botId, path: path, content: content)
+                if !BotHomeStore.isHostPath(path) {
+                    upsertFile(path: path, content: content)
+                    refreshFilesMirror(botId: botId)
+                    ingestMemoryFileIfNeeded(botId: botId, path: path)
+                }
+                let diff = TextDiff.unified(before: before, after: content, path: path)
+                return AgentToolCallResult(
+                    output: "Wrote \(path) (\(content.count) chars).\n\(diff)",
+                    blocks: [.card(lines: [
+                        CardLine(k: "wrote", v: path),
+                        CardLine(k: "diff", v: String(diff.prefix(400))),
+                    ])]
+                )
+            } catch {
+                return AgentToolCallResult(output: "Write failed: \(error.localizedDescription)")
+            }
 
         case "read_file":
-            let path = s("path")
+            let path = resolveToolPath(s("path"))
             guard !path.isEmpty else { return AgentToolCallResult(output: "path is required") }
-            if BotHomeStore.isHostPath(path) {
-                if BotHomeStore.isDeniedHostPath(path) {
-                    return AgentToolCallResult(output: "Read failed: \(BotHomeError.hostDenied.localizedDescription)")
-                }
-                if let gated = gatedWrite(
-                    tool: "read_file.host",
-                    detail: path,
-                    argumentsJSON: argumentsJSON,
-                    bot: bot,
-                    approved: approved
-                ) {
-                    return gated
-                }
+            if let gated = hostGate(tool: "read_file.host", paths: path, argumentsJSON: argumentsJSON) {
+                return gated
             }
             do {
                 let content = try botHome.readFlexible(botId: botId, path: path)
@@ -1724,14 +1906,19 @@ public final class AppStore {
             }
 
         case "edit_file":
-            let path = s("path")
+            let path = resolveToolPath(s("path"))
             let content = s("content")
             let append = s("mode").lowercased() == "append"
             guard !path.isEmpty else { return AgentToolCallResult(output: "path is required") }
+            if let gated = hostGate(tool: "edit_file.host", paths: path, argumentsJSON: argumentsJSON) {
+                return gated
+            }
             do {
-                try botHome.edit(botId: botId, path: path, content: content, mode: append ? .append : .replace)
-                refreshFilesMirror(botId: botId)
-                ingestMemoryFileIfNeeded(botId: botId, path: path)
+                try botHome.editFlexible(botId: botId, path: path, content: content, mode: append ? .append : .replace)
+                if !BotHomeStore.isHostPath(path) {
+                    refreshFilesMirror(botId: botId)
+                    ingestMemoryFileIfNeeded(botId: botId, path: path)
+                }
                 return AgentToolCallResult(
                     output: "\(append ? "Appended" : "Edited") \(path).",
                     blocks: [.card(lines: [CardLine(k: append ? "appended" : "edited", v: path)])]
@@ -1741,14 +1928,19 @@ public final class AppStore {
             }
 
         case "move_file":
-            let from = s("from", "source")
-            let to = s("to", "destination")
+            let from = resolveToolPath(s("from", "source"))
+            let to = resolveToolPath(s("to", "destination"))
             guard !from.isEmpty, !to.isEmpty else {
                 return AgentToolCallResult(output: "from and to are required")
             }
+            if let gated = hostGate(tool: "move_file.host", paths: from, to, argumentsJSON: argumentsJSON) {
+                return gated
+            }
             do {
-                try botHome.move(botId: botId, from: from, to: to)
-                refreshFilesMirror(botId: botId)
+                try botHome.moveFlexible(botId: botId, from: from, to: to)
+                if !BotHomeStore.isHostPath(from), !BotHomeStore.isHostPath(to) {
+                    refreshFilesMirror(botId: botId)
+                }
                 return AgentToolCallResult(
                     output: "Moved \(from) → \(to).",
                     blocks: [.card(lines: [CardLine(k: "moved", v: "\(from) → \(to)")])]
@@ -1758,14 +1950,19 @@ public final class AppStore {
             }
 
         case "delete_file":
-            let path = s("path")
+            let path = resolveToolPath(s("path"))
             guard !path.isEmpty else { return AgentToolCallResult(output: "path is required") }
+            if let gated = hostGate(tool: "delete_file.host", paths: path, argumentsJSON: argumentsJSON) {
+                return gated
+            }
             do {
-                try botHome.delete(botId: botId, path: path)
-                refreshFilesMirror(botId: botId)
-                if URL(fileURLWithPath: path).lastPathComponent == MemoryFiles.botFileName {
-                    try? botHome.write(botId: botId, path: MemoryFiles.botFileName, content: MemoryLedger.botTemplate)
-                    ingestMemoryFileIfNeeded(botId: botId, path: MemoryFiles.botFileName)
+                try botHome.deleteFlexible(botId: botId, path: path)
+                if !BotHomeStore.isHostPath(path) {
+                    refreshFilesMirror(botId: botId)
+                    if URL(fileURLWithPath: path).lastPathComponent == MemoryFiles.botFileName {
+                        try? botHome.write(botId: botId, path: MemoryFiles.botFileName, content: MemoryLedger.botTemplate)
+                        ingestMemoryFileIfNeeded(botId: botId, path: MemoryFiles.botFileName)
+                    }
                 }
                 return AgentToolCallResult(
                     output: "Deleted \(path).",
@@ -1776,20 +1973,9 @@ public final class AppStore {
             }
 
         case "list_files":
-            let directory = s("directory", "path")
-            if BotHomeStore.isHostPath(directory) {
-                if BotHomeStore.isDeniedHostPath(directory) {
-                    return AgentToolCallResult(output: "List failed: \(BotHomeError.hostDenied.localizedDescription)")
-                }
-                if let gated = gatedWrite(
-                    tool: "list_files.host",
-                    detail: directory,
-                    argumentsJSON: argumentsJSON,
-                    bot: bot,
-                    approved: approved
-                ) {
-                    return gated
-                }
+            let directory = resolveToolPath(s("directory", "path"))
+            if let gated = hostGate(tool: "list_files.host", paths: directory, argumentsJSON: argumentsJSON) {
+                return gated
             }
             do {
                 let entries = try botHome.listFlexible(botId: botId, directory: directory)
@@ -1941,7 +2127,7 @@ public final class AppStore {
         case "search_memory":
             let query = s("query", "q")
             guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
-            let hits = MemoryIndex.search(documents: memory, query: query, botId: botId)
+            let hits = MemoryHybridSearch.search(documents: memory, query: query, botId: botId)
             if hits.isEmpty {
                 return AgentToolCallResult(output: "No memory hits for \(query).")
             }
@@ -2135,6 +2321,110 @@ public final class AppStore {
                 blocks: [.card(lines: [CardLine(k: "skill", v: skill.id)])]
             )
 
+        case "capabilities_discover":
+            let query = s("query", "q")
+            guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
+            let topK = Int(s("top_k", "limit")) ?? 8
+            let catalog = CapabilitySearch.entries(
+                skills: skills(for: bot),
+                builtins: AgentToolCatalog.builtin.filter { bot.isToolEnabled($0.id) },
+                mcpAdvertised: advertisedMcpTools(for: bot),
+                promotedMcp: promotedMcpTools(for: bot)
+            )
+            let hits = CapabilitySearch.search(query, in: catalog, topK: topK)
+            return AgentToolCallResult(
+                output: CapabilitySearch.formatDiscover(hits),
+                blocks: [.card(lines: hits.prefix(8).map {
+                    CardLine(k: $0.entry.kind.rawValue, v: $0.entry.id)
+                })]
+            )
+
+        case "capabilities_load":
+            let rawIds = s("ids", "id")
+            guard !rawIds.isEmpty else { return AgentToolCallResult(output: "ids is required") }
+            let ids = rawIds
+                .replacingOccurrences(of: "[", with: "")
+                .replacingOccurrences(of: "]", with: "")
+                .split(whereSeparator: { $0 == "," || $0 == " " || $0 == "\n" })
+                .map { SkillMarkdown.slug(String($0).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))) }
+                .filter { !$0.isEmpty }
+            var notes: [String] = []
+            var skillBodies: [(id: String, body: String)] = []
+            var promoted: [McpPromotedTool] = []
+            let botSkills = skills(for: bot)
+            for id in ids {
+                if let skill = botSkills.first(where: { $0.id == id || $0.name.lowercased() == id }) {
+                    skillBodies.append((skill.id, skill.body))
+                    notes.append("loaded skill \(skill.id)")
+                    continue
+                }
+                if let existing = mcpPromotedTools[id] {
+                    if McpToolGate.isToolEnabled(
+                        enabledIds: bot.enabledTools,
+                        serverId: existing.serverId,
+                        toolName: existing.chatName,
+                        advertised: mcpToolNames(for: existing.serverId)
+                    ) {
+                        promoted.append(existing)
+                        notes.append("activated MCP \(id)")
+                    } else {
+                        notes.append("MCP \(id) is turned off for this bot")
+                    }
+                    continue
+                }
+                // Match advertised MCP names and promote a thin stub.
+                var found = false
+                for (serverId, names) in mcpAdvertisedTools {
+                    if names.contains(where: { $0 == id || SkillMarkdown.slug($0) == id }) {
+                        guard McpToolGate.isToolEnabled(
+                            enabledIds: bot.enabledTools,
+                            serverId: serverId,
+                            toolName: id,
+                            advertised: names
+                        ) else {
+                            notes.append("MCP \(id) is turned off for this bot")
+                            found = true
+                            break
+                        }
+                        let tool = McpPromotedTool(
+                            chatName: id,
+                            serverId: serverId,
+                            executeTool: id,
+                            description: "MCP tool \(id)"
+                        )
+                        promoted.append(tool)
+                        notes.append("promoted MCP \(id) on \(serverId)")
+                        found = true
+                        break
+                    }
+                }
+                if !found {
+                    if AgentToolCatalog.builtin.contains(where: { $0.id == id }) {
+                        notes.append("builtin \(id) is already in the tool schema when enabled")
+                    } else {
+                        notes.append("unknown id \(id)")
+                    }
+                }
+            }
+            if !promoted.isEmpty {
+                mcpPromotedTools = McpCatalogPromote.merge(existing: mcpPromotedTools, adding: promoted)
+            }
+            return AgentToolCallResult(
+                output: notes.isEmpty ? "Nothing loaded." : notes.joined(separator: "\n"),
+                blocks: [.card(lines: notes.prefix(8).map { CardLine(k: "load", v: $0) })],
+                promotedMcpTools: promoted,
+                loadedSkillBodies: skillBodies
+            )
+
+        case "todo":
+            return await AgentSessionTools.handleTodo(markdown: s("markdown", "list"), threadKey: threadKey(for: botId))
+
+        case "complete":
+            return await AgentSessionTools.handleComplete(summary: s("summary", "text"), threadKey: threadKey(for: botId))
+
+        case "clarify":
+            return AgentSessionTools.handleClarify(question: s("question", "ask", "text"))
+
         case "import_skills":
             let path = s("path", "directory")
             guard !path.isEmpty else { return AgentToolCallResult(output: "path is required") }
@@ -2284,7 +2574,9 @@ public final class AppStore {
                     enabledIds: bot.enabledTools,
                     mcpServers: mcpServers,
                     includeDelegation: false,
-                    skills: skills(for: bot)
+                    skills: skills(for: bot),
+                    promotedMcp: Array(mcpPromotedTools.values),
+                    mcpAdvertised: mcpAdvertisedTools
                 )
                 let nested = try await AgentLoop.run(
                     client: client,
@@ -2352,20 +2644,8 @@ public final class AppStore {
             }
             do {
                 let listed = try await McpClient.listTools(server: server)
-                mcpAdvertisedTools[server.id] = listed.map(\.name)
-                let harvested = listed.compactMap { info -> McpPromotedTool? in
-                    guard !McpCatalogPromote.isDispatcher(info.name) else { return nil }
-                    return McpPromotedTool(
-                        chatName: info.name,
-                        serverId: server.id,
-                        executeTool: info.name,
-                        description: info.description,
-                        inputSchema: info.inputSchema
-                    )
-                }
-                rememberPromoted(harvested, serverId: server.id)
-                save()
-                let text = McpClient.formatToolList(listed)
+                let harvested = applyMcpList(serverId: server.id, tools: listed)
+                let text = McpClient.formatToolList(listed, serverName: server.name)
                 var output = text
                 if !harvested.isEmpty {
                     output += "\n\nPromoted \(min(harvested.count, McpCatalogPromote.maxPromoted)) catalog tools as first-class ChatTools this session."
@@ -2379,6 +2659,7 @@ public final class AppStore {
                     promotedMcpTools: harvested
                 )
             } catch {
+                mcpProbeStatus[server.id] = .failed(error.localizedDescription)
                 let command = ([server.command] + server.args).joined(separator: " ")
                 var output = "MCP list failed: \(error.localizedDescription) [\(command)]"
                 if let hint = McpGatewayCall.recoveryHint(for: output) {
@@ -2389,16 +2670,23 @@ public final class AppStore {
             }
 
         case "mcp_call":
-            guard let server = resolveMcpServer(s("server"), bot: bot) else {
-                return AgentToolCallResult(output: mcpServerResolveError(requested: s("server"), bot: bot))
+            guard let server = resolveMcpServer(s("server"), toolName: s("tool", "name"), bot: bot) else {
+                return AgentToolCallResult(output: mcpServerResolveError(
+                    requested: s("server"),
+                    toolName: s("tool", "name"),
+                    bot: bot
+                ))
             }
             let toolName = s("tool", "name")
+            if let denied = mcpToolDisabledMessage(bot: bot, server: server, toolName: toolName, raw: args) {
+                return AgentToolCallResult(output: denied)
+            }
             let prompt = s("prompt", "query", "text")
             do {
                 if toolName.isEmpty {
                     if prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         return AgentToolCallResult(
-                            output: "mcp_call needs tool=<catalog or meta tool name>. Example: tool=toolport_search_tools with query, or tool=mcp_obsidian_advanced__obsidian_put_file with filepath+content."
+                            output: "mcp_call needs tool=<name from mcp_list_tools>. Pass server=<one of the enabled MCP names>. Example: server=fast-filesystem tool=write_file."
                         )
                     }
                     let result = try await McpClient.invoke(
@@ -2654,7 +2942,19 @@ public final class AppStore {
             }
 
         default:
-            return AgentToolCallResult(output: "Unknown tool: \(name)")
+            let enabled = enabledMcpServers(bot: bot)
+            let names = enabled.map(\.name).joined(separator: ", ")
+            if McpGatewayCall.isMetaTool(name), !enabled.contains(where: { McpGatewayCall.isGateway($0) }) {
+                return AgentToolCallResult(
+                    output: McpToolRouting.missingGatewayMessage(tool: name, enabled: enabled)
+                )
+            }
+            if names.isEmpty {
+                return AgentToolCallResult(output: "Unknown tool: \(name)")
+            }
+            return AgentToolCallResult(
+                output: "Unknown tool: \(name). Available MCP servers: \(names). Call first-class server__tool names from your list, or mcp_call with server=<name> and tool from mcp_list_tools."
+            )
         }
     }
 
@@ -2662,46 +2962,117 @@ public final class AppStore {
         mcpServers.filter { bot.isToolEnabled($0.toolId) }
     }
 
-    private func resolveMcpServer(_ raw: String, bot: Bot) -> McpServer? {
-        let enabled = enabledMcpServers(bot: bot)
-        let needle = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if needle.isEmpty {
-            if let gateway = enabled.first(where: { McpGatewayCall.isGateway($0) }) {
-                return gateway
+    private func advertisedMcpTools(for bot: Bot) -> [String: [String]] {
+        var out: [String: [String]] = [:]
+        for server in enabledMcpServers(bot: bot) {
+            let names = McpCatalogPromote.uniqueAdvertisedNames(mcpAdvertisedTools[server.id] ?? [])
+            let allowed = names.filter {
+                McpToolGate.isToolEnabled(
+                    enabledIds: bot.enabledTools,
+                    serverId: server.id,
+                    toolName: $0,
+                    advertised: names
+                )
             }
-            return enabled.count == 1 ? enabled.first : nil
+            if !allowed.isEmpty {
+                out[server.id] = allowed
+            }
         }
-        let match = enabled.first { server in
-            server.id.lowercased() == needle
-                || server.name.lowercased() == needle
-                || server.toolId.lowercased() == needle
-                || server.toolId.lowercased() == "mcp:\(needle)"
-        }
-        return match
+        return out
     }
 
-    private func mcpServerResolveError(requested: String, bot: Bot) -> String {
-        let enabled = enabledMcpServers(bot: bot)
-        let names = enabled.map(\.name).joined(separator: ", ")
-        let needle = requested.trimmingCharacters(in: .whitespacesAndNewlines)
-        if enabled.isEmpty {
-            return "No MCP servers are enabled for this bot. Add Toolport (or another MCP) under Settings → MCP and enable it on the bot."
+    private func promotedMcpTools(for bot: Bot) -> [McpPromotedTool] {
+        mcpPromotedTools.values.filter { promo in
+            let advertised = mcpToolNames(for: promo.serverId)
+            return McpToolGate.isToolEnabled(
+                enabledIds: bot.enabledTools,
+                serverId: promo.serverId,
+                toolName: promo.chatName,
+                advertised: advertised
+            )
         }
-        if needle.isEmpty {
-            return "mcp_list_tools / mcp_call need server=\(enabled.first?.name ?? "toolport") (or omit server when only one MCP / Toolport is enabled). Available: \(names)."
+    }
+
+    private func mcpToolDisabledMessage(
+        bot: Bot,
+        server: McpServer,
+        toolName: String,
+        raw: [String: JSONValue]
+    ) -> String? {
+        let prepared = McpGatewayCall.prepare(server: server, toolName: toolName, raw: raw)
+        let catalog = McpGatewayCall.catalogToolName(prepared)
+        let advertised = mcpToolNames(for: server.id)
+        let names = Set([toolName, catalog].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        for name in names {
+            if !McpToolGate.isToolEnabled(
+                enabledIds: bot.enabledTools,
+                serverId: server.id,
+                toolName: name,
+                advertised: advertised
+            ) {
+                return "MCP tool \(name) is turned off for this bot on \(server.name). Enable it under Tools."
+            }
         }
-        return "Unknown or disabled MCP server '\(needle)'. Available: \(names). Pass server by name (e.g. toolport)."
+        return nil
+    }
+
+    private func resolveMcpServer(_ raw: String, toolName: String = "", bot: Bot) -> McpServer? {
+        switch McpToolRouting.resolveServer(
+            requested: raw,
+            toolName: toolName,
+            enabled: enabledMcpServers(bot: bot),
+            advertised: advertisedMcpTools(for: bot)
+        ) {
+        case .resolved(let server):
+            return server
+        case .failed:
+            return nil
+        }
+    }
+
+    private func mcpServerResolveError(requested: String, toolName: String = "", bot: Bot) -> String {
+        switch McpToolRouting.resolveServer(
+            requested: requested,
+            toolName: toolName,
+            enabled: enabledMcpServers(bot: bot),
+            advertised: advertisedMcpTools(for: bot)
+        ) {
+        case .resolved:
+            return "Unknown or disabled MCP server '\(requested)'."
+        case .failed(let message):
+            return message
+        }
     }
 
     private func rememberPromoted(_ tools: [McpPromotedTool], serverId: String) {
         guard !tools.isEmpty else { return }
         mcpPromotedTools = McpCatalogPromote.merge(existing: mcpPromotedTools, adding: tools)
-        var advertised = mcpAdvertisedTools[serverId] ?? []
-        for tool in tools {
-            if !advertised.contains(tool.chatName) { advertised.append(tool.chatName) }
+        var advertised = McpCatalogPromote.uniqueAdvertisedNames(mcpAdvertisedTools[serverId] ?? [])
+        for tool in tools where !McpCatalogPromote.isDispatcher(tool.executeTool) {
             if !advertised.contains(tool.executeTool) { advertised.append(tool.executeTool) }
         }
-        mcpAdvertisedTools[serverId] = advertised
+        mcpAdvertisedTools[serverId] = McpCatalogPromote.uniqueAdvertisedNames(advertised)
+    }
+
+    @discardableResult
+    private func applyMcpList(serverId: String, tools: [McpToolInfo]) -> [McpPromotedTool] {
+        let names = McpCatalogPromote.uniqueAdvertisedNames(tools.map(\.name))
+        mcpAdvertisedTools[serverId] = names
+        mcpListedTools[serverId] = tools
+        mcpProbeStatus[serverId] = .connected(toolCount: names.count)
+        let server = mcpServers.first(where: { $0.id == serverId })
+            ?? McpServer(id: serverId, name: serverId)
+        let harvested = McpCatalogPromote.fromListed(server: server, tools: tools)
+        rememberPromoted(harvested, serverId: serverId)
+        optInMcpChildTools(serverId: serverId, names: names)
+        save()
+        return harvested
+    }
+
+    private func optInMcpChildTools(serverId: String, names: [String]) {
+        for name in names {
+            optInNewTool(McpToolGate.childId(serverId: serverId, toolName: name))
+        }
     }
 
     @discardableResult
@@ -2715,36 +3086,51 @@ public final class AppStore {
         return harvested
     }
 
+    private func hydratePromotedFromAdvertised(bot: Bot) {
+        let stubs = McpCatalogPromote.fromAdvertised(
+            servers: enabledMcpServers(bot: bot),
+            advertised: advertisedMcpTools(for: bot)
+        )
+        mcpPromotedTools = McpCatalogPromote.merge(existing: mcpPromotedTools, adding: stubs)
+        for serverId in Set(stubs.map(\.serverId)) {
+            if let names = mcpAdvertisedTools[serverId] {
+                mcpAdvertisedTools[serverId] = McpCatalogPromote.uniqueAdvertisedNames(names)
+            }
+        }
+    }
+
     /// Prefetch Toolport catalog matches from the user prompt so Gmail/MacUse tools are first-class on step 1.
     private func warmMcpCatalog(bot: Bot, prompt: String) async {
+        let enabled = enabledMcpServers(bot: bot)
         let queries = McpCatalogPromote.warmQueries(from: prompt)
-        guard !queries.isEmpty else { return }
-        guard let server = enabledMcpServers(bot: bot).first(where: { McpGatewayCall.isGateway($0) })
-                ?? enabledMcpServers(bot: bot).first
-        else { return }
-        for item in queries {
-            var args: [String: JSONValue] = ["query": .string(item.query)]
-            if let filter = item.server {
-                args["server"] = .string(filter)
+        if let gateway = enabled.first(where: { McpGatewayCall.isGateway($0) }) {
+            for item in queries {
+                var args: [String: JSONValue] = ["query": .string(item.query)]
+                if let filter = item.server {
+                    args["server"] = .string(filter)
+                }
+                let prepared = McpGatewayCall.prepare(
+                    server: gateway,
+                    toolName: "toolport_search_tools",
+                    raw: ["tool": .string("toolport_search_tools"), "arguments": .object(args)]
+                )
+                guard let result = try? await McpClient.call(
+                    server: gateway,
+                    toolName: prepared.toolName,
+                    arguments: prepared.arguments
+                ), !McpGatewayCall.failed(isError: result.isError, text: result.text)
+                else { continue }
+                rememberHarvest(serverId: gateway.id, catalogTool: "toolport_search_tools", text: result.text)
             }
-            let prepared = McpGatewayCall.prepare(
-                server: server,
-                toolName: "toolport_search_tools",
-                raw: ["tool": .string("toolport_search_tools"), "arguments": .object(args)]
-            )
-            guard let result = try? await McpClient.call(
-                server: server,
-                toolName: prepared.toolName,
-                arguments: prepared.arguments
-            ), !McpGatewayCall.failed(isError: result.isError, text: result.text)
-            else { continue }
-            rememberHarvest(serverId: server.id, catalogTool: "toolport_search_tools", text: result.text)
         }
 
         let lower = prompt.lowercased()
         let wantsMail = lower.contains("gmail") || lower.contains("email") || lower.contains("inbox")
             || lower.contains("macuse")
         guard wantsMail else { return }
+        let server = enabled.first { $0.name.lowercased().contains("macuse") }
+            ?? enabled.first(where: { McpGatewayCall.isGateway($0) })
+        guard let server else { return }
         let mailNames: [JSONValue] = [
             .string("mail_list_accounts"),
             .string("mail_list_mailboxes"),
@@ -4335,6 +4721,10 @@ public final class AppStore {
         case "shell.exec": return "shell"
         case "read_file.host": return "read_file"
         case "list_files.host": return "list_files"
+        case "write_file.host": return "write_file"
+        case "edit_file.host": return "edit_file"
+        case "move_file.host": return "move_file"
+        case "delete_file.host": return "delete_file"
         default: return tool
         }
     }
@@ -4489,6 +4879,17 @@ public final class AppStore {
             inputTokens: recent.reduce(0) { $0 + $1.inputTokens },
             outputTokens: recent.reduce(0) { $0 + $1.outputTokens },
             runs: recent.count
+        )
+    }
+
+    /// Billed tokens for one bot's chat: last first-call prompt, plus lifetime sent/received.
+    public func chatTokenStats(botId: String) -> ChatTokenStats {
+        let records = usage.filter { $0.botId == botId }
+        let last = records.max(by: { $0.createdAt < $1.createdAt })
+        return ChatTokenStats(
+            lastPromptTokens: last?.billedPromptTokens ?? 0,
+            sentTokens: records.reduce(0) { $0 + $1.inputTokens },
+            receivedTokens: records.reduce(0) { $0 + $1.outputTokens }
         )
     }
 
@@ -4788,6 +5189,124 @@ public final class AppStore {
         }
         applyBoxToken(config.boxToken, persist: false)
         save()
+        refreshLocalIntegrations()
+    }
+
+    /// Restart folder watchers + local OpenAI/MCP gateway from current config.
+    public func refreshLocalIntegrations() {
+        Task { await self.syncFolderWatchers() }
+        Task { await self.syncLocalGateway() }
+    }
+
+    public func folderWatchers() -> [FolderWatcherRecord] {
+        (try? FolderWatcherPersistence.loadAll(root: userPersistence.root)) ?? []
+    }
+
+    public func saveFolderWatcher(_ watcher: FolderWatcherRecord) throws {
+        try FolderWatcherPersistence.save(watcher, root: userPersistence.root)
+        refreshLocalIntegrations()
+    }
+
+    public func deleteFolderWatcher(id: String) throws {
+        try FolderWatcherPersistence.delete(id: id, root: userPersistence.root)
+        refreshLocalIntegrations()
+    }
+
+    public func runFolderWatcherNow(id: String) {
+        Task {
+            _ = try? await FolderWatcherService.shared.runWatcherNow(id: id)
+        }
+    }
+
+    public func discoverMcpBonjour(timeoutSeconds: TimeInterval = 5) async -> [MCPBonjourDiscovery.Entry] {
+        await MCPBonjourDiscovery.discover(timeoutSeconds: timeoutSeconds)
+    }
+
+    public func memoryDedupeClusters(botId: String) -> [MemoryFactCluster] {
+        let content = memory.first(where: { $0.botId == botId && $0.path == "MEMORY.md" })?.content ?? ""
+        return MemoryFactDedupe.clusters(from: MemoryLedger.parse(content).facts)
+    }
+
+    @discardableResult
+    public func mergeMemoryDuplicates(botId: String) -> [String] {
+        guard let idx = memory.firstIndex(where: { $0.botId == botId && $0.path == "MEMORY.md" }) else {
+            return []
+        }
+        let result = MemoryFactDedupe.mergeContent(memory[idx].content)
+        memory[idx].content = result.text
+        memory[idx].updatedAt = .now
+        save()
+        return result.removed
+    }
+
+    private func syncFolderWatchers() async {
+        let root = userPersistence.root
+        let runner = StoreFolderWatcherRunner { [weak self] watcher, paths, manual in
+            guard let self else { return "store released" }
+            return await MainActor.run {
+                self.fireFolderWatcher(watcher, changedPaths: paths, manual: manual)
+            }
+        }
+        await FolderWatcherService.shared.configure(root: root, runner: runner)
+        if appConfig.enableFolderWatchers {
+            await FolderWatcherService.shared.start()
+        } else {
+            await FolderWatcherService.shared.stop()
+        }
+    }
+
+    private func fireFolderWatcher(
+        _ watcher: FolderWatcherRecord,
+        changedPaths: [String],
+        manual: Bool
+    ) -> String {
+        let botId = watcher.botId ?? activeBotId ?? bots.first?.id
+        guard let botId else { return "No bot configured for watcher." }
+        let prompt = FolderWatcherPromptBuilder.userMessage(
+            watcher: watcher,
+            changedPaths: changedPaths,
+            manual: manual
+        )
+        send(botId: botId, text: prompt)
+        return "Triggered bot \(botId)"
+    }
+
+    private func syncLocalGateway() async {
+        let settings = appConfig.localGateway
+        let botPairs = bots.map { (id: $0.id, name: $0.name) }
+        await LocalOpenAIGateway.shared.configure(
+            settings: settings,
+            bots: botPairs,
+            handler: { [weak self] botId, messages, _ in
+                guard let self else { throw PrivacyFilterBlockedError.criticalPII([.apiKey]) }
+                return try await MainActor.run {
+                    try self.handleLocalGatewayChat(botId: botId, messages: messages)
+                }
+            }
+        )
+        await LocalOpenAIGateway.shared.restart()
+    }
+
+    private func handleLocalGatewayChat(botId: String?, messages: [[String: String]]) throws -> String {
+        let target = botId ?? appConfig.localGateway.defaultBotId ?? activeBotId ?? bots.first?.id
+        guard let target else {
+            throw NSError(
+                domain: "GrizzyBot",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "No bot available"]
+            )
+        }
+        let prompt = messages.reversed().first(where: { $0["role"] == "user" })?["content"]
+            ?? messages.last?["content"]
+            ?? ""
+        let scrubbed = try PrivacyFilter.applyForSend(
+            prompt,
+            settings: appConfig.privacyFilter,
+            logDirectory: userPersistence.root,
+            logContext: "local_gateway"
+        )
+        send(botId: target, text: scrubbed)
+        return "Queued on bot \(target). Open GrizzyBot to follow the run."
     }
 
     private func applyBoxToken(_ token: String?, persist: Bool) {
@@ -4891,27 +5410,170 @@ public final class AppStore {
     }
 
     public func setDefaultTool(_ toolId: String, enabled: Bool) {
-        var tools = appConfig.defaultEnabledTools
-        if enabled {
-            if !tools.contains(toolId) { tools.append(toolId) }
-        } else {
-            tools.removeAll { $0 == toolId }
+        setDefaultTools([toolId], enabled: enabled)
+    }
+
+    public func setDefaultTools(_ toolIds: [String], enabled: Bool) {
+        var config = appConfig
+        for toolId in toolIds {
+            if !config.seenToolIds.contains(toolId) {
+                config.seenToolIds.append(toolId)
+            }
+            if enabled {
+                if !config.defaultEnabledTools.contains(toolId) {
+                    config.defaultEnabledTools.append(toolId)
+                }
+            } else {
+                config.defaultEnabledTools.removeAll { $0 == toolId }
+            }
         }
-        appConfig.defaultEnabledTools = tools
+        appConfig = config
         save()
     }
 
     public func setAllDefaultTools(enabled: Bool) {
-        appConfig.defaultEnabledTools = enabled ? knownToolIds : []
+        var config = appConfig
+        let ids = knownToolIds
+        for id in ids where !config.seenToolIds.contains(id) {
+            config.seenToolIds.append(id)
+        }
+        config.defaultEnabledTools = enabled ? ids : []
+        appConfig = config
         save()
     }
 
     public var knownToolIds: [String] {
-        AgentToolCatalog.allIds(custom: customTools, mcpServers: mcpServers)
+        var ids = AgentToolCatalog.allIds(custom: customTools, mcpServers: mcpServers)
+        for server in mcpServers {
+            ids.append(contentsOf: McpToolGate.childIds(serverId: server.id, names: mcpToolNames(for: server.id)))
+        }
+        return ids
     }
 
     public var knownToolDefinitions: [AgentToolDefinition] {
         AgentToolCatalog.definitions(custom: customTools, mcpServers: mcpServers)
+    }
+
+    public func mcpStatus(for serverId: String) -> McpProbeStatus {
+        if let live = mcpProbeStatus[serverId] { return live }
+        if let names = mcpAdvertisedTools[serverId] {
+            return .connected(toolCount: names.count)
+        }
+        return .idle
+    }
+
+    public func mcpToolNames(for serverId: String) -> [String] {
+        var names = McpCatalogPromote.uniqueAdvertisedNames(mcpAdvertisedTools[serverId] ?? [])
+        var seen = Set(names)
+        let server = mcpServers.first(where: { $0.id == serverId })
+        for promo in mcpPromotedTools.values where promo.serverId == serverId {
+            if McpCatalogPromote.isDispatcher(promo.chatName) { continue }
+            if let server, promo.chatName == McpNativeNaming.chatName(server: server, tool: promo.executeTool),
+               seen.contains(promo.executeTool) {
+                continue
+            }
+            if seen.insert(promo.chatName).inserted {
+                names.append(promo.chatName)
+            }
+        }
+        return names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    public func mcpToolDescription(serverId: String, toolName: String) -> String {
+        if let info = mcpListedTools[serverId]?.first(where: { $0.name == toolName }),
+           !info.description.isEmpty {
+            return info.description
+        }
+        if let promo = mcpPromotedTools.values.first(where: {
+            $0.serverId == serverId && $0.chatName == toolName
+        }), !promo.description.isEmpty {
+            return promo.description
+        }
+        return "MCP tool"
+    }
+
+    public func isDefaultMcpToolEnabled(serverId: String, toolName: String) -> Bool {
+        McpToolGate.isToolEnabled(
+            enabledIds: appConfig.defaultEnabledTools,
+            serverId: serverId,
+            toolName: toolName,
+            advertised: mcpToolNames(for: serverId)
+        )
+    }
+
+    public func isBotMcpToolEnabled(botId: String, serverId: String, toolName: String) -> Bool {
+        guard let bot = bots.first(where: { $0.id == botId }) else { return false }
+        return McpToolGate.isToolEnabled(
+            enabledIds: bot.enabledTools,
+            serverId: serverId,
+            toolName: toolName,
+            advertised: mcpToolNames(for: serverId)
+        )
+    }
+
+    public func setDefaultMcpChildTool(serverId: String, toolName: String, enabled: Bool) {
+        var config = appConfig
+        let advertised = mcpToolNames(for: serverId)
+        McpToolGate.setChild(
+            enabledIds: &config.defaultEnabledTools,
+            serverId: serverId,
+            toolName: toolName,
+            enabled: enabled,
+            advertised: advertised
+        )
+        let parent = "mcp:\(serverId)"
+        for id in [parent] + McpToolGate.childIds(serverId: serverId, names: advertised) {
+            if !config.seenToolIds.contains(id) {
+                config.seenToolIds.append(id)
+            }
+        }
+        appConfig = config
+        save()
+    }
+
+    public func setBotMcpChildTool(botId: String, serverId: String, toolName: String, enabled: Bool) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
+        var tools = bots[idx].enabledTools
+        McpToolGate.setChild(
+            enabledIds: &tools,
+            serverId: serverId,
+            toolName: toolName,
+            enabled: enabled,
+            advertised: mcpToolNames(for: serverId)
+        )
+        bots[idx].enabledTools = tools
+        bots[idx].updatedAt = .now
+        save()
+    }
+
+    public func probeMcpServer(_ serverId: String) {
+        guard let server = mcpServers.first(where: { $0.id == serverId }) else { return }
+        if mcpProbeStatus[serverId] == .checking { return }
+        let generation = (mcpProbeGeneration[serverId] ?? 0) + 1
+        mcpProbeGeneration[serverId] = generation
+        mcpProbeStatus[serverId] = .checking
+        Task {
+            let outcome: Result<[McpToolInfo], Error>
+            do {
+                outcome = .success(try await McpClient.listTools(server: server))
+            } catch {
+                outcome = .failure(error)
+            }
+            guard mcpProbeGeneration[serverId] == generation else { return }
+            guard mcpServers.contains(where: { $0.id == serverId }) else { return }
+            switch outcome {
+            case .success(let listed):
+                _ = applyMcpList(serverId: serverId, tools: listed)
+            case .failure(let error):
+                mcpProbeStatus[serverId] = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    public func probeAllMcpServers() {
+        for server in mcpServers {
+            probeMcpServer(server.id)
+        }
     }
 
     @discardableResult
@@ -4926,11 +5588,12 @@ public final class AppStore {
     ) -> McpServer? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+        let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
         let server = McpServer(
             name: trimmed,
             transport: transport,
-            command: command.trimmingCharacters(in: .whitespacesAndNewlines),
-            args: args,
+            command: command,
+            args: FastFilesystemMcpArgs.normalize(command: command, args: args),
             env: env,
             url: url.trimmingCharacters(in: .whitespacesAndNewlines),
             headers: headers
@@ -4943,29 +5606,61 @@ public final class AppStore {
 
     public func updateMcpServer(_ server: McpServer) {
         guard let idx = mcpServers.firstIndex(where: { $0.id == server.id }) else { return }
-        mcpServers[idx] = server
+        var updated = server
+        updated.args = FastFilesystemMcpArgs.normalize(command: updated.command, args: updated.args)
+        mcpServers[idx] = updated
         save()
     }
 
     public func deleteMcpServer(_ serverId: String) {
-        let toolId = mcpServers.first(where: { $0.id == serverId })?.toolId ?? "mcp:\(serverId)"
         mcpServers.removeAll { $0.id == serverId }
-        appConfig.defaultEnabledTools.removeAll { $0 == toolId }
+        McpToolGate.stripServer(serverId, from: &appConfig.defaultEnabledTools)
         for i in bots.indices {
-            bots[i].enabledTools.removeAll { $0 == toolId }
+            McpToolGate.stripServer(serverId, from: &bots[i].enabledTools)
         }
+        mcpAdvertisedTools[serverId] = nil
+        mcpListedTools[serverId] = nil
+        mcpProbeStatus[serverId] = nil
+        mcpProbeGeneration[serverId] = nil
+        mcpPromotedTools = mcpPromotedTools.filter { $0.value.serverId != serverId }
         save()
     }
 
-    private func optInNewTool(_ toolId: String) {
-        if !appConfig.defaultEnabledTools.contains(toolId) {
-            appConfig.defaultEnabledTools.append(toolId)
+    @discardableResult
+    func optInNewTool(_ toolId: String) -> Bool {
+        if appConfig.seenToolIds.contains(toolId) { return false }
+        var config = appConfig
+        config.seenToolIds.append(toolId)
+        if !config.defaultEnabledTools.isEmpty, !config.defaultEnabledTools.contains(toolId) {
+            config.defaultEnabledTools.append(toolId)
         }
+        appConfig = config
         for i in bots.indices {
             if !bots[i].enabledTools.contains(toolId), !bots[i].noToolsEnabled {
                 bots[i].enabledTools.append(toolId)
             }
         }
+        return true
+    }
+
+    /// First launch after this field exists: record every known tool so disabled defaults stay off.
+    private func seedSeenToolIdsIfNeeded() {
+        guard appConfig.seenToolIds.isEmpty else { return }
+        var seen = Set(AgentToolCatalog.builtinIds)
+        seen.formUnion(CanvasBoardStore.toolIds)
+        seen.formUnion(appConfig.defaultEnabledTools)
+        seen.formUnion(customTools.map(\.id))
+        seen.formUnion(mcpServers.map(\.toolId))
+        for (serverId, names) in mcpAdvertisedTools {
+            seen.formUnion(McpToolGate.childIds(serverId: serverId, names: names))
+        }
+        for bot in bots {
+            seen.formUnion(bot.enabledTools)
+        }
+        var config = appConfig
+        config.seenToolIds = Array(seen)
+        appConfig = config
+        save()
     }
 
     @discardableResult

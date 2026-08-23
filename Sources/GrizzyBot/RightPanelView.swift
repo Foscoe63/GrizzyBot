@@ -14,6 +14,7 @@ struct RightPanelView: View {
     @State private var settingsTitle = ""
     @State private var settingsDescription = ""
     @State private var settingsInstructions = ""
+    @State private var settingsWorkingFolder = ""
     @State private var confirmDelete = false
     @State private var deleting = false
     @State private var settingsError: String?
@@ -382,6 +383,16 @@ struct RightPanelView: View {
                 )
                 .padding(.top, 12)
                 GrizzyField(
+                    label: "Working folder",
+                    placeholder: "~/Projects/my-app (optional; relative file tools read and write here)",
+                    text: $settingsWorkingFolder
+                )
+                .padding(.top, 12)
+                Text("Relative read/write/list use this folder. Shell, MEMORY.md, and PLAN.md stay in the bot home. MCP does not inherit it.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 6)
+                GrizzyField(
                     label: "Memory",
                     placeholder: "Facts this bot should keep. Standing rules go under ## Pin.",
                     text: Binding(
@@ -564,7 +575,8 @@ struct RightPanelView: View {
                             name: settingsName,
                             title: settingsTitle,
                             description: settingsDescription,
-                            instructions: settingsInstructions
+                            instructions: settingsInstructions,
+                            workingFolder: settingsWorkingFolder
                         )
                     } label: {
                         Text("Save")
@@ -688,23 +700,22 @@ struct RightPanelView: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.textMuted)
 
-            ForEach(store.knownToolDefinitions) { tool in
-                settingsToggle(
-                    title: tool.label,
-                    subtitle: tool.kind == .builtin
-                        ? tool.subtitle
-                        : "\(tool.kind == .mcp ? "MCP" : "Custom") · \(tool.subtitle)",
-                    isOn: bot.isToolEnabled(tool.id)
-                ) {
-                    store.setBotTool(bot.id, toolId: tool.id, enabled: !bot.isToolEnabled(tool.id))
-                }
+            if !store.mcpServers.isEmpty {
+                Text("MCP servers")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 6)
+                McpServersToolsBlock(scope: .bot(bot.id))
             }
+
+            GroupedBuiltinToolsList(scope: .bot(bot.id))
 
             Text("Add MCP servers in App Settings → Tools.")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textMuted)
                 .padding(.top, 4)
         }
+        .onAppear { store.probeAllMcpServers() }
     }
 
     private func modelChoices(for bot: Bot) -> [BotModelChoice] {
@@ -728,6 +739,7 @@ struct RightPanelView: View {
         settingsTitle = bot.title
         settingsDescription = bot.description
         settingsInstructions = bot.instructions.isEmpty ? bot.description : bot.instructions
+        settingsWorkingFolder = bot.workingFolder ?? ""
         settingsLoadedFor = bot.id
         confirmDelete = false
         settingsError = nil

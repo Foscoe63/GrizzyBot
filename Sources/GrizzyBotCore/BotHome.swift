@@ -118,6 +118,49 @@ public struct BotHomeStore: Sendable {
         try content.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    public func writeFlexible(botId: String, path: String, content: String) throws {
+        if Self.isHostPath(path) {
+            let url = try Self.hostURL(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try content.write(to: url, atomically: true, encoding: .utf8)
+            return
+        }
+        try write(botId: botId, path: path, content: content)
+    }
+
+    public func editFlexible(botId: String, path: String, content: String, mode: EditMode = .replace) throws {
+        switch mode {
+        case .replace:
+            try writeFlexible(botId: botId, path: path, content: content)
+        case .append:
+            let existing = (try? readFlexible(botId: botId, path: path)) ?? ""
+            try writeFlexible(botId: botId, path: path, content: existing + content)
+        }
+    }
+
+    public func moveFlexible(botId: String, from: String, to: String) throws {
+        if Self.isHostPath(from) || Self.isHostPath(to) {
+            let src = try Self.hostURL(from)
+            let dest = try Self.hostURL(to)
+            try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                try FileManager.default.removeItem(at: dest)
+            }
+            try FileManager.default.moveItem(at: src, to: dest)
+            return
+        }
+        try move(botId: botId, from: from, to: to)
+    }
+
+    public func deleteFlexible(botId: String, path: String) throws {
+        if Self.isHostPath(path) {
+            let url = try Self.hostURL(path)
+            try FileManager.default.removeItem(at: url)
+            return
+        }
+        try delete(botId: botId, path: path)
+    }
+
     /// Copy an external file into the bot home. Returns the relative destination path.
     @discardableResult
     public func importFile(botId: String, from source: URL, relative dest: String? = nil) throws -> String {

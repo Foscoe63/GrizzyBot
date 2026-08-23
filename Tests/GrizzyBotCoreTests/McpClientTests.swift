@@ -241,7 +241,7 @@ struct McpClientTests {
         let missing = McpGatewayCall.recoveryHint(for: "Input validation error: 'filepath' is a required property")
         #expect(missing?.contains("filepath") == true)
         let route = McpGatewayCall.recoveryHint(for: "no route for tool 'mcp_obsidian_advanced__obsidian_search'")
-        #expect(route?.contains("search") == true)
+        #expect(route?.contains("mcp_list_tools") == true)
         let output = McpGatewayCall.modelOutput(
             prepared: McpPreparedCall(toolName: "toolport_call_tool", arguments: ["name": .string("x")]),
             isError: true,

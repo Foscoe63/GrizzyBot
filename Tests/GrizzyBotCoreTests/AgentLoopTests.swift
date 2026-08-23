@@ -252,15 +252,18 @@ struct AgentLoopTests {
         #expect(prompt.contains("PLAN.md"))
         #expect(prompt.contains(AgentLoop.PromptSection.filesAndMcp().prefix(40)))
         #expect(AgentLoop.PromptSection.honesty().contains("Never claim"))
-        #expect(AgentLoop.PromptSection.filesAndMcp().contains("toolport_call_tool"))
-        #expect(AgentLoop.PromptSection.filesAndMcp().contains("github__search_repositories"))
+        #expect(AgentLoop.PromptSection.filesAndMcp().contains("server__tool"))
+        #expect(AgentLoop.PromptSection.filesAndMcp().contains("Never omit server"))
         #expect(prompt.contains("present_component"))
         #expect(prompt.contains("search_knowledge"))
         #expect(prompt.contains("These builtins are off"))
-        #expect(AgentLoop.PromptSection.filesAndMcp().contains("toolport_fetch_result"))
         #expect(AgentLoop.PromptSection.filesAndMcp().contains("fast-filesystem"))
         #expect(AgentLoop.PromptSection.filesAndMcp().contains("canvas_place_image"))
         #expect(AgentLoop.PromptSection.filesAndMcp().contains("write a prompt"))
+        let toolport = McpServer(id: "tp", name: "Toolport", command: "toolport-gateway")
+        let gatewayTools = AgentToolCatalog.chatTools(enabledIds: [toolport.toolId], mcpServers: [toolport])
+        #expect(AgentLoop.PromptSection.filesAndMcp(tools: gatewayTools).contains("toolport_call_tool"))
+        #expect(AgentLoop.PromptSection.filesAndMcp(tools: gatewayTools).contains("toolport_fetch_result"))
     }
 
     @Test("drops web tools after repeated empty searches")
@@ -394,6 +397,38 @@ struct AgentLoopTests {
         #expect(result.blocks.count == 1)
         #expect(client.requests.count == 2)
         #expect(client.requests[1].messages.contains(where: { $0.role == "tool" }))
+    }
+
+    @Test("prompt tokens are the first call; input tokens sum every round")
+    func promptVsRoundTokens() async throws {
+        let client = QueueChatClient([
+            ChatCompletionResponse(
+                toolCalls: [LLMToolCall(id: "1", name: "write_file", arguments: "{\"path\":\"a.txt\"}")],
+                inputTokens: 100,
+                outputTokens: 20
+            ),
+            ChatCompletionResponse(text: "wrote it.", inputTokens: 40, outputTokens: 8),
+        ])
+        let endpoint = ModelEndpoint(
+            provider: "openrouter",
+            model: "test",
+            baseURL: "https://example.com/v1",
+            apiKey: "k"
+        )
+        let result = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: endpoint,
+                botName: "Scout",
+                prompt: "write a file",
+                tools: AgentToolCatalog.chatTools(enabledIds: ["write_file"])
+            )
+        ) { _, _ in
+            AgentToolCallResult(output: "ok")
+        }
+        #expect(result.promptTokens == 100)
+        #expect(result.inputTokens == 140)
+        #expect(result.outputTokens == 28)
     }
 
     @Test("strips leaked think tags from visible text")
@@ -601,6 +636,91 @@ struct AgentLoopTests {
             $0.role == "system" && ($0.content ?? "").contains("These builtins are off")
         }))
     }
+
+    @Test("disabled builtin nudges a connected filesystem MCP, not Toolport")
+    func disabledBuiltinNudgeFilesystem() async throws {
+        let write = LLMToolCall(
+            id: "1",
+            name: "write_file",
+            arguments: "{\"path\":\"Iran 2026-08-20.md\",\"content\":\"brief\"}"
+        )
+        let client = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [write]),
+            ChatCompletionResponse(text: "Calling fast-filesystem next."),
+        ])
+        let endpoint = ModelEndpoint(
+            provider: "openrouter",
+            model: "test",
+            baseURL: "https://example.com/v1",
+            apiKey: "k"
+        )
+        let server = McpServer(id: "fs", name: "fast-filesystem", command: "npx")
+        _ = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: endpoint,
+                botName: "Newsroom",
+                prompt: "Save the brief",
+                tools: AgentToolCatalog.chatTools(
+                    enabledIds: [server.toolId],
+                    mcpServers: [server],
+                    mcpAdvertised: ["fs": ["write_file"]]
+                ),
+                maxSteps: 4
+            )
+        ) { _, _ in
+            AgentToolCallResult(
+                output: DisabledBuiltinFallback.toolResult(
+                    tool: "write_file",
+                    argumentsJSON: "{\"path\":\"Iran 2026-08-20.md\",\"content\":\"brief\"}",
+                    hasMcp: true,
+                    context: McpFallbackContext.from(servers: [server], advertised: ["fs": ["write_file"]])
+                )
+            )
+        }
+        #expect(client.requests.count >= 2)
+        #expect(client.requests[1].messages.contains(where: {
+            $0.role == "user" && ($0.content ?? "").contains("fast-filesystem")
+        }))
+        #expect(!client.requests[1].messages.contains(where: {
+            $0.role == "user" && ($0.content ?? "").contains("toolport_search_tools")
+        }))
+    }
+
+    @Test("skips duplicate mcp_list_tools in the same step")
+    func skipsDuplicateListTools() async throws {
+        func list(_ id: String) -> LLMToolCall {
+            LLMToolCall(id: id, name: "mcp_list_tools", arguments: "{\"server\":\"MacUse\"}")
+        }
+        let client = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [list("1"), list("2"), list("3")]),
+            ChatCompletionResponse(text: "Listed once."),
+        ])
+        let endpoint = ModelEndpoint(
+            provider: "openrouter",
+            model: "test",
+            baseURL: "https://example.com/v1",
+            apiKey: "k"
+        )
+        _ = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: endpoint,
+                botName: "Scout",
+                prompt: "list",
+                tools: AgentToolCatalog.chatTools(
+                    enabledIds: [McpServer(id: "mu", name: "MacUse").toolId],
+                    mcpServers: [McpServer(id: "mu", name: "MacUse")]
+                ),
+                maxSteps: 4
+            )
+        ) { _, _ in
+            AgentToolCallResult(output: "• get_tool_definitions")
+        }
+        let toolContents = client.requests[1].messages.filter { $0.role == "tool" }.compactMap(\.content)
+        #expect(toolContents.filter { $0.contains("Skipped duplicate") }.count == 2)
+        #expect(toolContents.contains { $0.contains("get_tool_definitions") })
+    }
 }
 
 @Suite("Agent chat tools")
@@ -635,7 +755,6 @@ struct AgentChatToolTests {
         let call = tools.first { $0.function.name == "mcp_call" }
         #expect(call?.function.description.contains("github__search_repositories") == true)
         #expect(call?.function.description.contains("never id") == true)
-        #expect(call?.function.description.contains("web_search") == true)
         #expect(call?.function.description.contains("toolport_fetch_result") == true)
         let list = tools.first { $0.function.name == "mcp_list_tools" }
         #expect(list?.function.description.contains("meta-tools") == true)

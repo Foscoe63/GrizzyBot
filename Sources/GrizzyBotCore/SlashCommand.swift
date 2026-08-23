@@ -32,12 +32,35 @@ public enum SlashCommand: Sendable {
         }
         let parts = body.split(maxSplits: 1, whereSeparator: { $0.isWhitespace })
         guard let first = parts.first else { return Parsed(name: "help", argument: "") }
-        let name = SkillMarkdown.slug(String(first))
+        let token = String(first)
+        // Absolute paths (`/Users/…`, `/Volumes/…`) are not slash commands.
+        if looksLikeFilesystemPath(token: token, full: trimmed) {
+            return nil
+        }
+        let name = SkillMarkdown.slug(token)
         guard !name.isEmpty else { return nil }
         let argument = parts.count > 1
             ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
             : ""
         return Parsed(name: name, argument: argument)
+    }
+
+    /// `/Users/…`, `/tmp/foo.png`, or any first token that still contains `/`.
+    public static func looksLikeFilesystemPath(token: String, full: String? = nil) -> Bool {
+        if token.contains("/") { return true }
+        let probe = (full ?? token).trimmingCharacters(in: .whitespacesAndNewlines)
+        if probe.hasPrefix("~/") { return true }
+        let absoluteRoots = [
+            "/Users/", "/Volumes/", "/private/", "/tmp/", "/var/", "/opt/",
+            "/home/", "/Library/", "/System/", "/Applications/", "/usr/", "/bin/", "/sbin/",
+        ]
+        for root in absoluteRoots where probe.hasPrefix(root) || probe == String(root.dropLast()) {
+            return true
+        }
+        // Bare `/Users`, `/tmp`, etc.
+        let bare = ["/Users", "/Volumes", "/private", "/tmp", "/var", "/opt", "/home"]
+        if bare.contains(probe) { return true }
+        return false
     }
 
     public static func resolve(_ text: String, skills: [AgentSkill]) -> Resolution {
@@ -63,7 +86,9 @@ public enum SlashCommand: Sendable {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("/") else { return [] }
         if trimmed.contains(where: { $0.isWhitespace }) { return [] }
-        let prefix = SkillMarkdown.slug(String(trimmed.dropFirst()))
+        let body = String(trimmed.dropFirst())
+        if looksLikeFilesystemPath(token: body, full: trimmed) { return [] }
+        let prefix = SkillMarkdown.slug(body)
         let sorted = skills.sorted { $0.id < $1.id }
         if prefix.isEmpty { return Array(sorted.prefix(limit)) }
         return Array(

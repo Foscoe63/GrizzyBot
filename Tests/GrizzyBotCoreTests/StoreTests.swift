@@ -89,6 +89,11 @@ struct StoreTests {
         #expect(store.threads[bot.id]?.run?.status == .completed)
         #expect(store.usage.last?.inputTokens == 12)
         #expect(store.usage.last?.outputTokens == 40)
+        #expect(store.usage.last?.promptTokens == 12)
+        let stats = store.chatTokenStats(botId: bot.id)
+        #expect(stats.lastPromptTokens == 12)
+        #expect(stats.sentTokens == 12)
+        #expect(stats.receivedTokens == 40)
         #expect(!store.sidebarPreview(for: store.bots.first!).isEmpty)
     }
 
@@ -278,6 +283,53 @@ struct StoreTests {
         #expect(summary.runs == 2)
         #expect(summary.inputTokens == 15)
         #expect(summary.outputTokens == 27)
+    }
+
+    @Test("chatTokenStats is per bot and prefers stored promptTokens")
+    func chatTokenStatsPerBot() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "tok@b.com", password: "password1") == nil)
+        let a = store.createBot(name: "A", title: "helper")
+        let b = store.createBot(name: "B", title: "helper")
+        store.usage = [
+            UsageRecord(
+                id: "1",
+                botId: a.id,
+                provider: "p",
+                model: "m",
+                promptTokens: 100,
+                inputTokens: 140,
+                outputTokens: 20,
+                createdAt: Date(timeIntervalSince1970: 1)
+            ),
+            UsageRecord(
+                id: "2",
+                botId: a.id,
+                provider: "p",
+                model: "m",
+                promptTokens: 80,
+                inputTokens: 90,
+                outputTokens: 10,
+                createdAt: Date(timeIntervalSince1970: 2)
+            ),
+            UsageRecord(
+                id: "3",
+                botId: b.id,
+                provider: "p",
+                model: "m",
+                inputTokens: 999,
+                outputTokens: 1,
+                createdAt: Date(timeIntervalSince1970: 3)
+            ),
+        ]
+        let stats = store.chatTokenStats(botId: a.id)
+        #expect(stats.lastPromptTokens == 80)
+        #expect(stats.sentTokens == 230)
+        #expect(stats.receivedTokens == 30)
+        let other = store.chatTokenStats(botId: b.id)
+        #expect(other.lastPromptTokens == 999)
+        #expect(other.sentTokens == 999)
+        #expect(other.receivedTokens == 1)
     }
 
     @Test("clear save export restore and wipe session")

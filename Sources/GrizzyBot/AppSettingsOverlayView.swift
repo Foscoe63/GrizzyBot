@@ -24,33 +24,60 @@ struct AppSettingsOverlayView: View {
     @State private var mcpUrl = ""
     @State private var mcpHeaders = ""
     @State private var editingMcpId: String?
+    @State private var addMcpOpen = false
     @State private var snapshotName = ""
     @State private var confirmWipeWorkspace = false
     @State private var sessionNotice: String?
+    @State private var bonjourHits: [MCPBonjourDiscovery.Entry] = []
+    @State private var watcherName = ""
+    @State private var watcherPath = ""
+    @State private var watcherInstructions = ""
+    @State private var watcherBotId = ""
+    @State private var gatewayPort = "8787"
+    @State private var gatewayKey = ""
+    @State private var panelSize = AppSettingsPanelMetrics.saved
+    @State private var resizeOrigin: CGSize?
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.5)
-                .ignoresSafeArea()
-                .onTapGesture { store.closeAppSettings() }
+        GeometryReader { geo in
+            let bounds = CGSize(width: geo.size.width, height: geo.size.height)
+            let fitted = AppSettingsPanelMetrics.clamped(panelSize, in: bounds)
+            ZStack {
+                Color.black.opacity(0.5)
+                    .ignoresSafeArea()
+                    .onTapGesture { store.closeAppSettings() }
 
-            HStack(spacing: 0) {
-                nav
-                content
+                HStack(spacing: 0) {
+                    nav
+                    content
+                }
+                .frame(width: fitted.width, height: fitted.height)
+                .background(Theme.bgRightPanel)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Theme.borderListRowsAlt, lineWidth: 1)
+                }
+                .overlay(alignment: .trailing) {
+                    resizeStrip(axis: .width, bounds: bounds)
+                }
+                .overlay(alignment: .bottom) {
+                    resizeStrip(axis: .height, bounds: bounds)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    resizeGrip(bounds: bounds)
+                }
+                .shadow(color: .black.opacity(0.55), radius: 28, y: 12)
+                .accessibilityIdentifier(OverlayA11y.settings)
+                .accessibilityElement(children: .contain)
             }
-            .frame(width: 860, height: store.appSettingsSection == .themes || store.appSettingsSection == .governance || store.appSettingsSection == .knowledge || store.appSettingsSection == .components ? 620 : 560)
-            .background(Theme.bgRightPanel)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Theme.borderListRowsAlt, lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.55), radius: 28, y: 12)
-            .accessibilityIdentifier(OverlayA11y.settings)
-            .accessibilityElement(children: .contain)
+            .frame(width: geo.size.width, height: geo.size.height)
         }
         .accessibilityIdentifier(OverlayA11y.settings)
         .onAppear(perform: load)
+        .onChange(of: store.appSettingsSection) { _, section in
+            if section == .tools { store.probeAllMcpServers() }
+        }
         .alert("Delete this workspace?", isPresented: $confirmWipeWorkspace) {
             Button("Cancel", role: .cancel) {}
             Button("Delete everything", role: .destructive) {
@@ -68,6 +95,78 @@ struct AppSettingsOverlayView: View {
         } message: {
             Text(sessionNotice ?? "")
         }
+    }
+
+    private enum ResizeAxis {
+        case width, height, both
+    }
+
+    private func resizeStrip(axis: ResizeAxis, bounds: CGSize) -> some View {
+        let vertical = axis == .height
+        return Color.clear
+            .frame(width: vertical ? nil : 8, height: vertical ? 8 : nil)
+            .contentShape(Rectangle())
+            .highPriorityGesture(resizeGesture(axis: axis, bounds: bounds))
+            .onHover { hovering in
+                guard hovering else {
+                    NSCursor.arrow.set()
+                    return
+                }
+                if vertical {
+                    NSCursor.frameResize(position: .bottom, directions: [.inward, .outward]).set()
+                } else {
+                    NSCursor.frameResize(position: .right, directions: [.inward, .outward]).set()
+                }
+            }
+            .accessibilityHidden(true)
+    }
+
+    private func resizeGrip(bounds: CGSize) -> some View {
+        Canvas { ctx, size in
+            for i in 0..<3 {
+                var path = Path()
+                let offset = CGFloat(5 + i * 4)
+                path.move(to: CGPoint(x: size.width - 1, y: size.height - offset))
+                path.addLine(to: CGPoint(x: size.width - offset, y: size.height - 1))
+                ctx.stroke(path, with: .color(Theme.textMuted.opacity(0.7)), lineWidth: 1.4)
+            }
+        }
+        .frame(width: 16, height: 16)
+        .padding(10)
+        .contentShape(Rectangle())
+        .highPriorityGesture(resizeGesture(axis: .both, bounds: bounds))
+        .onHover { hovering in
+            if hovering {
+                NSCursor.frameResize(position: .bottomRight, directions: [.inward, .outward]).set()
+            } else {
+                NSCursor.arrow.set()
+            }
+        }
+        .help("Drag to resize")
+        .accessibilityLabel("Resize settings")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private func resizeGesture(axis: ResizeAxis, bounds: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                if resizeOrigin == nil {
+                    resizeOrigin = AppSettingsPanelMetrics.clamped(panelSize, in: bounds)
+                }
+                guard let origin = resizeOrigin else { return }
+                var next = origin
+                if axis != .height {
+                    next.width = origin.width + value.translation.width
+                }
+                if axis != .width {
+                    next.height = origin.height + value.translation.height
+                }
+                panelSize = AppSettingsPanelMetrics.clamped(next, in: bounds)
+            }
+            .onEnded { _ in
+                resizeOrigin = nil
+                AppSettingsPanelMetrics.save(panelSize)
+            }
     }
 
     private var nav: some View {
@@ -436,133 +535,53 @@ struct AppSettingsOverlayView: View {
 
                     case .tools:
                         settingsCard(
-                            title: editingMcpId == nil ? "Add an MCP server" : "Edit MCP server",
-                            subtitle: "Cursor-style MCP config. Stdio runs a local command; Streamable HTTP posts to an MCP endpoint; HTTP+SSE is the legacy remote transport. Bots call these for real when the tool is enabled."
+                            title: "MCP servers",
+                            subtitle: "Green means the server answered tools/list. Red means it did not. Expand a server to turn individual tools on or off for new bots."
                         ) {
-                            GrizzyField(label: "Name", placeholder: "filesystem", text: $mcpName)
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Transport")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Theme.textSecondary)
-                                GrizzySelect(options: McpTransport.allCases, selection: $mcpTransport)
-                            }
-                            .padding(.top, 8)
-
-                            if mcpTransport == .stdio {
-                                GrizzyField(
-                                    label: "Command",
-                                    placeholder: "npx",
-                                    text: $mcpCommand
-                                )
-                                .padding(.top, 8)
-                                GrizzyField(
-                                    label: "Args (space-separated)",
-                                    placeholder: "-y @modelcontextprotocol/server-filesystem /tmp",
-                                    text: $mcpArgs
-                                )
-                                .padding(.top, 8)
-                                GrizzyField(
-                                    label: "Env (KEY=value per line)",
-                                    placeholder: "API_KEY=…",
-                                    text: $mcpEnv,
-                                    axis: .vertical,
-                                    lineLimit: 2...4
-                                )
-                                .padding(.top, 8)
-                            } else {
-                                GrizzyField(
-                                    label: "URL",
-                                    placeholder: mcpTransport == .sse
-                                        ? "https://example.com/sse"
-                                        : "https://example.com/mcp",
-                                    text: $mcpUrl
-                                )
-                                .padding(.top, 8)
-                                GrizzyField(
-                                    label: "Headers (Name: value per line)",
-                                    placeholder: "Authorization: Bearer …",
-                                    text: $mcpHeaders,
-                                    axis: .vertical,
-                                    lineLimit: 2...4
-                                )
-                                .padding(.top, 8)
-                            }
-
-                            HStack(spacing: 10) {
-                                GrizzyButton(
-                                    title: editingMcpId == nil ? "Add MCP server" : "Save changes",
-                                    variant: .cream,
-                                    size: .sm,
-                                    disabled: !canAddMcp
-                                ) {
-                                    saveMcpServer()
+                            McpServersToolsBlock(
+                                scope: .appDefaults,
+                                showsEditor: true,
+                                editingId: editingMcpId,
+                                onEdit: { beginEdit($0) },
+                                onDelete: { server in
+                                    if editingMcpId == server.id { clearMcpForm() }
+                                    store.deleteMcpServer(server.id)
                                 }
+                            )
 
+                            Divider()
+                                .overlay(Theme.borderListRowsAlt)
+                                .padding(.vertical, 8)
+
+                            Button {
                                 if editingMcpId != nil {
-                                    Button("Cancel") {
-                                        clearMcpForm()
-                                    }
-                                    .buttonStyle(.plain)
-                                    .font(.system(size: 12.5))
-                                    .foregroundStyle(Theme.textSecondary)
+                                    clearMcpForm()
+                                } else {
+                                    addMcpOpen.toggle()
                                 }
+                            } label: {
+                                HStack {
+                                    Text(editingMcpId == nil ? "Add MCP server" : "Editing \(mcpName.isEmpty ? "server" : mcpName)")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(Theme.textBright)
+                                    Spacer()
+                                    Text(addMcpOpen || editingMcpId != nil ? "▾" : "▸")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Theme.textMuted)
+                                }
+                                .contentShape(Rectangle())
                             }
-                            .padding(.top, 12)
-                        }
+                            .buttonStyle(.plain)
 
-                        if !store.mcpServers.isEmpty {
-                            settingsCard(
-                                title: "MCP servers",
-                                subtitle: "Edit loads the server into the form above. Delete removes it from every bot’s tool list."
-                            ) {
-                                ForEach(store.mcpServers) { server in
-                                    HStack(alignment: .top, spacing: 10) {
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            HStack(spacing: 6) {
-                                                Text(server.name)
-                                                    .font(.system(size: 14.5, weight: .medium))
-                                                    .foregroundStyle(Theme.textBright)
-                                                Text(server.transport.rawValue)
-                                                    .font(.system(size: 10, weight: .medium))
-                                                    .foregroundStyle(Theme.orange)
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 2)
-                                                    .background(Theme.orange.opacity(0.12))
-                                                    .clipShape(Capsule())
-                                                if editingMcpId == server.id {
-                                                    Text("editing")
-                                                        .font(.system(size: 10, weight: .medium))
-                                                        .foregroundStyle(Theme.textGhost)
-                                                }
-                                            }
-                                            Text(server.summaryLine)
-                                                .font(.system(size: 12))
-                                                .foregroundStyle(Theme.textSecondary)
-                                                .lineLimit(2)
-                                        }
-                                        Spacer()
-                                        Button("Edit") {
-                                            beginEdit(server)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .font(.system(size: 12.5))
-                                        .foregroundStyle(Theme.textGhost)
-                                        Button("Delete") {
-                                            if editingMcpId == server.id { clearMcpForm() }
-                                            store.deleteMcpServer(server.id)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .font(.system(size: 12.5))
-                                        .foregroundStyle(Theme.orange)
-                                    }
-                                    .padding(.vertical, 6)
-                                }
+                            if addMcpOpen || editingMcpId != nil {
+                                mcpEditorForm
+                                    .padding(.top, 10)
                             }
                         }
 
                         settingsCard(
                             title: "Default tools for new bots",
-                            subtitle: "Applied when you create a bot. Existing bots keep their own Tools settings. MCP servers appear here after you add them."
+                            subtitle: "Applied when you create a bot. Existing bots keep their own Tools list. MCP servers are configured above."
                         ) {
                             HStack(spacing: 12) {
                                 Button("Enable all") {
@@ -579,15 +598,204 @@ struct AppSettingsOverlayView: View {
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(Theme.orange)
                             }
-                            .padding(.bottom, 8)
+                            .padding(.bottom, 4)
 
-                            ForEach(store.knownToolDefinitions) { tool in
-                                defaultToolRow(tool)
-                            }
+                            GroupedBuiltinToolsList(scope: .appDefaults)
                         }
 
                     case .themes:
                         ThemesSettingsView()
+
+                    case .privacy:
+                        settingsCard(
+                            title: "Privacy on send",
+                            subtitle: "Regex PII filter before cloud model calls (GrizzyClaw-style). Critical secrets can fail closed."
+                        ) {
+                            Toggle("Enable privacy filter", isOn: Binding(
+                                get: { store.appConfig.privacyFilter.enabled },
+                                set: { value in
+                                    var config = store.appConfig
+                                    config.privacyFilter.enabled = value
+                                    store.saveAppConfig(config)
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            Toggle("Redact before cloud send", isOn: Binding(
+                                get: { store.appConfig.privacyFilter.redactBeforeCloudSend },
+                                set: { value in
+                                    var config = store.appConfig
+                                    config.privacyFilter.redactBeforeCloudSend = value
+                                    store.saveAppConfig(config)
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            .padding(.top, 8)
+                            Toggle("Fail closed on critical PII", isOn: Binding(
+                                get: { store.appConfig.privacyFilter.failClosed },
+                                set: { value in
+                                    var config = store.appConfig
+                                    config.privacyFilter.failClosed = value
+                                    store.saveAppConfig(config)
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            .padding(.top, 8)
+                        }
+
+                        settingsCard(
+                            title: "Lean memory",
+                            subtitle: "Heuristic mode injects Pin/Facts only when the prompt looks memory-relevant."
+                        ) {
+                            Picker("Memory inject", selection: Binding(
+                                get: { store.appConfig.memoryRelevanceMode },
+                                set: { value in
+                                    var config = store.appConfig
+                                    config.memoryRelevanceMode = value
+                                    store.saveAppConfig(config)
+                                }
+                            )) {
+                                Text("Always (legacy)").tag(MemoryRelevanceGateMode.always)
+                                Text("Heuristic").tag(MemoryRelevanceGateMode.heuristic)
+                                Text("Off").tag(MemoryRelevanceGateMode.off)
+                            }
+                            .pickerStyle(.menu)
+                            if let botId = store.activeBotId {
+                                let clusters = store.memoryDedupeClusters(botId: botId)
+                                Text(clusters.isEmpty ? "No near-duplicate Facts for the active bot." : "\(clusters.count) duplicate cluster(s) found.")
+                                    .font(.system(size: 12.5))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .padding(.top, 10)
+                                if !clusters.isEmpty {
+                                    GrizzyButton(title: "Merge duplicates", variant: .cream, size: .sm) {
+                                        let removed = store.mergeMemoryDuplicates(botId: botId)
+                                        sessionNotice = "Removed \(removed.count) duplicate fact(s)."
+                                    }
+                                    .padding(.top, 8)
+                                }
+                            }
+                        }
+
+                        settingsCard(
+                            title: "Local OpenAI / MCP gateway",
+                            subtitle: "Expose bots at http://127.0.0.1:PORT/v1/chat/completions and /mcp/tools for Cursor."
+                        ) {
+                            Toggle("Enable local gateway", isOn: Binding(
+                                get: { store.appConfig.localGateway.enabled },
+                                set: { value in
+                                    var config = store.appConfig
+                                    config.localGateway.enabled = value
+                                    if let port = Int(gatewayPort) { config.localGateway.port = port }
+                                    config.localGateway.apiKey = gatewayKey
+                                    store.saveAppConfig(config)
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            GrizzyField(label: "Port", placeholder: "8787", text: $gatewayPort)
+                                .padding(.top, 8)
+                            GrizzyField(label: "API key (optional Bearer)", placeholder: "local-secret", text: $gatewayKey, secure: true)
+                                .padding(.top, 8)
+                            GrizzyButton(title: "Save gateway", variant: .cream, size: .sm) {
+                                var config = store.appConfig
+                                if let port = Int(gatewayPort) { config.localGateway.port = port }
+                                config.localGateway.apiKey = gatewayKey
+                                store.saveAppConfig(config)
+                                sessionNotice = config.localGateway.enabled
+                                    ? "Gateway listening on port \(config.localGateway.port)"
+                                    : "Gateway disabled"
+                            }
+                            .padding(.top, 10)
+                        }
+
+                    case .watchers:
+                        settingsCard(
+                            title: "Folder watchers",
+                            subtitle: "FSEvents → bot run (next to routines). Debounced with include/exclude globs."
+                        ) {
+                            Toggle("Enable folder watchers", isOn: Binding(
+                                get: { store.appConfig.enableFolderWatchers },
+                                set: { value in
+                                    var config = store.appConfig
+                                    config.enableFolderWatchers = value
+                                    store.saveAppConfig(config)
+                                }
+                            ))
+                            .toggleStyle(.switch)
+                            GrizzyField(label: "Name", placeholder: "Inbox watcher", text: $watcherName)
+                                .padding(.top, 8)
+                            GrizzyField(label: "Watch path", placeholder: "~/Documents/Inbox", text: $watcherPath)
+                                .padding(.top, 8)
+                            GrizzyField(
+                                label: "Instructions",
+                                placeholder: "Summarize new files…",
+                                text: $watcherInstructions,
+                                axis: .vertical,
+                                lineLimit: 2...4
+                            )
+                            .padding(.top, 8)
+                            if !store.bots.isEmpty {
+                                Picker("Bot", selection: $watcherBotId) {
+                                    ForEach(store.bots) { bot in
+                                        Text(bot.name).tag(bot.id)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .padding(.top, 8)
+                            }
+                            GrizzyButton(title: "Add watcher", variant: .cream, size: .sm) {
+                                var w = FolderWatcherRecord.makeNew()
+                                w.name = watcherName.isEmpty ? "Untitled watcher" : watcherName
+                                w.watchPath = watcherPath
+                                w.instructions = watcherInstructions
+                                w.botId = watcherBotId.isEmpty ? store.activeBotId : watcherBotId
+                                try? store.saveFolderWatcher(w)
+                                watcherName = ""
+                                watcherPath = ""
+                                watcherInstructions = ""
+                            }
+                            .padding(.top, 10)
+                            ForEach(store.folderWatchers()) { watcher in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(watcher.name)
+                                            .foregroundStyle(Theme.textBright)
+                                        Text(watcher.watchPath)
+                                            .font(.system(size: 11.5))
+                                            .foregroundStyle(Theme.textSecondary)
+                                    }
+                                    Spacer()
+                                    Button("Run") { store.runFolderWatcherNow(id: watcher.id) }
+                                    Button("Delete", role: .destructive) {
+                                        try? store.deleteFolderWatcher(id: watcher.id)
+                                    }
+                                }
+                                .padding(.top, 8)
+                            }
+                        }
+
+                        settingsCard(
+                            title: "MCP Bonjour",
+                            subtitle: "Discover `_mcp._tcp` services on the local network (e.g. MacUse)."
+                        ) {
+                            GrizzyButton(title: "Browse LAN", variant: .cream, size: .sm) {
+                                Task {
+                                    bonjourHits = await store.discoverMcpBonjour()
+                                }
+                            }
+                            if bonjourHits.isEmpty {
+                                Text("No results yet.")
+                                    .font(.system(size: 12.5))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .padding(.top, 8)
+                            } else {
+                                ForEach(bonjourHits) { hit in
+                                    Text("\(hit.name) — \(hit.httpBaseURL)")
+                                        .font(.system(size: 12.5, design: .monospaced))
+                                        .foregroundStyle(Theme.textSecondary)
+                                        .textSelection(.enabled)
+                                        .padding(.top, 6)
+                                }
+                            }
+                        }
 
                     case .diagnostics:
                         settingsCard(
@@ -672,6 +880,80 @@ struct AppSettingsOverlayView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var mcpEditorForm: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            GrizzyField(label: "Name", placeholder: "filesystem", text: $mcpName)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Transport")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textSecondary)
+                GrizzySelect(options: McpTransport.allCases, selection: $mcpTransport)
+            }
+            .padding(.top, 8)
+
+            if mcpTransport == .stdio {
+                GrizzyField(
+                    label: "Command",
+                    placeholder: "npx",
+                    text: $mcpCommand
+                )
+                .padding(.top, 8)
+                GrizzyField(
+                    label: "Args (space-separated)",
+                    placeholder: "-y @modelcontextprotocol/server-filesystem /tmp",
+                    text: $mcpArgs
+                )
+                .padding(.top, 8)
+                GrizzyField(
+                    label: "Env (KEY=value per line)",
+                    placeholder: "API_KEY=…",
+                    text: $mcpEnv,
+                    axis: .vertical,
+                    lineLimit: 2...4
+                )
+                .padding(.top, 8)
+            } else {
+                GrizzyField(
+                    label: "URL",
+                    placeholder: mcpTransport == .sse
+                        ? "https://example.com/sse"
+                        : "https://example.com/mcp",
+                    text: $mcpUrl
+                )
+                .padding(.top, 8)
+                GrizzyField(
+                    label: "Headers (Name: value per line)",
+                    placeholder: "Authorization: Bearer …",
+                    text: $mcpHeaders,
+                    axis: .vertical,
+                    lineLimit: 2...4
+                )
+                .padding(.top, 8)
+            }
+
+            HStack(spacing: 10) {
+                GrizzyButton(
+                    title: editingMcpId == nil ? "Add MCP server" : "Save changes",
+                    variant: .cream,
+                    size: .sm,
+                    disabled: !canAddMcp
+                ) {
+                    saveMcpServer()
+                }
+
+                if editingMcpId != nil {
+                    Button("Cancel") {
+                        clearMcpForm()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            .padding(.top, 12)
+        }
+    }
+
     private var canAddMcp: Bool {
         let nameOk = !mcpName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         switch mcpTransport {
@@ -743,6 +1025,8 @@ struct AppSettingsOverlayView: View {
         case .voice: return "♪"
         case .tools: return "⚒"
         case .themes: return "◑"
+        case .privacy: return "⚑"
+        case .watchers: return "◷"
         case .diagnostics: return "☰"
         case .governance: return "⚖"
         case .knowledge: return "▤"
@@ -750,51 +1034,9 @@ struct AppSettingsOverlayView: View {
         }
     }
 
-    private func defaultToolRow(_ tool: AgentToolDefinition) -> some View {
-        let enabled = store.appConfig.defaultEnabledTools.contains(tool.id)
-        return Button {
-            store.setDefaultTool(tool.id, enabled: !enabled)
-        } label: {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(tool.label)
-                            .font(.system(size: 14.5, weight: .medium))
-                            .foregroundStyle(Theme.textBright)
-                        if tool.kind != .builtin {
-                            Text(tool.kind == .mcp ? "mcp" : "custom")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(Theme.orange)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Theme.orange.opacity(0.12))
-                                .clipShape(Capsule())
-                        }
-                    }
-                    Text(tool.subtitle)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 8)
-                Capsule()
-                    .fill(enabled ? Theme.orange : Theme.bgChip)
-                    .frame(width: 40, height: 24)
-                    .overlay(alignment: enabled ? .trailing : .leading) {
-                        Circle()
-                            .fill(Theme.textCream)
-                            .frame(width: 18, height: 18)
-                            .padding(3)
-                    }
-            }
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
     private func beginEdit(_ server: McpServer) {
         editingMcpId = server.id
+        addMcpOpen = true
         mcpName = server.name
         mcpTransport = server.transport
         mcpCommand = server.command
@@ -806,6 +1048,7 @@ struct AppSettingsOverlayView: View {
 
     private func clearMcpForm() {
         editingMcpId = nil
+        addMcpOpen = false
         mcpName = ""
         mcpCommand = ""
         mcpArgs = ""
@@ -830,10 +1073,11 @@ struct AppSettingsOverlayView: View {
             existing.url = mcpUrl.trimmingCharacters(in: .whitespacesAndNewlines)
             existing.headers = headers
             store.updateMcpServer(existing)
+            store.probeMcpServer(existing.id)
             clearMcpForm()
             return
         }
-        guard store.addMcpServer(
+        guard let added = store.addMcpServer(
             name: mcpName,
             transport: mcpTransport,
             command: mcpCommand,
@@ -841,7 +1085,8 @@ struct AppSettingsOverlayView: View {
             env: env,
             url: mcpUrl,
             headers: headers
-        ) != nil else { return }
+        ) else { return }
+        store.probeMcpServer(added.id)
         clearMcpForm()
     }
 
@@ -857,6 +1102,12 @@ struct AppSettingsOverlayView: View {
         braveSearchKey = ""
         ttsKey = ""
         sentryDSN = ""
+        gatewayPort = "\(config.localGateway.port)"
+        gatewayKey = config.localGateway.apiKey
+        watcherBotId = store.activeBotId ?? store.bots.first?.id ?? ""
+        if store.appSettingsSection == .tools {
+            store.probeAllMcpServers()
+        }
     }
 
     private func persistProfile() {
@@ -885,3 +1136,39 @@ struct AppSettingsOverlayView: View {
         ttsKey = ""
     }
 }
+
+private enum AppSettingsPanelMetrics {
+    static let minWidth: CGFloat = 720
+    static let minHeight: CGFloat = 480
+    static let defaultSize = CGSize(width: 860, height: 560)
+    private static let widthKey = "grizzy.settingsPanel.width"
+    private static let heightKey = "grizzy.settingsPanel.height"
+
+    static var saved: CGSize {
+        let defaults = UserDefaults.standard
+        let width = defaults.double(forKey: widthKey)
+        let height = defaults.double(forKey: heightKey)
+        if width < minWidth || height < minHeight {
+            return defaultSize
+        }
+        return CGSize(width: width, height: height)
+    }
+
+    static func save(_ size: CGSize) {
+        UserDefaults.standard.set(size.width, forKey: widthKey)
+        UserDefaults.standard.set(size.height, forKey: heightKey)
+    }
+
+    static func clamped(_ size: CGSize, in bounds: CGSize) -> CGSize {
+        var width = max(size.width, minWidth)
+        var height = max(size.height, minHeight)
+        if bounds.width > 1 {
+            width = min(width, max(bounds.width - 32, 320))
+        }
+        if bounds.height > 1 {
+            height = min(height, max(bounds.height - 32, 320))
+        }
+        return CGSize(width: width, height: height)
+    }
+}
+

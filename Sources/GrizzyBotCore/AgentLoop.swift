@@ -28,12 +28,16 @@ public struct AgentLoopRequest: Sendable {
     public var history: [AgentHistoryTurn]
     public var priorMessages: [ChatMessage]
     public var prompt: String
+    /// Optional JPEG for the current user turn (dropped screenshot / image).
+    public var promptImageJPEGBase64: String?
     public var tools: [ChatTool]
     public var maxSteps: Int
     public var depth: Int
     public var charBudget: Int
     /// Honest computer status for the system prompt (browser cookies, this Mac, or none).
     public var computerNote: String
+    /// Optional working-folder note for relative file paths.
+    public var workingFolderNote: String
     /// Silence limit for the model stream. 0 disables.
     public var stallMs: Int
 
@@ -49,11 +53,13 @@ public struct AgentLoopRequest: Sendable {
         history: [AgentHistoryTurn] = [],
         priorMessages: [ChatMessage] = [],
         prompt: String,
+        promptImageJPEGBase64: String? = nil,
         tools: [ChatTool],
         maxSteps: Int = 48,
         depth: Int = 0,
         charBudget: Int = 100_000,
         computerNote: String = "",
+        workingFolderNote: String = "",
         stallMs: Int = 60_000
     ) {
         self.endpoint = endpoint
@@ -67,11 +73,13 @@ public struct AgentLoopRequest: Sendable {
         self.history = history
         self.priorMessages = priorMessages
         self.prompt = prompt
+        self.promptImageJPEGBase64 = promptImageJPEGBase64
         self.tools = tools
         self.maxSteps = maxSteps
         self.depth = depth
         self.charBudget = charBudget
         self.computerNote = computerNote
+        self.workingFolderNote = workingFolderNote
         self.stallMs = stallMs
     }
 }
@@ -83,19 +91,27 @@ public struct AgentToolCallResult: Sendable {
     public var imageJPEGBase64: String?
     /// First-class MCP catalog tools discovered this call (Toolport search / MacUse definitions).
     public var promotedMcpTools: [McpPromotedTool]
+    /// Skill bodies loaded mid-turn via capabilities_load.
+    public var loadedSkillBodies: [(id: String, body: String)]
+    /// When true, end the agent loop after this tool (complete).
+    public var endTurn: Bool
 
     public init(
         output: String,
         blocks: [MessageBlock] = [],
         pause: AgentPause? = nil,
         imageJPEGBase64: String? = nil,
-        promotedMcpTools: [McpPromotedTool] = []
+        promotedMcpTools: [McpPromotedTool] = [],
+        loadedSkillBodies: [(id: String, body: String)] = [],
+        endTurn: Bool = false
     ) {
         self.output = output
         self.blocks = blocks
         self.pause = pause
         self.imageJPEGBase64 = imageJPEGBase64
         self.promotedMcpTools = promotedMcpTools
+        self.loadedSkillBodies = loadedSkillBodies
+        self.endTurn = endTurn
     }
 }
 
@@ -103,6 +119,8 @@ public struct AgentLoopResult: Sendable {
     public var text: String
     public var blocks: [MessageBlock]
     public var pause: AgentPause?
+    /// Billed input of the first model call this turn (prompt + system + history).
+    public var promptTokens: Int
     public var inputTokens: Int
     public var outputTokens: Int
     public var steps: Int
@@ -115,6 +133,7 @@ public struct AgentLoopResult: Sendable {
         text: String,
         blocks: [MessageBlock] = [],
         pause: AgentPause? = nil,
+        promptTokens: Int = 0,
         inputTokens: Int = 0,
         outputTokens: Int = 0,
         steps: Int = 0,
@@ -126,6 +145,7 @@ public struct AgentLoopResult: Sendable {
         self.text = text
         self.blocks = blocks
         self.pause = pause
+        self.promptTokens = promptTokens
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.steps = steps
@@ -362,18 +382,50 @@ public enum AgentLoop {
         }
 
         public static func builtinAvailability(tools: [ChatTool]) -> String? {
-            DisabledBuiltinFallback.promptNote(available: Set(tools.map(\.function.name)))
+            DisabledBuiltinFallback.promptNote(
+                available: Set(tools.map(\.function.name)),
+                context: McpFallbackContext.from(tools: tools)
+            )
         }
 
-        public static func filesAndMcp() -> String {
-            """
-            read_file and list_files read the bot home. Absolute/~ paths on this Mac pause for approval (for example ~/.agents/skills). Prefer them over shell cat.
-            write_file only writes the bot sandbox (Home path), not the user's Obsidian vault.
-            MCP: Prefer first-class catalog tools when they appear in your tool list (e.g. gmail__messages_list or macuse__mail_search_messages) — call them directly with their arguments. Otherwise mcp_list_tools once (server optional when Toolport is enabled), then mcp_call. Toolport is a lazy gateway — list returns search/call meta-tools. Pass a catalog name as mcp_call's tool, or as arguments.name on toolport_call_tool (not id, never empty). Prefer filepath+content; path maps to filepath. Do not invent catalog names. Do not curl those APIs when an MCP tool exists.
+        public static func filesAndMcp(tools: [ChatTool] = [], hasWorkingFolder: Bool = false) -> String {
+            let mcpCall = tools.first { $0.function.name == "mcp_call" }
+            let desc = mcpCall?.function.description ?? ""
+            let hasGateway = desc.lowercased().contains("toolport")
+                || desc.lowercased().contains("conduit-gateway")
+            let servers = McpToolRouting.parseServerList(from: desc)
+            let mcpLine: String
+            if !tools.isEmpty, mcpCall == nil {
+                mcpLine = "No MCP servers are enabled. Do not call mcp_call, toolport_*, or invent a Toolport gateway."
+            } else if hasGateway {
+                mcpLine = """
+                MCP: Prefer first-class catalog tools already in your list (e.g. gmail__messages_list, github__search_repositories, macuse__mail_search_messages) — call them directly with their arguments. Otherwise mcp_list_tools once then mcp_call. Toolport is a lazy gateway — list returns search/call meta-tools. Pass a catalog name as mcp_call's tool, or as arguments.name on toolport_call_tool (not id, never empty). Prefer filepath+content; path maps to filepath. Do not invent catalog names. Do not curl those APIs when an MCP tool exists.
+                When Toolport already returned article titles or a dataset, summarize and write. Do not call toolport_fetch_result (cursors expire). Do not toolport_run_script to inspect JSON.
+                If a builtin is missing or a tool result says it is disabled, do not ask the user to enable it. mcp_call Toolport for that job: search once (fast-filesystem for files, web search for news), then call the catalog tool with the same arguments. Do not paste the deliverable in chat until Toolport succeeds.
+                """
+            } else {
+                let listed = servers.isEmpty ? "the names on mcp_call" : servers.joined(separator: ", ")
+                mcpLine = """
+                MCP: Prefer first-class tools already in your list (names like server__tool) — call them directly with their arguments. Otherwise mcp_list_tools once with server=<one of: \(listed)>, then mcp_call with that same server. Never omit server when more than one MCP is enabled. Do not call Toolport or toolport_* unless Toolport is in that server list. Ignore standing memory that says all tools go through Toolport if it is not listed. Prefer filepath+content; path maps to filepath. Do not invent catalog names. Do not curl those APIs when an MCP tool exists.
+                If a builtin is missing or a tool result says it is disabled, do not ask the user to enable it. Use the matching first-class MCP tool or mcp_call the server that does that job (fast-filesystem for files, ddg-search / firecrawl for web). Do not paste the deliverable in chat until that MCP call succeeds.
+                """
+            }
+            let fileLines: String
+            if hasWorkingFolder {
+                fileLines = """
+                Relative read_file, write_file, edit_file, move_file, delete_file, and list_files use this bot's working folder (empty list_files lists it). Absolute/~ paths outside that folder pause for approval. write_file there writes that folder on disk. Home path remains the sandbox for MEMORY.md, PLAN.md, and shell. Shell ~ is never the working folder. MCP does not inherit the working folder; pass absolute paths.
+                """
+            } else {
+                fileLines = """
+                read_file and list_files read the bot home. Absolute/~ paths on this Mac pause for approval (for example ~/.agents/skills). Prefer them over shell cat.
+                write_file only writes the bot sandbox (Home path), not the user's Obsidian vault.
+                """
+            }
+            return """
+            \(fileLines)
+            \(mcpLine)
             If a tool result reports validation, no route, or connection refused, follow the recovery hint in that result — fix args, re-search once, or fall back to write_file/web — do not repeat the identical failing call.
-            If a builtin is missing or a tool result says it is disabled, do not ask the user to enable it. mcp_call Toolport for that job: search once (fast-filesystem for files, web search for news), then call the catalog tool with the same arguments. Do not paste the deliverable in chat until Toolport succeeds.
             Canvas is shared on this Mac: canvas_list, canvas_open, canvas_save, canvas_delete, canvas_place_image. write_file cannot write a canvas. After computer_screenshot, call canvas_open (it places the last screenshot) or canvas_place_image.
-            When Toolport already returned article titles or a dataset, summarize and write. Do not call toolport_fetch_result (cursors expire). Do not toolport_run_script to inspect JSON.
             If the user asked you to write a prompt or instructions for an agent, write that prompt. Do not run the job unless they asked you to execute it.
             Shell ~ is the bot home, not the Mac home.
             Never claim an Obsidian write unless the tool result names obsidian_put_file (or that server's write tool) and status is ok.
@@ -405,7 +457,10 @@ public enum AgentLoop {
             PromptSection.sandbox(),
             PromptSection.memory(),
             PromptSection.planFile(),
-            PromptSection.filesAndMcp(),
+            PromptSection.filesAndMcp(
+                tools: request.tools,
+                hasWorkingFolder: !request.workingFolderNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ),
             PromptSection.governance(),
             AppConfig.keysHelp,
             PromptSection.computer(request.computerNote),
@@ -416,6 +471,13 @@ public enum AgentLoop {
         if !request.homePath.isEmpty {
             lines.append("Home path: \(request.homePath)")
         }
+        let working = request.workingFolderNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !working.isEmpty {
+            lines.append(working)
+        }
+        lines.append(
+            "For unfamiliar skills or MCP catalog tools, call capabilities_discover then capabilities_load before inventing tool names. For multi-step work, use todo / complete / clarify."
+        )
         if !request.botTitle.isEmpty {
             lines.append("Role: \(request.botTitle)")
         }
@@ -482,11 +544,18 @@ public enum AgentLoop {
                 }
             }
         }
-        messages.append(.user(request.prompt))
+        messages.append(
+            ChatMessage(
+                role: "user",
+                content: request.prompt,
+                imageJPEGBase64: request.promptImageJPEGBase64
+            )
+        )
 
         var blocks: [MessageBlock] = []
         var inputTokens = 0
         var outputTokens = 0
+        var promptTokens = 0
         var lastText = ""
         var pause: AgentPause?
         var compacted = false
@@ -499,6 +568,27 @@ public enum AgentLoop {
 
         func persistable() -> [ChatMessage] {
             Array(messages.drop(while: { $0.role == "system" }).prefix(200))
+        }
+
+        func loopResult(
+            text: String,
+            steps: Int,
+            failed: Bool = false,
+            failureReason: String? = nil
+        ) -> AgentLoopResult {
+            AgentLoopResult(
+                text: text,
+                blocks: blocks,
+                pause: pause,
+                promptTokens: promptTokens,
+                inputTokens: inputTokens,
+                outputTokens: outputTokens,
+                steps: steps,
+                messages: persistable(),
+                compacted: compacted,
+                failed: failed,
+                failureReason: failureReason
+            )
         }
 
         func modelRequest(
@@ -553,30 +643,18 @@ public enum AgentLoop {
             } catch {
                 if error is CancellationError { throw error }
                 if let llm = error as? LLMError, case .stalled(let silent, let chunks) = llm {
-                    return AgentLoopResult(
+                    return loopResult(
                         text: "The model stopped responding. Nothing arrived from it for \(StallClock.words(ms: silent)).",
-                        blocks: blocks,
-                        pause: pause,
-                        inputTokens: inputTokens,
-                        outputTokens: outputTokens,
                         steps: step,
-                        messages: persistable(),
-                        compacted: compacted,
                         failed: true,
                         failureReason: "AGENT_STREAM_STALLED chunks=\(chunks)"
                     )
                 }
                 if !blocks.isEmpty {
                     let detail = error.localizedDescription
-                    return AgentLoopResult(
+                    return loopResult(
                         text: "The model stopped responding (\(detail)). Tool results above may still be useful — ask me to continue.",
-                        blocks: blocks,
-                        pause: pause,
-                        inputTokens: inputTokens,
-                        outputTokens: outputTokens,
                         steps: step,
-                        messages: persistable(),
-                        compacted: compacted,
                         failed: true,
                         failureReason: "model stopped responding"
                     )
@@ -585,6 +663,9 @@ public enum AgentLoop {
             }
             inputTokens += response.inputTokens
             outputTokens += response.outputTokens
+            if step == 1 {
+                promptTokens = response.inputTokens
+            }
             lastText = StreamText.visible(response.text)
 
             if !response.hasToolCalls {
@@ -609,15 +690,9 @@ public enum AgentLoop {
                     messages: messages,
                     blocks: blocks
                 )
-                return AgentLoopResult(
+                return loopResult(
                     text: lastText,
-                    blocks: blocks,
-                    pause: pause,
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
                     steps: step,
-                    messages: persistable(),
-                    compacted: compacted,
                     failed: unconfirmed,
                     failureReason: unconfirmed ? "claimed vault write without an ok tool result" : nil
                 )
@@ -685,27 +760,38 @@ public enum AgentLoop {
                         tools.append(contentsOf: McpCatalogPromote.chatTools(from: newcomers))
                         let names = newcomers.map(\.chatName).prefix(8).joined(separator: ", ")
                         messages.append(.user(
-                            "First-class MCP tools are now available this turn: \(names). Call them directly by name with their arguments — do not wrap in toolport_call_tool or call_tool_by_name."
+                            "First-class MCP tools are now available this turn: \(names). Call them directly by name with their arguments — do not wrap in mcp_call, toolport_call_tool, or call_tool_by_name."
                         ))
                     }
+                }
+                if !result.loadedSkillBodies.isEmpty {
+                    for skill in result.loadedSkillBodies {
+                        messages.append(.user("Loaded skill \(skill.id):\n\n\(skill.body)"))
+                    }
+                }
+                if result.endTurn {
+                    let text = result.output.isEmpty ? lastText : result.output
+                    return loopResult(
+                        text: text.isEmpty ? "Done." : text,
+                        steps: step
+                    )
                 }
                 if let nextPause = result.pause {
                     pause = nextPause
                     let text = lastText.isEmpty ? "Waiting on you to continue." : lastText
-                    return AgentLoopResult(
+                    return loopResult(
                         text: text,
-                        blocks: blocks,
-                        pause: pause,
-                        inputTokens: inputTokens,
-                        outputTokens: outputTokens,
-                        steps: step,
-                        messages: persistable(),
-                        compacted: compacted
+                        steps: step
                     )
                 }
             }
             if !disabledThisStep.isEmpty, hasMcpTools {
-                messages.append(.user(DisabledBuiltinFallback.loopNudge(tools: disabledThisStep)))
+                messages.append(.user(
+                    DisabledBuiltinFallback.loopNudge(
+                        tools: disabledThisStep,
+                        context: McpFallbackContext.from(tools: tools)
+                    )
+                ))
             }
             if webFails >= 3, tools.contains(where: { $0.function.name == "web_search" || $0.function.name == "web_fetch" }) {
                 tools.removeAll { $0.function.name == "web_search" || $0.function.name == "web_fetch" }
@@ -716,13 +802,13 @@ public enum AgentLoop {
             if !warnedMcpStall, mcpDeadEnds >= 3 {
                 warnedMcpStall = true
                 messages.append(.user(
-                    "MCP/Toolport hit repeated dead ends (expired cursor, no route, missing args, or connection failure). Stop retrying the same gateway call. Fix args from the last recovery hint, use web_search/web_fetch/write_file if enabled, or finish from data you already have."
+                    "MCP hit repeated dead ends (expired cursor, no route, missing args, or connection failure). Stop retrying the same call. Fix args from the last recovery hint, use a different enabled MCP server, use web_search/web_fetch/write_file if enabled, or finish from data you already have."
                 ))
             }
             if mcpDeadEnds >= 5, tools.contains(where: { $0.function.name == "mcp_call" || $0.function.name == "mcp_list_tools" }) {
                 tools.removeAll { $0.function.name == "mcp_call" || $0.function.name == "mcp_list_tools" }
                 messages.append(.user(
-                    "MCP tools are disabled for the rest of this turn after \(mcpDeadEnds) gateway dead ends. Finish with web_search, write_file, or a direct answer. Do not call Toolport again."
+                    "MCP tools are disabled for the rest of this turn after \(mcpDeadEnds) gateway dead ends. Finish with web_search, write_file, or a direct answer. Do not call mcp_call again."
                 ))
             }
         }
@@ -730,15 +816,9 @@ public enum AgentLoop {
         let budgetText = lastText.isEmpty
             ? "I reached the step budget for this turn. Ask me to continue — I'll keep the full tool transcript."
             : lastText
-        return AgentLoopResult(
+        return loopResult(
             text: budgetText,
-            blocks: blocks,
-            pause: pause,
-            inputTokens: inputTokens,
-            outputTokens: outputTokens,
             steps: maxSteps,
-            messages: persistable(),
-            compacted: compacted,
             failed: true,
             failureReason: "step budget"
         )
@@ -749,9 +829,11 @@ public enum AgentLoop {
         onTool: (@Sendable (String, String, AgentToolCallResult) -> Void)?,
         execute: @escaping @Sendable (String, String) async -> AgentToolCallResult
     ) async throws -> [AgentToolCallResult] {
+        let uniqueIndexes = uniqueCallIndexes(calls)
         if calls.count > 1, calls.allSatisfy({ parallelSafeTools.contains($0.name) }) {
             return try await withThrowingTaskGroup(of: (Int, AgentToolCallResult).self) { group in
-                for (index, call) in calls.enumerated() {
+                for index in uniqueIndexes {
+                    let call = calls[index]
                     group.addTask {
                         if Task.isCancelled { throw CancellationError() }
                         let result = await execute(call.name, call.arguments)
@@ -763,11 +845,13 @@ public enum AgentLoop {
                     ordered[index] = result
                     onTool?(calls[index].name, calls[index].arguments, result)
                 }
+                fillDuplicateResults(calls: calls, uniqueIndexes: uniqueIndexes, into: &ordered)
                 return ordered
             }
         }
         var out: [AgentToolCallResult] = []
         var paused = false
+        var seen: [String: AgentToolCallResult] = [:]
         for call in calls {
             if Task.isCancelled { throw CancellationError() }
             if paused {
@@ -775,12 +859,49 @@ public enum AgentLoop {
                 out.append(skipped)
                 continue
             }
+            let key = callFingerprint(call)
+            if seen[key] != nil {
+                out.append(AgentToolCallResult(
+                    output: "Skipped duplicate \(call.name) with the same arguments this step. Use the earlier result."
+                ))
+                continue
+            }
             let result = await execute(call.name, call.arguments)
+            seen[key] = result
             onTool?(call.name, call.arguments, result)
             out.append(result)
             if result.pause != nil { paused = true }
         }
         return out
+    }
+
+    private static func callFingerprint(_ call: LLMToolCall) -> String {
+        let args = call.arguments.trimmingCharacters(in: .whitespacesAndNewlines)
+        return call.name + "\n" + args
+    }
+
+    private static func uniqueCallIndexes(_ calls: [LLMToolCall]) -> [Int] {
+        var seen = Set<String>()
+        var indexes: [Int] = []
+        for (index, call) in calls.enumerated() {
+            if seen.insert(callFingerprint(call)).inserted {
+                indexes.append(index)
+            }
+        }
+        return indexes
+    }
+
+    private static func fillDuplicateResults(
+        calls: [LLMToolCall],
+        uniqueIndexes: [Int],
+        into ordered: inout [AgentToolCallResult]
+    ) {
+        let uniqueSet = Set(uniqueIndexes)
+        for (index, call) in calls.enumerated() where !uniqueSet.contains(index) {
+            ordered[index] = AgentToolCallResult(
+                output: "Skipped duplicate \(call.name) with the same arguments this step. Use the earlier result."
+            )
+        }
     }
 
     private static func nameIsWeb(_ name: String) -> Bool {
