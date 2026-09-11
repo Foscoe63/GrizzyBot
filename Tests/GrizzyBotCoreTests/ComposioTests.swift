@@ -9,6 +9,31 @@ struct ComposioTests {
         #expect(ComposioClient.toolkitSlug("google-calendar") == "googlecalendar")
         #expect(ComposioClient.toolkitSlug("Google_Sheets") == "googlesheets")
         #expect(ComposioClient.toolkitSlug("gmail") == "gmail")
+        #expect(ComposioClient.toolkitSlug("x") == "twitter")
+        #expect(ComposioClient.toolkitSlug("twitter") == "twitter")
+        #expect(ComposioClient.toolkitSlug("X_Twitter") == "twitter")
+    }
+
+    @Test("auth-apps add URLs are treated as Composio setup links")
+    func authConfigSetupURL() {
+        let setup = URL(string: "https://backend.composio.dev/api/v1/auth-apps/add")!
+        let oauth = URL(string: "https://connect.composio.dev/link/abc")!
+        #expect(ComposioClient.isAuthConfigSetupURL(setup))
+        #expect(!ComposioClient.isAuthConfigSetupURL(oauth))
+        #expect(ComposioClient.requiresCustomAuthConfig("x"))
+        #expect(ComposioClient.requiresCustomAuthConfig("twitter"))
+        #expect(!ComposioClient.requiresCustomAuthConfig("gmail"))
+    }
+
+    @Test("parseAuthConfigIds prefers custom configs")
+    func parseAuthConfigIds() throws {
+        let data = """
+        {"items":[
+          {"id":"ac_managed","type":"default","toolkit":{"slug":"twitter"}},
+          {"id":"ac_custom","type":"custom","toolkit":{"slug":"twitter"}}
+        ]}
+        """.data(using: .utf8)!
+        #expect(ComposioClient.parseAuthConfigIds(data) == ["ac_custom", "ac_managed"])
     }
 
     @Test("parseMCP JSON result content")

@@ -65,6 +65,12 @@ struct GrizzyBotApp: App {
         }
         let store = AppStore(dataDirectory: UITestLaunch.dataDirectory())
         store.computerRuntime = AppComputerRuntime.shared
+        store.openExternalURL = { url in
+            // Always hop async so Connect never opens a browser inside a SwiftUI update.
+            DispatchQueue.main.async {
+                _ = NSWorkspace.shared.open(url)
+            }
+        }
         if AppDelegate.isHeadlessRoutineTick {
             store.headlessRoutineTick = true
         }

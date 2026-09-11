@@ -52,12 +52,37 @@ struct PluginsOverlayView: View {
                     .padding(.top, 14)
 
                 if let err = store.pluginError {
-                    Text(err)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color(hex: "#E8A07A"))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 32)
-                        .padding(.top, 10)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(err)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color(hex: "#E8A07A"))
+                            .fixedSize(horizontal: false, vertical: true)
+                        if store.pluginAuthURL != nil {
+                            HStack(spacing: 14) {
+                                Button("Open sign-in in browser") {
+                                    store.reopenPluginAuthURL()
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Theme.textGhost)
+                                if ComposioClient.requiresCustomAuthConfig(store.oauthWaitSlug ?? "x")
+                                    || (store.pluginError?.localizedCaseInsensitiveContains("twitter") == true)
+                                    || (store.pluginError?.localizedCaseInsensitiveContains("callback") == true) {
+                                    Button("X setup guide") {
+                                        if let guide = ComposioClient.setupGuideURL(for: "twitter") {
+                                            store.presentPluginAuthURL(guide)
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(Theme.textGhost)
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 10)
                 }
 
                 TextField("Search apps or Composio toolkits", text: $search)
@@ -123,9 +148,8 @@ struct PluginsOverlayView: View {
         .onDisappear {
             browseTask?.cancel()
         }
-        .onChange(of: store.pluginAuthURL) { _, url in
-            if let url { NSWorkspace.shared.open(url) }
-        }
+        // Browser open is handled by AppStore.presentPluginAuthURL (deferred). Do not open
+        // here — NSWorkspace during a SwiftUI body/onChange pass crashes the app.
         .sheet(isPresented: Binding(
             get: { store.connectingSlug != nil },
             set: { if !$0 { store.connectingSlug = nil; tokenDraft = "" } }
@@ -308,7 +332,7 @@ struct PluginsOverlayView: View {
                 .foregroundStyle(Theme.textGhost)
             }
         } else if store.pluginsUseOAuth {
-            Text("Connect opens a browser sign-in via Composio. Paste a token instead if you already have one. Or add Google Client ID/Secret in Settings to bypass Composio for Google apps.")
+            Text("Connect opens a browser sign-in via Composio. Paste a token instead if you already have one. Or add Google Client ID/Secret in Settings to bypass Composio for Google apps. X/Twitter needs an Auth Config in your Composio dashboard (managed OAuth was removed) — Connect will open that setup page when needed.")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textPluginsSub)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -464,7 +488,12 @@ struct PluginsOverlayView: View {
     }
 
     private func rowSubtitle(_ item: ConnectionItem, waiting: Bool) -> String {
-        if waiting { return "Waiting for sign-in in the browser…" }
+        if waiting {
+            if ComposioClient.requiresCustomAuthConfig(item.slug) {
+                return "Waiting for X sign-in… (Auth Config required)"
+            }
+            return "Waiting for sign-in in the browser…"
+        }
         if item.connected {
             if item.viaComposio {
                 let pref = store.pluginAccountPreference(for: item.slug)

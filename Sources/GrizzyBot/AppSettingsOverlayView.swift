@@ -483,6 +483,35 @@ struct AppSettingsOverlayView: View {
                             title: "Google (bypass Composio)",
                             subtitle: "Your Google Cloud OAuth Client ID/Secret for Gmail, Calendar, Sheets, Docs, and Drive. Keep using the same credentials if sign-in already worked once."
                         ) {
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Authorized redirect URI")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(Theme.textSecondary)
+                                    Text(GoogleOAuth.loopbackRedirectURI)
+                                        .font(.system(size: 13, design: .monospaced))
+                                        .foregroundStyle(Theme.textBright)
+                                        .textSelection(.enabled)
+                                }
+                                Spacer(minLength: 8)
+                                Button("Copy") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(
+                                        GoogleOAuth.loopbackRedirectURI,
+                                        forType: .string
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 12.5, weight: .medium))
+                                .foregroundStyle(Theme.textGhost)
+                            }
+                            .padding(.bottom, 4)
+
+                            Text("Paste that exact URI (no trailing slash) into Google Cloud → your OAuth client → Authorized redirect URIs, then Save.")
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
                             DisclosureGroup(isExpanded: $googleSetupExpanded) {
                                 VStack(alignment: .leading, spacing: 14) {
                                     ForEach(Array(GoogleOAuth.setupGuide.enumerated()), id: \.element.id) { index, step in

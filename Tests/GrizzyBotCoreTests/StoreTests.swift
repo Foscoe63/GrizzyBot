@@ -195,9 +195,14 @@ struct StoreTests {
         #expect(store.signUp(name: "A", email: "oauth@b.com", password: "password1") == nil)
         let composio = ImmediateComposio()
         store.composioClient = composio
+        var opened: [URL] = []
+        store.openExternalURL = { opened.append($0) }
         store.connect(slug: "gmail")
         await store.waitForPluginTasks()
+        await Task.yield()
+        try? await Task.sleep(for: .milliseconds(50))
         #expect(composio.lastAuthorize == "gmail")
+        #expect(!opened.isEmpty)
         let gmail = store.connections.first(where: { $0.slug == "gmail" })
         #expect(gmail?.connected == true)
         #expect(gmail?.viaComposio == true)
@@ -206,6 +211,24 @@ struct StoreTests {
         await store.waitForPluginTasks()
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == false)
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.viaComposio == false)
+    }
+
+    @Test("X Connect maps to Composio twitter toolkit")
+    func pluginsComposioXTwitter() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "xoauth@b.com", password: "password1") == nil)
+        let composio = ImmediateComposio()
+        store.composioClient = composio
+        var opened: [URL] = []
+        store.openExternalURL = { opened.append($0) }
+        store.connect(slug: "x")
+        await store.waitForPluginTasks()
+        await Task.yield()
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(composio.lastAuthorize == "x")
+        #expect(composio.connected.contains("twitter"))
+        #expect(!opened.isEmpty)
+        #expect(store.connections.first(where: { $0.slug == "x" })?.connected == true)
     }
 
     @Test("syncComposioConnection picks up remote ACTIVE status")
@@ -525,6 +548,15 @@ struct StoreTests {
         #expect(store.connectionSecrets["box"] == "box_dev_token")
         #expect(store.connections.first(where: { $0.slug == "box" })?.connected == true)
         #expect(PluginClient.tokenHint(for: "box").lowercased().contains("box"))
+    }
+
+    @Test("plugin slug twitter resolves to catalog x")
+    func pluginSlugTwitterAlias() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "x@b.com", password: "password1") == nil)
+        #expect(store.resolvePluginSlug("twitter") == "x")
+        #expect(store.resolvePluginSlug("x") == "x")
+        #expect(ComposioClient.toolkitSlug("x") == "twitter")
     }
 
     @Test("updateMcpServer keeps id and rewrites command")

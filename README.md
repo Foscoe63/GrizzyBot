@@ -215,7 +215,7 @@ Folder corpora stay on this Mac. Plugin sources (**Google Drive**, **OneDrive**,
 
 ### Components
 
-Built-in cards: **form**, **gallery**, **activity**, **refusals**. Authored cards stay drafts until you publish (JSON playground + preview). Each bot has per-card toggles. `activity` / `refusals` take `component-data:` grants once you start using that matrix.
+Built-in cards: **form**, **gallery**, **activity**, **refusals**. Authored cards stay drafts until you publish (JSON playground + preview). Kind is **form** or **gallery**. Each bot has per-card toggles; published custom cards show by **title** (not the internal id). `activity` / `refusals` take `component-data:` grants once you start using that matrix.
 
 ### Roles and audit
 
@@ -303,9 +303,18 @@ Each provider keeps its own profile. A bot can use the workspace default or a ca
 
 ## Plugins, MCP, destinations
 
-**Plugins** — Composio Connect OAuth, your own Google Client ID/Secret (Gmail / Calendar / Sheets / Docs / Drive without Composio), or paste a token. Catalog includes Gmail, Slack, GitHub, Notion, Linear, Google Calendar / Sheets / Docs / Drive, OneDrive, HubSpot, Salesforce, Jira, Trello, Asana, Intercom, Discord, X, Stripe, Dropbox, Box, Figma, Airtable. `plugin_call` can search/list/get or write; chat cards show a short summary (for example `gmail → 8 results · in:inbox`) instead of dumping the full payload.
+**Plugins** — Composio Connect OAuth, your own Google Client ID/Secret (Gmail / Calendar / Sheets / Docs / Drive without Composio), or paste a token. Catalog includes Gmail, Slack, GitHub, Notion, Linear, Google Calendar / Sheets / Docs / Drive, OneDrive, HubSpot, Salesforce, Jira, Trello, Asana, Intercom, Discord, X (Twitter), Stripe, Dropbox, Box, Figma, Airtable. `plugin_call` can search/list/get or write; chat cards show a short summary (for example `gmail → 8 results · in:inbox`) instead of dumping the full payload. Slug `x` is X/Twitter (`twitter` also resolves).
 
-**Google / Gmail.** Settings → Connections → Google walks through a **Desktop** OAuth client (loopback `http://127.0.0.1:<port>/`). One sign-in can unlock the Google suite. When Google credentials are set, Plugins prefer direct Google OAuth over Composio for those apps. Empty Gmail searches default to `in:inbox`. With several linked inboxes, use the Plugins **Account** menu (auto / one alias / **All accounts**) or pass `account` / `account=all` on `plugin_call`.
+**Google / Gmail.** Settings → Connections → Google: paste Client ID + Secret, **Copy** the redirect URI `http://127.0.0.1:8765` (no trailing slash), and add that exact value under the OAuth client’s **Authorized redirect URIs**. Save credentials, then Plugins → **Sign in with Google** (one sign-in unlocks Gmail, Calendar, Sheets, Docs, and Drive). When those credentials are set, Plugins prefer direct Google OAuth over Composio for Google apps. Empty Gmail searches default to `in:inbox`. With several linked inboxes, use the Plugins **Account** menu (auto / one alias / **All accounts**) or pass `account` / `account=all` on `plugin_call`. API failures distinguish expired sign-in, missing scopes, rate limits, and **API not enabled** in the Cloud project (enable the API from the linked Console URL — you usually do not need to reconnect).
+
+**X / Twitter.** Composio no longer ships managed X OAuth — Connect will fail with “weren’t able to give access” until you bring your own app:
+
+1. [console.x.com](https://console.x.com) → create an app → User authentication → OAuth 2.0  
+2. Callback URL **exactly**: `https://backend.composio.dev/api/v1/auth-apps/add`  
+3. [app.composio.dev](https://app.composio.dev) → Auth Configs → Create → Twitter → your Client ID, Client Secret, and Bearer token  
+4. Plugins → **X (Twitter)** → Connect  
+
+Guide: [composio.dev/auth/twitter](https://composio.dev/auth/twitter). Paste-token X has no read API in GrizzyBot.
 
 **MCP** — stdio, streamable HTTP, or legacy SSE. Settings → Tools probes each server (`tools/list`) and shows connected / failed. The parent toggle is `mcp:<serverId>`; each advertised tool is `mcp:<serverId>/<toolName>`. Homebrew is prepended on PATH for GUI-launched stdio servers. Calls go through the grant matrix and action policy.
 
@@ -386,7 +395,7 @@ flowchart LR
 
 | Target | Role |
 |---|---|
-| `GrizzyBotCore` | Domain, agent loop, token accounting, Keychain, persistence, MCP routing, Composio, Google OAuth, policy, audit |
+| `GrizzyBotCore` | Domain, agent loop, token accounting, Keychain, persistence, MCP routing, Composio, Google OAuth (loopback `http://127.0.0.1:8765`), policy, audit |
 | `GrizzyBot` | SwiftUI app, computer-use, TTS, Sentry |
 | `GrizzyBotRoutineAgent` | LaunchAgent helper for background routine ticks |
 | `GrizzyBotCoreTests` | Unit tests (Swift Testing) |

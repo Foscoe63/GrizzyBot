@@ -293,6 +293,77 @@ public struct PluginClient: PluginConnecting {
         }
     }
 
+    /// Human-readable failure for a REST API error body.
+    ///
+    /// Google pretty-prints its error JSON, so the first line is just `{` — never truncate to it.
+    /// 401 means the token expired; 403 usually means the API is disabled for the Cloud project
+    /// or the grant is missing a scope. Those need opposite fixes, so they must not share a hint.
+    static func apiErrorMessage(status: Int, body: Data) -> String {
+        let text = String(data: body, encoding: .utf8) ?? ""
+        let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+        let error = json?["error"] as? [String: Any]
+
+        let message = (error?["message"] as? String)
+            ?? (json?["error_description"] as? String)
+            ?? (json?["error"] as? String)
+            ?? collapseWhitespace(text)
+
+        var reasons: [String] = []
+        if let status = error?["status"] as? String { reasons.append(status) }
+        for entry in (error?["errors"] as? [[String: Any]]) ?? [] {
+            if let reason = entry["reason"] as? String { reasons.append(reason) }
+        }
+        for entry in (error?["details"] as? [[String: Any]]) ?? [] {
+            if let reason = entry["reason"] as? String { reasons.append(reason) }
+        }
+        let matches: (String) -> Bool = { needle in
+            reasons.contains { $0.caseInsensitiveCompare(needle) == .orderedSame }
+        }
+        let says: (String) -> Bool = { needle in
+            message.localizedCaseInsensitiveContains(needle)
+        }
+
+        let hint: String
+        switch status {
+        case 401:
+            hint = "Google sign-in expired — reconnect from Plugins (Sign in with Google)."
+        case 403 where matches("accessNotConfigured")
+            || says("has not been used in project")
+            || says("is disabled"):
+            let enable = firstURL(in: message).map { " Enable it here: \($0)" } ?? ""
+            hint = "That API is not enabled for your Google Cloud project."
+                + enable
+                + " Enable it, wait ~30s, then retry — you do not need to sign in again."
+        case 403 where matches("ACCESS_TOKEN_SCOPE_INSUFFICIENT") || matches("insufficientPermission"):
+            hint = "This sign-in is missing a required scope — reconnect from Plugins (Sign in with Google) to re-consent."
+        case 403 where matches("rateLimitExceeded") || matches("userRateLimitExceeded"), 429:
+            hint = "Rate limited by Google — wait a moment and retry."
+        case 403:
+            hint = "Access denied by Google."
+        default:
+            hint = ""
+        }
+
+        let detail = collapseWhitespace(message)
+        return "HTTP \(status)"
+            + (hint.isEmpty ? "" : " \(hint)")
+            + (detail.isEmpty ? "" : ": \(String(detail.prefix(300)))")
+    }
+
+    private static func collapseWhitespace(_ text: String) -> String {
+        text.split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func firstURL(in text: String) -> String? {
+        for token in text.split(whereSeparator: { $0.isWhitespace }) {
+            let trimmed = token.trimmingCharacters(in: CharacterSet(charactersIn: "\"'<>(),.;"))
+            if trimmed.hasPrefix("https://") { return trimmed }
+        }
+        return nil
+    }
+
     private func getJSON(_ url: String, token: String?, headers: [String: String] = [:]) async throws -> [String: Any] {
         guard let parsed = URL(string: url) else { throw PluginError.rejected("bad url") }
         var request = URLRequest(url: parsed, timeoutInterval: 20)
@@ -306,15 +377,7 @@ public struct PluginClient: PluginConnecting {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            let hint: String
-            if status == 401 || status == 403 {
-                hint = " Google sign-in expired — reconnect Gmail from Plugins (Sign in with Google)."
-            } else {
-                hint = ""
-            }
-            let detail = body.split(separator: "\n").first.map(String.init) ?? body
-            throw PluginError.rejected("HTTP \(status)\(hint)\(detail.isEmpty ? "" : ": \(String(detail.prefix(200)))")")
+            throw PluginError.rejected(Self.apiErrorMessage(status: status, body: data))
         }
         return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
@@ -342,11 +405,7 @@ public struct PluginClient: PluginConnecting {
         if data.isEmpty { return ["ok": status] }
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? ["raw": String(data: data, encoding: .utf8) ?? ""]
         guard (200..<300).contains(status) else {
-            let bodyText = String(data: data, encoding: .utf8) ?? ""
-            let hint = (status == 401 || status == 403)
-                ? " Google sign-in expired — reconnect from Plugins."
-                : ""
-            throw PluginError.rejected("HTTP \(status)\(hint)\(bodyText.isEmpty ? "" : ": \(String(bodyText.prefix(200)))")")
+            throw PluginError.rejected(Self.apiErrorMessage(status: status, body: data))
         }
         return json
     }

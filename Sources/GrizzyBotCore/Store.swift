@@ -132,9 +132,55 @@ public final class AppStore {
         guard appConfig.googleOAuthConfigured else { return nil }
         return GoogleOAuthClient(openURL: { [weak self] url in
             Task { @MainActor in
-                self?.pluginAuthURL = url
+                self?.presentPluginAuthURL(url)
             }
         })
+    }
+
+    /// Open a Composio/Google sign-in URL in the system browser and keep it visible in the Plugins UI.
+    public func presentPluginAuthURL(_ url: URL, setupHint: String? = nil) {
+        let openable = Self.browserOpenableURL(url) ?? url
+        pluginAuthURL = openable
+        if let setupHint {
+            pluginError = setupHint
+        } else if ComposioClient.isAuthConfigSetupURL(url) || ComposioClient.isAuthConfigSetupURL(openable) {
+            pluginError = ComposioClient.authSetupMessage(for: "x", url: openable)
+        }
+        // Defer past the current SwiftUI transaction — opening a browser mid-body update crashes.
+        let open = openExternalURL
+        DispatchQueue.main.async {
+            open?(openable)
+        }
+    }
+
+    public func reopenPluginAuthURL() {
+        guard let url = pluginAuthURL else { return }
+        let open = openExternalURL
+        DispatchQueue.main.async {
+            open?(url)
+        }
+    }
+
+    /// Prefer http(s). Bare Composio API/auth-apps links often show “could not open app” in the browser.
+    private static func browserOpenableURL(_ url: URL) -> URL? {
+        let scheme = (url.scheme ?? "").lowercased()
+        guard scheme == "http" || scheme == "https" else { return nil }
+        if ComposioClient.isAuthConfigSetupURL(url) {
+            return URL(string: "https://app.composio.dev")
+        }
+        return url
+    }
+
+    /// Resolve catalog aliases (`twitter` ↔ `x`) so plugin_call and Connect share one connection.
+    public func resolvePluginSlug(_ slug: String) -> String {
+        let trimmed = slug.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return trimmed }
+        if connections.contains(where: { $0.slug == trimmed }) { return trimmed }
+        let key = ComposioClient.toolkitSlug(trimmed)
+        if let match = connections.first(where: { ComposioClient.toolkitSlug($0.slug) == key }) {
+            return match.slug
+        }
+        return trimmed
     }
 
     private var users: [UserAccount] = []
@@ -164,6 +210,10 @@ public final class AppStore {
     public var pluginClient: any PluginConnecting = PluginClient.shared
     public var composioClient: (any ComposioConnecting)?
     public var googleOAuthClient: (any GoogleOAuthConnecting)?
+    /// App layer opens OAuth / Composio URLs (NSWorkspace). Must not be observed — storing a
+    /// closure on an `@Observable` property crashes PluginsOverlayView body updates (SIGBUS).
+    @ObservationIgnored
+    public var openExternalURL: ((URL) -> Void)?
     public var pluginError: String?
     public var connectingSlug: String?
     public var pluginAuthURL: URL?
@@ -2974,10 +3024,11 @@ public final class AppStore {
             return AgentToolCallResult(output: action?.output ?? "Pressed \(key).")
 
         case "plugin_call":
-            let slug = s("slug").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            if slug.isEmpty {
-                return AgentToolCallResult(output: "plugin_call needs a slug (e.g. gmail or google-calendar).")
+            let rawSlug = s("slug").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if rawSlug.isEmpty {
+                return AgentToolCallResult(output: "plugin_call needs a slug (e.g. gmail, google-calendar, or x).")
             }
+            let slug = resolvePluginSlug(rawSlug)
             if slug == "composio_connect" || slug == "composio" || slug == "composio_api" {
                 let hasKey = pluginsUseOAuth
                 return AgentToolCallResult(
@@ -2992,13 +3043,14 @@ public final class AppStore {
             guard connections.contains(where: { $0.slug == slug && $0.connected }) else {
                 let hint: String
                 if pluginsUseOAuth {
-                    hint = " Open Plugins → \(slug) → Connect (browser OAuth via Composio), then try again."
+                    let label = slug == "x" ? "X (Twitter)" : slug
+                    hint = " Open Plugins → \(label) → Connect (browser OAuth via Composio). For X, Composio also needs an Auth Config with your X Developer keys. Then try again."
                 } else {
                     hint = " Save a Composio Connect key in Settings → Connections → Keys, then Connect \(slug) from Plugins."
                 }
                 return AgentToolCallResult(
-                    output: "Plugin \(slug) is not connected.\(hint)",
-                    blocks: [.card(lines: [CardLine(k: "plugin_call", v: "Plugin \(slug) is not connected.")])]
+                    output: "Plugin \(rawSlug) is not connected.\(hint)",
+                    blocks: [.card(lines: [CardLine(k: "plugin_call", v: "Plugin \(rawSlug) is not connected.")])]
                 )
             }
             let action = s("action").lowercased()
@@ -4431,14 +4483,16 @@ public final class AppStore {
     @discardableResult
     public func syncComposioConnection(slug: String) async -> Bool {
         guard liveComposio() != nil else { return false }
-        if connections.first(where: { $0.slug == slug }) == nil {
-            _ = addToolkit(slug: slug)
+        let resolved = resolvePluginSlug(slug)
+        if connections.first(where: { $0.slug == resolved }) == nil {
+            _ = addToolkit(slug: resolved)
         }
-        await refreshComposioStatus(slugs: [slug])
-        return connections.first(where: { $0.slug == slug })?.connected == true
+        await refreshComposioStatus(slugs: [resolved])
+        return connections.first(where: { $0.slug == resolved })?.connected == true
     }
 
     public func connect(slug: String, token: String? = nil) {
+        let slug = resolvePluginSlug(slug)
         guard !connectionPending.contains(slug) else { return }
         let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if trimmed.isEmpty {
@@ -4606,66 +4660,101 @@ public final class AppStore {
 
     private func startComposioOAuth(slug: String) {
         guard let composio = liveComposio() else { return }
-        connectionPending.insert(slug)
+        let resolved = resolvePluginSlug(slug)
+        connectionPending.insert(resolved)
         pluginError = nil
-        oauthWaitSlug = slug
-        pluginTasks[slug]?.cancel()
+        oauthWaitSlug = resolved
+        pluginTasks[resolved]?.cancel()
         let task = Task { [weak self] in
             guard let self else { return }
             do {
-                if (try? await composio.isConnected(slug)) == true {
-                    if let idx = self.connections.firstIndex(where: { $0.slug == slug }) {
+                if (try? await composio.isConnected(resolved)) == true {
+                    if let idx = self.connections.firstIndex(where: { $0.slug == resolved }) {
                         self.connections[idx].connected = true
                         self.connections[idx].viaComposio = true
                         self.connections[idx].accountLabel = "Signed in"
                     }
-                    self.connectionSecrets[slug] = ComposioClient.composioTokenSentinel
+                    self.connectionSecrets[resolved] = ComposioClient.composioTokenSentinel
                     self.pluginError = nil
+                    self.pluginAuthURL = nil
                 } else {
-                    let url = try await composio.authorizeURL(for: slug)
-                    self.pluginAuthURL = url
+                    let entity = self.session?.userId ?? self.activeBotId ?? "default"
+                    let url = try await composio.authorizeURL(for: resolved, userId: entity)
+                    let setup = ComposioClient.isAuthConfigSetupURL(url)
+                        || ComposioClient.requiresCustomAuthConfig(resolved)
+                    let hint: String? = {
+                        if ComposioClient.isAuthConfigSetupURL(url) {
+                            return ComposioClient.authSetupMessage(for: resolved, url: url)
+                        }
+                        if ComposioClient.requiresCustomAuthConfig(resolved) {
+                            // Show checklist while polling — X often fails with “weren’t able to give access”.
+                            return """
+                            Finish sign-in in the browser. If X says you weren’t able to give access, the Auth Config or callback URL is wrong — see https://composio.dev/auth/twitter (callback must be https://backend.composio.dev/api/v1/auth-apps/add).
+                            """
+                        }
+                        return nil
+                    }()
+                    self.presentPluginAuthURL(url, setupHint: hint)
+                    if setup && ComposioClient.isAuthConfigSetupURL(url) {
+                        // Dashboard setup link — user must finish Auth Config before OAuth works.
+                        self.connectionPending.remove(resolved)
+                        self.oauthWaitSlug = nil
+                        self.save()
+                        self.pluginTasks.removeValue(forKey: resolved)
+                        return
+                    }
                     var connected = false
                     for _ in 0..<24 {
                         try? await Task.sleep(for: .seconds(max(0.05, 2.5 * self.delayScale)))
                         if Task.isCancelled { break }
-                        if (try? await composio.isConnected(slug)) == true {
+                        if (try? await composio.isConnected(resolved)) == true {
                             connected = true
                             break
                         }
                     }
                     if connected {
-                        if let idx = self.connections.firstIndex(where: { $0.slug == slug }) {
+                        if let idx = self.connections.firstIndex(where: { $0.slug == resolved }) {
                             self.connections[idx].connected = true
                             self.connections[idx].viaComposio = true
                             self.connections[idx].accountLabel = "Signed in"
                         }
-                        self.connectionSecrets[slug] = ComposioClient.composioTokenSentinel
+                        self.connectionSecrets[resolved] = ComposioClient.composioTokenSentinel
                         self.pluginError = nil
+                        self.pluginAuthURL = nil
                     } else {
-                        self.pluginError = "Waiting for sign-in. Finish in the browser, then click Connect again."
+                        self.pluginError = ComposioClient.oauthFailedMessage(for: resolved)
+                        if let guide = ComposioClient.setupGuideURL(for: resolved) {
+                            self.presentPluginAuthURL(guide, setupHint: self.pluginError)
+                        }
                     }
                 }
             } catch {
                 let message = error.localizedDescription
                 if message.localizedCaseInsensitiveContains("already connected") {
-                    if let idx = self.connections.firstIndex(where: { $0.slug == slug }) {
+                    if let idx = self.connections.firstIndex(where: { $0.slug == resolved }) {
                         self.connections[idx].connected = true
                         self.connections[idx].viaComposio = true
                         self.connections[idx].accountLabel = "Signed in"
                     }
-                    self.connectionSecrets[slug] = ComposioClient.composioTokenSentinel
+                    self.connectionSecrets[resolved] = ComposioClient.composioTokenSentinel
                     self.pluginError = nil
+                    self.pluginAuthURL = nil
                 } else {
                     self.pluginError = message
+                    if ComposioClient.requiresCustomAuthConfig(resolved),
+                       let guide = ComposioClient.setupGuideURL(for: resolved) {
+                        self.presentPluginAuthURL(guide, setupHint: message)
+                    } else if let found = ComposioClient.firstAuthURL(in: message) {
+                        self.presentPluginAuthURL(found, setupHint: message)
+                    }
                 }
             }
-            self.connectionPending.remove(slug)
+            self.connectionPending.remove(resolved)
             self.oauthWaitSlug = nil
-            self.pluginAuthURL = nil
             self.save()
-            self.pluginTasks.removeValue(forKey: slug)
+            self.pluginTasks.removeValue(forKey: resolved)
         }
-        pluginTasks[slug] = task
+        pluginTasks[resolved] = task
     }
 
     public func revoke(slug: String) {

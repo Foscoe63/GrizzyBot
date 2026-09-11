@@ -498,8 +498,11 @@ struct RightPanelView: View {
                     .padding(.top, 4)
                 let published = AgentComponentCatalog.allIds + store.sandboxComponents.filter(\.published).map(\.id)
                 ForEach(published, id: \.self) { componentId in
+                    let label = AgentComponentCatalog.allIds.contains(componentId)
+                        ? componentId
+                        : (store.sandboxComponents.first(where: { $0.id == componentId })?.title ?? componentId)
                     settingsToggle(
-                        title: componentId,
+                        title: label,
                         subtitle: AgentComponentCatalog.allIds.contains(componentId)
                             ? "Built-in card"
                             : "Published playground card",

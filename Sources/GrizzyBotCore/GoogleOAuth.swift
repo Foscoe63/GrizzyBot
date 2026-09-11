@@ -1,16 +1,25 @@
 import CryptoKit
+import Darwin
 import Foundation
-import Network
 import Security
 
 /// Direct Google OAuth (Client ID + Secret) so Gmail / Calendar / Sheets / Drive / Docs
-/// can bypass Composio. Uses a loopback redirect on this Mac.
+/// can bypass Composio. Uses a fixed loopback redirect on this Mac.
 public enum GoogleOAuth {
     public static let credentialSecretKey = "_google_oauth"
     public static let authURL = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
     public static let tokenURL = URL(string: "https://oauth2.googleapis.com/token")!
     public static let revokeURL = URL(string: "https://oauth2.googleapis.com/revoke")!
     public static let userInfoURL = URL(string: "https://www.googleapis.com/oauth2/v2/userinfo")!
+
+    /// Fixed port so `redirect_uri` is stable and can be registered in Google Cloud Console.
+    /// Format matches Google’s examples: no trailing slash.
+    public static let loopbackPort: UInt16 = 8765
+    public static let loopbackRedirectURI = "http://127.0.0.1:8765"
+
+    public static func loopbackRedirectURI(port: UInt16) -> String {
+        "http://127.0.0.1:\(port)"
+    }
 
     public static let allGoogleSlugs = [
         "gmail",
@@ -40,14 +49,14 @@ public enum GoogleOAuth {
             linkURL: URL(string: "https://console.cloud.google.com/apis/credentials/consent")
         ),
         GoogleSetupStep(
-            title: "Create a Desktop OAuth client",
-            body: "Credentials → Create credentials → OAuth client ID → Application type: Desktop app. Name it GrizzyBot Mac. Google allows http://127.0.0.1 loopback redirects for Desktop clients.",
+            title: "Create OAuth client + redirect URI",
+            body: "Credentials → Create credentials → OAuth client ID. Prefer Desktop app. Then open the client → Authorized redirect URIs → Add URI and paste exactly: http://127.0.0.1:8765 (no trailing slash). Save. If your client has no redirect URI field, create a Web application client instead and add that same URI.",
             linkTitle: "Create credentials",
             linkURL: URL(string: "https://console.cloud.google.com/apis/credentials")
         ),
         GoogleSetupStep(
             title: "Copy Client ID and Client Secret",
-            body: "Open the client and paste Client ID + Client secret into GrizzyBot Settings → Connections → Google. Save, then Plugins → Sign in with Google. One sign-in can unlock Gmail, Calendar, Sheets, Docs, and Drive.",
+            body: "Paste Client ID + Client secret into GrizzyBot Settings → Connections → Google. Save, then Plugins → Sign in with Google. One sign-in unlocks Gmail, Calendar, Sheets, Docs, and Drive. Error 400 redirect_uri_mismatch means http://127.0.0.1:8765 is missing from that client’s Authorized redirect URIs.",
             linkTitle: nil,
             linkURL: nil
         ),
@@ -260,6 +269,7 @@ public enum GoogleOAuthError: Error, LocalizedError, Sendable, Equatable {
     case missingCredentials
     case timeout
     case listener
+    case portInUse
 
     public var errorDescription: String? {
         switch self {
@@ -267,10 +277,17 @@ public enum GoogleOAuthError: Error, LocalizedError, Sendable, Equatable {
         case .badCallback: return "Google returned an incomplete callback."
         case .stateMismatch: return "Google sign-in state mismatch. Try again."
         case .denied(let reason): return "Google sign-in denied (\(reason))."
-        case .token(let reason): return "Google token error: \(reason)"
+        case .token(let reason):
+            if reason.localizedCaseInsensitiveContains("redirect_uri") {
+                return "Google rejected the redirect URI. In Cloud Console → your OAuth client → Authorized redirect URIs, add exactly \(GoogleOAuth.loopbackRedirectURI) (no trailing slash), Save, wait ~1 minute, try again."
+            }
+            return "Google token error: \(reason)"
         case .missingCredentials: return "Add a Google Client ID and Client Secret in Settings → Connections → Google."
-        case .timeout: return "Timed out waiting for Google sign-in. Finish in the browser, then try Connect again."
+        case .timeout:
+            return "Timed out waiting for Google sign-in. If the browser showed redirect_uri_mismatch, add exactly \(GoogleOAuth.loopbackRedirectURI) under Authorized redirect URIs for this Client ID, Save, then try again."
         case .listener: return "Could not start the local Google redirect listener on this Mac."
+        case .portInUse:
+            return "Port \(GoogleOAuth.loopbackPort) is in use. Quit whatever is using it, then try Sign in with Google again."
         }
     }
 }
@@ -307,19 +324,24 @@ public struct GoogleOAuthClient: GoogleOAuthConnecting, Sendable {
         let state = GoogleOAuth.makeCodeVerifier()
         let verifier = GoogleOAuth.makeCodeVerifier()
         let challenge = GoogleOAuth.codeChallengeS256(verifier: verifier)
-        let loopback = try await GoogleLoopback.waitForCode(
-            expectedState: state,
-            timeoutSeconds: timeoutSeconds
-        ) { redirectURI in
-            let url = try GoogleOAuth.authorizationURL(
-                clientId: trimmedId,
-                redirectURI: redirectURI,
-                scopes: scopes,
-                state: state,
-                codeChallenge: challenge
-            )
-            openURL(url)
-        }
+        let openURL = self.openURL
+        let timeoutSeconds = self.timeoutSeconds
+        // Never run the loopback socket on the MainActor — NWListener previously froze the UI.
+        let loopback = try await Task.detached(priority: .userInitiated) {
+            try await GoogleLoopback.waitForCode(
+                expectedState: state,
+                timeoutSeconds: timeoutSeconds
+            ) { redirectURI in
+                let url = try GoogleOAuth.authorizationURL(
+                    clientId: trimmedId,
+                    redirectURI: redirectURI,
+                    scopes: scopes,
+                    state: state,
+                    codeChallenge: challenge
+                )
+                openURL(url)
+            }
+        }.value
 
         var request = URLRequest(url: GoogleOAuth.tokenURL, timeoutInterval: 30)
         request.httpMethod = "POST"
@@ -450,7 +472,7 @@ public final class ImmediateGoogleOAuth: GoogleOAuthConnecting, @unchecked Senda
     }
 }
 
-// MARK: - Loopback listener
+// MARK: - Loopback listener (POSIX — never blocks the UI)
 
 enum GoogleLoopback {
     struct Result: Sendable {
@@ -463,102 +485,161 @@ enum GoogleLoopback {
         timeoutSeconds: TimeInterval,
         onReady: @escaping @Sendable (String) throws -> Void
     ) async throws -> Result {
-        try await withThrowingTaskGroup(of: Result.self) { group in
-            let box = LoopbackBox()
+        let server = LoopbackServer()
+        return try await withThrowingTaskGroup(of: Result.self) { group in
             group.addTask {
-                try await box.serve(expectedState: expectedState, onReady: onReady)
+                try await withTaskCancellationHandler {
+                    try await server.serve(expectedState: expectedState, onReady: onReady)
+                } onCancel: {
+                    server.closeAll()
+                }
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(timeoutSeconds))
+                server.closeAll()
                 throw GoogleOAuthError.timeout
             }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
+            do {
+                let result = try await group.next()!
+                group.cancelAll()
+                server.closeAll()
+                return result
+            } catch {
+                group.cancelAll()
+                server.closeAll()
+                throw error
+            }
         }
     }
 }
 
-private final class LoopbackBox: @unchecked Sendable {
-    private var listener: NWListener?
+private final class LoopbackServer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var serverFD: Int32 = -1
+    private var clientFD: Int32 = -1
+
+    func closeAll() {
+        lock.lock()
+        defer { lock.unlock() }
+        if clientFD >= 0 {
+            _ = Darwin.close(clientFD)
+            clientFD = -1
+        }
+        if serverFD >= 0 {
+            _ = Darwin.close(serverFD)
+            serverFD = -1
+        }
+    }
 
     func serve(
         expectedState: String,
         onReady: @escaping @Sendable (String) throws -> Void
     ) async throws -> GoogleLoopback.Result {
-        let continuation = CheckedContinuationBox<String>()
-        // Port 0 is EINVAL on Network.framework — use the no-port initializer for an ephemeral bind.
-        let listener = try NWListener(using: .tcp)
-        self.listener = listener
-
-        // Must be set before start().
-        listener.newConnectionHandler = { connection in
-            Task {
-                if let code = await Self.handle(connection: connection, expectedState: expectedState) {
-                    continuation.resume(returning: code)
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<GoogleLoopback.Result, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let result = try self.blockingServe(expectedState: expectedState, onReady: onReady)
+                    cont.resume(returning: result)
+                } catch {
+                    cont.resume(throwing: error)
                 }
             }
-        }
-
-        let gate = OnceResumeGate()
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            listener.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    gate.resume(cont) { $0.resume() }
-                case .failed(let error):
-                    gate.resume(cont) {
-                        listener.cancel()
-                        $0.resume(throwing: error)
-                    }
-                default:
-                    break
-                }
-            }
-            listener.start(queue: .global(qos: .userInitiated))
-        }
-
-        guard let port = listener.port?.rawValue, port > 0 else {
-            listener.cancel()
-            throw GoogleOAuthError.listener
-        }
-        // Trailing slash matches the redirect shape that already worked with Desktop clients.
-        let redirectURI = "http://127.0.0.1:\(port)/"
-        try onReady(redirectURI)
-
-        do {
-            let code = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
-                continuation.set(cont)
-            }
-            listener.cancel()
-            return GoogleLoopback.Result(code: code, redirectURI: redirectURI)
-        } catch {
-            listener.cancel()
-            throw error
         }
     }
 
-    private static func handle(
-        connection: NWConnection,
-        expectedState: String
-    ) async -> String? {
-        connection.start(queue: .global(qos: .userInitiated))
-        var buffer = Data()
+    private func blockingServe(
+        expectedState: String,
+        onReady: (String) throws -> Void
+    ) throws -> GoogleLoopback.Result {
+        let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw GoogleOAuthError.listener }
+
+        lock.lock()
+        serverFD = fd
+        lock.unlock()
+
+        var yes: Int32 = 1
+        _ = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
+        _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &yes, socklen_t(MemoryLayout<Int32>.size))
+
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = GoogleOAuth.loopbackPort.bigEndian
+        addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        let bindOK = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
+            }
+        }
+        guard bindOK else {
+            let err = errno
+            closeAll()
+            throw err == EADDRINUSE ? GoogleOAuthError.portInUse : GoogleOAuthError.listener
+        }
+        guard Darwin.listen(fd, 1) == 0 else {
+            closeAll()
+            throw GoogleOAuthError.listener
+        }
+
+        do {
+            try onReady(GoogleOAuth.loopbackRedirectURI)
+        } catch {
+            closeAll()
+            throw error
+        }
+
         while true {
-            let chunk: Data? = await withCheckedContinuation { cont in
-                connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, isComplete, _ in
-                    if isComplete, data == nil || data?.isEmpty == true {
-                        cont.resume(returning: nil)
-                    } else {
-                        cont.resume(returning: data ?? Data())
-                    }
-                }
+            lock.lock()
+            let live = serverFD
+            lock.unlock()
+            if live < 0 { throw GoogleOAuthError.timeout }
+
+            var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let polled = poll(&pfd, 1, 250)
+            if polled < 0 {
+                if errno == EINTR { continue }
+                closeAll()
+                throw GoogleOAuthError.listener
             }
-            guard let chunk else {
-                connection.cancel()
-                return nil
+            if polled == 0 { continue }
+
+            let client = Darwin.accept(fd, nil, nil)
+            if client < 0 {
+                if errno == EINTR || errno == EAGAIN { continue }
+                closeAll()
+                throw GoogleOAuthError.timeout
             }
-            buffer.append(chunk)
+            lock.lock()
+            clientFD = client
+            lock.unlock()
+
+            if let code = Self.readAuthCode(from: client, expectedState: expectedState) {
+                closeAll()
+                return GoogleLoopback.Result(code: code, redirectURI: GoogleOAuth.loopbackRedirectURI)
+            }
+            lock.lock()
+            if clientFD == client {
+                _ = Darwin.close(client)
+                clientFD = -1
+            }
+            lock.unlock()
+        }
+    }
+
+    private static func readAuthCode(from client: Int32, expectedState: String) -> String? {
+        var buffer = Data()
+        var chunk = [UInt8](repeating: 0, count: 4096)
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            let n = recv(client, &chunk, chunk.count, 0)
+            if n < 0 {
+                if errno == EINTR { continue }
+                break
+            }
+            if n == 0 { break }
+            buffer.append(contentsOf: chunk.prefix(Int(n)))
             guard let raw = String(data: buffer, encoding: .utf8),
                   raw.contains("\r\n\r\n")
             else { continue }
@@ -585,63 +666,19 @@ private final class LoopbackBox: @unchecked Sendable {
                 </body></html>
                 """
             }
-            let response = Data("""
+            let response = """
             HTTP/1.1 200 OK\r
             Content-Type: text/html; charset=utf-8\r
             Content-Length: \(html.utf8.count)\r
             Connection: close\r
             \r
             \(html)
-            """.utf8)
-            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                connection.send(content: response, completion: .contentProcessed { _ in
-                    connection.cancel()
-                    cont.resume()
-                })
+            """
+            _ = response.withCString { ptr in
+                Darwin.send(client, ptr, strlen(ptr), 0)
             }
             return code
         }
-    }
-}
-
-private final class OnceResumeGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var done = false
-
-    func resume<T>(_ cont: CheckedContinuation<T, Error>, _ body: (CheckedContinuation<T, Error>) -> Void) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !done else { return }
-        done = true
-        body(cont)
-    }
-}
-
-private final class CheckedContinuationBox<T: Sendable>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var cont: CheckedContinuation<T, Error>?
-    private var value: Result<T, Error>?
-
-    func set(_ cont: CheckedContinuation<T, Error>) {
-        lock.lock()
-        defer { lock.unlock() }
-        if let value {
-            cont.resume(with: value)
-        } else {
-            self.cont = cont
-        }
-    }
-
-    func resume(returning value: T) {
-        lock.lock()
-        let pending = cont
-        cont = nil
-        if pending == nil {
-            self.value = .success(value)
-            lock.unlock()
-            return
-        }
-        lock.unlock()
-        pending?.resume(returning: value)
+        return nil
     }
 }

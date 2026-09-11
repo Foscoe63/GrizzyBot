@@ -1,7 +1,7 @@
 import Foundation
 
 public protocol ComposioConnecting: Sendable {
-    func authorizeURL(for slug: String) async throws -> URL
+    func authorizeURL(for slug: String, userId: String) async throws -> URL
     func isConnected(_ slug: String) async throws -> Bool
     func disconnect(_ slug: String) async throws
     func execute(slug: String, title: String, body: String, account: String?) async throws -> String
@@ -12,6 +12,10 @@ public protocol ComposioConnecting: Sendable {
 }
 
 extension ComposioConnecting {
+    public func authorizeURL(for slug: String) async throws -> URL {
+        try await authorizeURL(for: slug, userId: "default")
+    }
+
     public func execute(slug: String, title: String, body: String) async throws -> String {
         try await execute(slug: slug, title: title, body: body, account: nil)
     }
@@ -49,7 +53,71 @@ public struct ComposioClient: ComposioConnecting, Sendable {
     }
 
     public static func toolkitSlug(_ slug: String) -> String {
-        slug.lowercased().replacingOccurrences(of: "-", with: "").replacingOccurrences(of: "_", with: "")
+        let raw = slug.lowercased()
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+        // Catalog shows "X (Twitter)" as slug `x`; Composio's toolkit is `twitter`.
+        switch raw {
+        case "x", "twitterx", "xtwitter": return "twitter"
+        default: return raw
+        }
+    }
+
+    /// True when Composio returned a dashboard setup link instead of a user OAuth URL
+    /// (common for X/Twitter after managed credentials were removed).
+    public static func isAuthConfigSetupURL(_ url: URL) -> Bool {
+        let s = url.absoluteString.lowercased()
+        return s.contains("auth-apps/add")
+            || s.contains("auth-apps?")
+            || s.contains("/auth_configs")
+            || s.contains("authconfig")
+    }
+
+    public static func authSetupMessage(for slug: String, url: URL) -> String {
+        let name = toolkitSlug(slug) == "twitter" ? "X/Twitter" : slug
+        if toolkitSlug(slug) == "twitter" {
+            return """
+            X/Twitter needs your own developer app in Composio (managed OAuth was removed).
+
+            1. At console.x.com create an app → User authentication → OAuth 2.0
+            2. Set callback exactly to:
+               https://backend.composio.dev/api/v1/auth-apps/add
+            3. In app.composio.dev → Auth Configs → Create → Twitter → use your Client ID, Client Secret, and Bearer token
+            4. Then click Connect again in GrizzyBot
+
+            Guide: https://composio.dev/auth/twitter
+            """
+        }
+        return "\(name) needs your own API credentials in Composio. Open app.composio.dev → Auth Configs, add \(name), then click Connect again."
+    }
+
+    /// Toolkits where Composio no longer ships managed OAuth (Connect fails without a custom Auth Config).
+    public static func requiresCustomAuthConfig(_ slug: String) -> Bool {
+        toolkitSlug(slug) == "twitter"
+    }
+
+    public static func setupGuideURL(for slug: String) -> URL? {
+        switch toolkitSlug(slug) {
+        case "twitter": return URL(string: "https://composio.dev/auth/twitter")
+        default: return URL(string: "https://app.composio.dev")
+        }
+    }
+
+    public static func oauthFailedMessage(for slug: String) -> String {
+        if toolkitSlug(slug) == "twitter" {
+            return """
+            X did not grant access (“weren’t able to give access to the App”).
+
+            That almost always means the Composio Auth Config or X callback URL is wrong. Fix steps:
+            1. X app → User authentication → callback must be exactly
+               https://backend.composio.dev/api/v1/auth-apps/add
+            2. app.composio.dev → Auth Configs → Twitter with that app’s Client ID/Secret (+ Bearer token)
+            3. Click Connect again
+
+            Guide: https://composio.dev/auth/twitter
+            """
+        }
+        return "Sign-in did not finish. Complete it in the browser, then click Connect again — or tap Open sign-in below."
     }
 
     /// Current Composio Connect MCP expects `toolkits: ["gmail", …]` (string slugs).
@@ -66,8 +134,20 @@ public struct ComposioClient: ComposioConnecting, Sendable {
         return args
     }
 
-    public func authorizeURL(for slug: String) async throws -> URL {
+    public func authorizeURL(for slug: String, userId: String = "default") async throws -> URL {
         let toolkit = Self.toolkitSlug(slug)
+        let entity = userId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "default" : userId
+
+        // Prefer REST link with a real Auth Config — required for Twitter and more reliable generally.
+        if let authId = try? await firstAuthConfigId(toolkit: toolkit) {
+            if let linked = try? await createAuthLink(authConfigId: authId, userId: entity) {
+                return linked
+            }
+        } else if Self.requiresCustomAuthConfig(toolkit) {
+            let guide = Self.setupGuideURL(for: toolkit) ?? URL(string: "https://app.composio.dev")!
+            throw PluginError.rejected(Self.authSetupMessage(for: toolkit, url: guide))
+        }
+
         let out = try await call(
             "COMPOSIO_MANAGE_CONNECTIONS",
             arguments: Self.manageConnectionsArgs(toolkits: [toolkit])
@@ -84,7 +164,67 @@ public struct ComposioClient: ComposioConnecting, Sendable {
             throw PluginError.rejected("Composio already connected for \(slug).")
         }
         if let url = Self.firstAuthURL(in: retry) { return url }
+        if Self.requiresCustomAuthConfig(toolkit) {
+            let guide = Self.setupGuideURL(for: toolkit) ?? URL(string: "https://app.composio.dev")!
+            throw PluginError.rejected(Self.authSetupMessage(for: toolkit, url: guide))
+        }
         throw PluginError.rejected("Composio returned no sign-in link for \(slug).")
+    }
+
+    /// First Auth Config id for a toolkit (`ac_…`), if any exist on this Composio project.
+    public func firstAuthConfigId(toolkit: String) async throws -> String? {
+        let key = (apiKey?.isEmpty == false ? apiKey : connectKey) ?? connectKey
+        let slug = Self.toolkitSlug(toolkit)
+        var comps = URLComponents(string: "\(backendURL)/auth_configs")
+        comps?.queryItems = [
+            URLQueryItem(name: "toolkit_slug", value: slug),
+            URLQueryItem(name: "limit", value: "20"),
+        ]
+        guard let url = comps?.url else { return nil }
+        var request = URLRequest(url: url)
+        request.setValue(key, forHTTPHeaderField: "x-api-key")
+        request.timeoutInterval = 15
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else { return nil }
+        return Self.parseAuthConfigIds(data).first
+    }
+
+    public static func parseAuthConfigIds(_ data: Data) -> [String] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
+        let items = (json["items"] as? [[String: Any]]) ?? []
+        // Prefer custom configs when both exist.
+        let custom = items.filter { ($0["type"] as? String)?.lowercased() == "custom" }
+        let ordered = custom.isEmpty ? items : custom + items.filter { ($0["type"] as? String)?.lowercased() != "custom" }
+        return ordered.compactMap { $0["id"] as? String }.filter { !$0.isEmpty }
+    }
+
+    /// Creates a hosted auth link session and returns the browser redirect URL.
+    public func createAuthLink(authConfigId: String, userId: String) async throws -> URL {
+        let key = (apiKey?.isEmpty == false ? apiKey : connectKey) ?? connectKey
+        guard let url = URL(string: "\(backendURL)/connected_accounts/link") else {
+            throw PluginError.rejected("bad Composio link URL")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(key, forHTTPHeaderField: "x-api-key")
+        request.timeoutInterval = 20
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "auth_config_id": authConfigId,
+            "user_id": userId,
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw PluginError.rejected("Composio auth link HTTP \(status): \(body.prefix(200))")
+        }
+        let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        if let redirect = json["redirect_url"] as? String, let link = URL(string: redirect) {
+            return link
+        }
+        throw PluginError.rejected("Composio auth link returned no redirect_url")
     }
 
     public func isConnected(_ slug: String) async throws -> Bool {
@@ -767,10 +907,10 @@ public final class ImmediateComposio: ComposioConnecting, @unchecked Sendable {
 
     public init() {}
 
-    public func authorizeURL(for slug: String) async throws -> URL {
+    public func authorizeURL(for slug: String, userId: String) async throws -> URL {
         lastAuthorize = slug
         connected.insert(ComposioClient.toolkitSlug(slug))
-        return URL(string: "https://connect.composio.dev/auth/\(slug)")!
+        return URL(string: "https://connect.composio.dev/auth/\(slug)?user=\(userId)")!
     }
 
     public func isConnected(_ slug: String) async throws -> Bool {

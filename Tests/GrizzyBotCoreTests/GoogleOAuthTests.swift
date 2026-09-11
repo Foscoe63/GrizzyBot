@@ -37,7 +37,7 @@ struct GoogleOAuthTests {
     func authURL() throws {
         let url = try GoogleOAuth.authorizationURL(
             clientId: "client.apps.googleusercontent.com",
-            redirectURI: "http://127.0.0.1:54321/",
+            redirectURI: GoogleOAuth.loopbackRedirectURI,
             scopes: ["https://www.googleapis.com/auth/gmail.readonly", "openid"],
             state: "abc123",
             codeChallenge: "challenge_value"
@@ -45,7 +45,9 @@ struct GoogleOAuthTests {
         let comps = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
         let items = Dictionary(uniqueKeysWithValues: (comps.queryItems ?? []).map { ($0.name, $0.value ?? "") })
         #expect(items["client_id"] == "client.apps.googleusercontent.com")
-        #expect(items["redirect_uri"] == "http://127.0.0.1:54321/")
+        #expect(items["redirect_uri"] == "http://127.0.0.1:8765")
+        #expect(GoogleOAuth.loopbackRedirectURI == "http://127.0.0.1:8765")
+        #expect(!GoogleOAuth.loopbackRedirectURI.hasSuffix("/"))
         #expect(items["response_type"] == "code")
         #expect(items["access_type"] == "offline")
         #expect(items["prompt"] == "consent")
@@ -96,7 +98,7 @@ struct GoogleOAuthTests {
         #expect(steps[0].title.lowercased().contains("cloud"))
         #expect(steps.contains(where: { $0.body.lowercased().contains("gmail") }))
         #expect(steps.contains(where: { $0.body.lowercased().contains("calendar") }))
-        #expect(steps.contains(where: { $0.body.lowercased().contains("desktop") }))
+        #expect(steps.contains(where: { $0.body.contains("http://127.0.0.1:8765") }))
         #expect(steps.contains(where: { $0.linkURL != nil }))
     }
 
