@@ -101,6 +101,52 @@ public struct FolderWatcherRecord: Codable, Equatable, Identifiable, Hashable, S
     }
 }
 
+/// Skip a watcher fire when the bot is busy or this watcher is still absorbing its own writes.
+public enum FolderWatcherFirePolicy {
+    public static func skipReason(botBusy: Bool, suppressed: Bool, manual: Bool) -> String? {
+        if botBusy { return "Skipped: bot is already running." }
+        if !manual, suppressed { return "Skipped: watcher is cooling down." }
+        return nil
+    }
+}
+
+/// Process-wide suppress flag so FSEvents from an in-flight organize pass are dropped.
+public final class FolderWatcherSuppression: @unchecked Sendable {
+    public static let shared = FolderWatcherSuppression()
+
+    private let lock = NSLock()
+    private var ids: Set<String> = []
+    private var generation: [String: UInt64] = [:]
+
+    public func isSuppressed(_ id: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return ids.contains(id)
+    }
+
+    @discardableResult
+    public func suppress(_ id: String) -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        ids.insert(id)
+        let next = (generation[id] ?? 0) &+ 1
+        generation[id] = next
+        return next
+    }
+
+    public func currentGeneration(_ id: String) -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return generation[id] ?? 0
+    }
+
+    public func release(_ id: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        ids.remove(id)
+    }
+}
+
 public enum FolderWatcherGlobMatching {
     public static func matches(relativePath: String, includeGlobs: [String], excludeGlobs: [String]) -> Bool {
         let normalized = relativePath.replacingOccurrences(of: "\\", with: "/")
@@ -208,6 +254,12 @@ public enum FolderWatcherPromptBuilder {
                 parts.append("- …and \(uniquePaths.count - 40) more")
             }
         }
+        if !path.isEmpty {
+            parts.append("")
+            parts.append(
+                "This folder job applies to whichever bot is running. Do one organize pass now on the watch path using list_files then move_file (or shell mv — writes in this folder are allowed). Do not write organizer scripts, file-watcher.py, or SKILL.md. Do not load the browser skill. Do not loop or wait for more files. Relative list_files / read_file / write_file / edit_file / move_file / delete_file resolve to the watch path — not that bot's home, knowledge vault, or skills library."
+            )
+        }
         let instructions = watcher.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         if !instructions.isEmpty {
             parts.append("")
@@ -285,8 +337,14 @@ public actor FolderWatcherService {
     }
 
     public func start() {
-        guard reloadTask == nil else { return }
-        reloadTask = Task { await self.reloadLoop() }
+        if reloadTask == nil {
+            reloadTask = Task { await self.reloadLoop() }
+        }
+        Task { try? await reloadWatchers() }
+    }
+
+    public func reloadNow() async {
+        try? await reloadWatchers()
     }
 
     public func stop() {
@@ -376,7 +434,18 @@ public actor FolderWatcherService {
         streams[id] = stream
     }
 
+    public func dropPending(watcherId: String) {
+        pendingTimers[watcherId]?.cancel()
+        pendingTimers[watcherId] = nil
+        pendingChangedPaths[watcherId] = nil
+        convergenceCounts[watcherId] = 0
+    }
+
     fileprivate func handleFSEvent(watcherId: String, changedPaths: [String]) {
+        if FolderWatcherSuppression.shared.isSuppressed(watcherId) {
+            dropPending(watcherId: watcherId)
+            return
+        }
         guard let root = persistenceRoot,
               let watcher = try? FolderWatcherPersistence.loadAll(root: root).first(where: { $0.id == watcherId })
         else { return }
@@ -402,6 +471,11 @@ public actor FolderWatcherService {
 
     private func scheduleConvergenceCheck(watcher: FolderWatcherRecord) async {
         let id = watcher.id
+        if FolderWatcherSuppression.shared.isSuppressed(id) {
+            dropPending(watcherId: id)
+            return
+        }
+        let generation = FolderWatcherSuppression.shared.currentGeneration(id)
         let count = (convergenceCounts[id] ?? 0) + 1
         convergenceCounts[id] = count
         if count < max(1, watcher.maxConvergence) {
@@ -414,6 +488,11 @@ public actor FolderWatcherService {
         }
         convergenceCounts[id] = 0
         let paths = pendingChangedPaths.removeValue(forKey: id) ?? []
+        if FolderWatcherSuppression.shared.isSuppressed(id)
+            || FolderWatcherSuppression.shared.currentGeneration(id) != generation
+        {
+            return
+        }
         _ = try? await executeWatcher(watcher, manual: false, changedPaths: paths)
     }
 
@@ -428,9 +507,11 @@ public actor FolderWatcherService {
         do {
             let result = try await runner.runWatcher(watcher, changedPaths: changedPaths, manual: manual)
             var updated = watcher
-            updated.lastTriggeredAt = FolderWatcherRecord.isoNow()
-            updated.lastError = nil
-            try? FolderWatcherPersistence.save(updated, root: root)
+            if result.hasPrefix("Triggered") {
+                updated.lastTriggeredAt = FolderWatcherRecord.isoNow()
+                updated.lastError = nil
+                try? FolderWatcherPersistence.save(updated, root: root)
+            }
             return result
         } catch {
             var updated = watcher
@@ -453,11 +534,13 @@ public actor FolderWatcherService {
 public enum FolderWatcherError: LocalizedError, Sendable {
     case notConfigured
     case notFound
+    case emptyPath
 
     public var errorDescription: String? {
         switch self {
         case .notConfigured: return "Folder watchers are not configured."
         case .notFound: return "Watcher not found."
+        case .emptyPath: return "Choose a folder to watch."
         }
     }
 }

@@ -367,7 +367,7 @@ public enum AgentLoop {
 
         public static func sandbox() -> String {
             """
-            Shell runs inside a macOS seatbelt sandbox rooted at your home. Destructive shell and plugin writes pause for user approval unless always-allowed.
+            Shell runs inside a macOS seatbelt sandbox rooted at your home. If a working folder is set for this run, shell may also write inside that folder (mv, rm, mkdir). Destructive shell and plugin writes pause for user approval unless always-allowed.
             Shell default timeout is \(Int(BotHomeStore.ShellTimeout.default))s. For multi-step research (curl loops, sleeps), pass timeout_seconds up to \(Int(BotHomeStore.ShellTimeout.max)) or split into shorter commands.
             Keep going across many tool rounds. If context is compacted, trust the remaining transcript and continue the job.
             """
@@ -413,7 +413,7 @@ public enum AgentLoop {
             let fileLines: String
             if hasWorkingFolder {
                 fileLines = """
-                Relative read_file, write_file, edit_file, move_file, delete_file, and list_files use this bot's working folder (empty list_files lists it). Absolute/~ paths outside that folder pause for approval. write_file there writes that folder on disk. Home path remains the sandbox for MEMORY.md, PLAN.md, and shell. Shell ~ is never the working folder. MCP does not inherit the working folder; pass absolute paths.
+                Relative read_file, write_file, edit_file, move_file, delete_file, and list_files use the working folder named below (empty list_files lists it). That folder is the file root for this run on every bot — not the bot home or a knowledge vault. Absolute/~ paths outside that folder pause for approval. write_file there writes that folder on disk. Home path remains the sandbox for MEMORY.md, PLAN.md, and shell HOME. Shell ~ is never the working folder, but shell may write inside the working folder (mv/rm). MCP does not inherit the working folder; pass absolute paths. Prefer move_file over shell scripts when organizing files.
                 """
             } else {
                 fileLines = """

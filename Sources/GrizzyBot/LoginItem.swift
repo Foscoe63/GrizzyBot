@@ -29,6 +29,9 @@ enum LoginItemController {
 
     @discardableResult
     static func setEnabled(_ on: Bool) -> LoginItemResult {
+        #if DEBUG
+        return .unavailableInDebug
+        #else
         do {
             if on {
                 try SMAppService.mainApp.register()
@@ -37,24 +40,44 @@ enum LoginItemController {
             }
             return on ? .enabled : .disabled
         } catch {
-            #if DEBUG
-            return .unavailableInDebug
-            #else
             return .failed(error.localizedDescription)
-            #endif
         }
+        #endif
     }
 }
 
 enum RoutineAgentController {
     private static let agentPlist = "com.grizzybot.routine-agent"
 
+    /// LaunchAgent plist must live at `App.app/Contents/Library/LaunchAgents/<name>.plist`.
+    private static var bundledPlistURL: URL? {
+        Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Library/LaunchAgents/\(agentPlist).plist", isDirectory: false)
+    }
+
+    private static var hasBundledPlist: Bool {
+        guard let url = bundledPlistURL else { return false }
+        return FileManager.default.isReadableFile(atPath: url.path)
+    }
+
     static var isRegistered: Bool {
-        SMAppService.agent(plistName: agentPlist).status == .enabled
+        #if DEBUG
+        // Ad-hoc Debug apps cannot register Launch Agents; probing SMAppService only logs noise.
+        return false
+        #else
+        guard hasBundledPlist else { return false }
+        return SMAppService.agent(plistName: agentPlist).status == .enabled
+        #endif
     }
 
     @discardableResult
     static func setEnabled(_ on: Bool) -> LoginItemResult {
+        #if DEBUG
+        return .unavailableInDebug
+        #else
+        guard hasBundledPlist else {
+            return .failed("Routine agent plist missing from the app bundle (Contents/Library/LaunchAgents/\(agentPlist).plist).")
+        }
         let service = SMAppService.agent(plistName: agentPlist)
         do {
             if on {
@@ -64,11 +87,8 @@ enum RoutineAgentController {
             }
             return on ? .enabled : .disabled
         } catch {
-            #if DEBUG
-            return .unavailableInDebug
-            #else
             return .failed(error.localizedDescription)
-            #endif
         }
+        #endif
     }
 }

@@ -570,7 +570,8 @@ struct ThisMacScreenPreview: View {
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: fill ? .fill : .fit)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    .clipped()
             } else {
                 Theme.bgScreen
                 VStack(spacing: 8) {
@@ -586,6 +587,7 @@ struct ThisMacScreenPreview: View {
                 }
             }
         }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .clipped()
         .task(id: botId) {
             await refresh(force: true)

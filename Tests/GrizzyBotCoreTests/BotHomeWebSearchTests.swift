@@ -65,6 +65,36 @@ struct BotHomeTests {
         _ = result
     }
 
+    @Test("seatbelt allows writes in an extra writable folder")
+    func shellWriteExtraRoot() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grizzy-home-\(UUID().uuidString)", isDirectory: true)
+        let watch = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches/GrizzyBotSeatbelt-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: watch)
+        }
+        try FileManager.default.createDirectory(at: watch, withIntermediateDirectories: true)
+        let src = watch.appendingPathComponent("inbox.txt")
+        let destDir = watch.appendingPathComponent("Images", isDirectory: true)
+        let dest = destDir.appendingPathComponent("inbox.txt")
+        try "keep\n".write(to: src, atomically: true, encoding: .utf8)
+        let home = BotHomeStore(root: root)
+        let command = "mkdir -p '\(destDir.path)' && mv '\(src.path)' '\(dest.path)'"
+        let blocked = try await home.runShell(botId: "bot-1", command: command)
+        #expect(blocked.exitCode != 0, "\(blocked.combined)")
+        #expect(FileManager.default.fileExists(atPath: src.path))
+        let allowed = try await home.runShell(
+            botId: "bot-1",
+            command: command,
+            extraWriteRoots: [watch.path]
+        )
+        #expect(allowed.exitCode == 0, "\(allowed.combined)")
+        #expect(FileManager.default.fileExists(atPath: dest.path))
+        #expect(!FileManager.default.fileExists(atPath: src.path))
+    }
+
     @Test("shell timeout defaults and clamps")
     func shellTimeout() {
         #expect(BotHomeStore.ShellTimeout.default == 120)

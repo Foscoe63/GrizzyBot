@@ -208,6 +208,95 @@ struct StoreTests {
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.viaComposio == false)
     }
 
+    @Test("syncComposioConnection picks up remote ACTIVE status")
+    func syncComposioRemote() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "sync@b.com", password: "password1") == nil)
+        let composio = ImmediateComposio()
+        composio.connected.insert("gmail")
+        store.composioClient = composio
+        #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == false)
+        let ok = await store.syncComposioConnection(slug: "gmail")
+        #expect(ok)
+        #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == true)
+        #expect(store.connections.first(where: { $0.slug == "gmail" })?.viaComposio == true)
+    }
+
+    @Test("plugin account preference all fans out Composio searches")
+    func pluginAccountAll() async throws {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "multi@b.com", password: "password1") == nil)
+        let composio = ImmediateComposio()
+        composio.connected.insert("gmail")
+        composio.accountsBySlug["gmail"] = ["gmail_dayal-peiser", "gmail_lerwa-gharry"]
+        store.composioClient = composio
+        if let idx = store.connections.firstIndex(where: { $0.slug == "gmail" }) {
+            store.connections[idx].connected = true
+            store.connections[idx].viaComposio = true
+        }
+        store.connectionSecrets["gmail"] = ComposioClient.composioTokenSentinel
+        store.setPluginAccountPreference(slug: "gmail", account: AppStore.pluginAccountAll)
+        store.composioAccountChoices["gmail"] = ["gmail_dayal-peiser", "gmail_lerwa-gharry"]
+
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [
+                LLMToolCall(id: "1", name: "plugin_call", arguments: "{\"slug\":\"gmail\",\"action\":\"search\",\"query\":\"in:inbox\"}"),
+            ]),
+            ChatCompletionResponse(text: "done"),
+        ])
+        let bot = store.createBot(name: "Mailbot", title: "mail")
+        if let idx = store.bots.firstIndex(where: { $0.id == bot.id }) {
+            store.bots[idx].autoApprove = true
+        }
+        store.send(botId: bot.id, text: "check mail")
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        #expect(store.pluginAccountPreference(for: "gmail") == AppStore.pluginAccountAll)
+        #expect(Set(composio.searchedAccounts) == Set(["gmail_dayal-peiser", "gmail_lerwa-gharry"]))
+    }
+
+    @Test("setPluginAccountPreference stores specific Gmail account")
+    func pluginAccountSpecific() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "acct@b.com", password: "password1") == nil)
+        store.setPluginAccountPreference(slug: "gmail", account: "gmail_lerwa-gharry")
+        #expect(store.pluginAccountPreference(for: "gmail") == "gmail_lerwa-gharry")
+        store.setPluginAccountPreference(slug: "gmail", account: nil)
+        #expect(store.pluginAccountPreference(for: "gmail") == nil)
+    }
+
+    @Test("Google Client OAuth connects Gmail without Composio")
+    func googleOAuthBypass() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "google@b.com", password: "password1") == nil)
+        var config = store.appConfig
+        config.googleClientId = "client.apps.googleusercontent.com"
+        config.googleClientSecret = "secret"
+        store.saveAppConfig(config)
+        let google = ImmediateGoogleOAuth()
+        store.googleOAuthClient = google
+        store.connect(slug: "gmail")
+        await store.waitForPluginTasks()
+        #expect(google.authorizeCalls == 1)
+        #expect(google.lastScopes.contains(where: { $0.contains("gmail") }))
+        let gmail = store.connections.first(where: { $0.slug == "gmail" })
+        #expect(gmail?.connected == true)
+        #expect(gmail?.viaComposio == false)
+        #expect(gmail?.accountLabel == "user@gmail.com")
+        #expect(store.connectionSecrets[GoogleOAuth.credentialSecretKey] != nil)
+    }
+
+    @Test("Sign in with Google connects the suite")
+    func googleSuiteConnect() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "suite@b.com", password: "password1") == nil)
+        store.googleOAuthClient = ImmediateGoogleOAuth()
+        store.connectGoogleSuite()
+        await store.waitForPluginTasks()
+        for slug in ["gmail", "google-calendar", "google-sheets", "google-docs", "google-drive"] {
+            #expect(store.connections.first(where: { $0.slug == slug })?.connected == true)
+        }
+    }
+
     @Test("bot memory is a file, upserts similar facts, and forgets")
     func memoryFilesAndUpsert() async {
         let store = tempStore()
@@ -330,6 +419,67 @@ struct StoreTests {
         #expect(other.lastPromptTokens == 999)
         #expect(other.sentTokens == 999)
         #expect(other.receivedTokens == 1)
+    }
+
+    @Test("resetChatTokens zeros one bot and leaves chats")
+    func resetChatTokensPerBot() {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = AppStore(dataDirectory: dir, delayScale: 0.01)
+        store.pluginClient = AlwaysAllowPlugins()
+        #expect(store.signUp(name: "A", email: "reset-tok@b.com", password: "password1") == nil)
+        let a = store.createBot(name: "A", title: "helper")
+        let b = store.createBot(name: "B", title: "helper")
+        var thread = store.threads[a.id] ?? ThreadData(threadId: a.threadId)
+        thread.messages.append(
+            ThreadMessage(
+                id: "keep-1",
+                threadId: thread.threadId,
+                seq: 0,
+                role: .user,
+                blocks: [.text("keep this")]
+            )
+        )
+        store.threads[a.id] = thread
+        store.usage = [
+            UsageRecord(
+                id: "1",
+                botId: a.id,
+                provider: "p",
+                model: "m",
+                promptTokens: 80,
+                inputTokens: 140,
+                outputTokens: 20,
+                createdAt: Date(timeIntervalSince1970: 1)
+            ),
+            UsageRecord(
+                id: "2",
+                botId: b.id,
+                provider: "p",
+                model: "m",
+                inputTokens: 999,
+                outputTokens: 1,
+                createdAt: Date(timeIntervalSince1970: 2)
+            ),
+        ]
+        #expect(store.resetChatTokens(botId: a.id) == 1)
+        let cleared = store.chatTokenStats(botId: a.id)
+        #expect(cleared.lastPromptTokens == 0)
+        #expect(cleared.sentTokens == 0)
+        #expect(cleared.receivedTokens == 0)
+        let other = store.chatTokenStats(botId: b.id)
+        #expect(other.sentTokens == 999)
+        #expect(store.messages(for: a.id).contains(where: { $0.role == .user }))
+
+        let reloaded = AppStore(dataDirectory: dir, delayScale: 0.01)
+        reloaded.pluginClient = AlwaysAllowPlugins()
+        #expect(reloaded.chatTokenStats(botId: a.id).sentTokens == 0)
+        #expect(reloaded.chatTokenStats(botId: b.id).sentTokens == 999)
+
+        #expect(reloaded.resetChatTokens() == 1)
+        #expect(reloaded.usage.isEmpty)
+        #expect(reloaded.chatTokenStats(botId: b.id).sentTokens == 0)
     }
 
     @Test("clear save export restore and wipe session")
@@ -460,6 +610,155 @@ struct StoreTests {
         let opened = try #require(store.activeCanvas())
         #expect(!opened.images.isEmpty)
         #expect(store.canvasOpen)
+    }
+
+    @Test("folder watcher save lists persist and run now sends")
+    func folderWatcherSaveListAndRun() throws {
+        let dataDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
+        let store = AppStore(dataDirectory: dataDir, delayScale: 0.01)
+        store.pluginClient = AlwaysAllowPlugins()
+        #expect(store.signUp(name: "A", email: "watch@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Scout", title: "watcher")
+        let inbox = dataDir.appendingPathComponent("inbox", isDirectory: true)
+        try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+
+        var watcher = FolderWatcherRecord.makeNew()
+        watcher.name = "Inbox"
+        watcher.watchPath = inbox.path
+        watcher.instructions = "Summarize new files"
+        watcher.botId = bot.id
+        try store.saveFolderWatcher(watcher)
+
+        #expect(store.folderWatchers.contains(where: { $0.id == watcher.id && $0.name == "Inbox" }))
+        #expect(throws: FolderWatcherError.emptyPath) {
+            var empty = FolderWatcherRecord.makeNew()
+            empty.name = "No path"
+            try store.saveFolderWatcher(empty)
+        }
+
+        let reloaded = AppStore(dataDirectory: dataDir, delayScale: 0.01)
+        reloaded.pluginClient = AlwaysAllowPlugins()
+        #expect(reloaded.folderWatchers.contains(where: { $0.id == watcher.id && $0.name == "Inbox" }))
+
+        let result = store.runFolderWatcherNow(id: watcher.id)
+        #expect(result.contains("Triggered"))
+        #expect(store.messages(for: bot.id).contains(where: {
+            $0.role == .user
+                && $0.firstText.contains("Inbox")
+                && $0.firstText.contains("SKILL.md")
+                && $0.firstText.contains("move_file")
+        }))
+        #expect(store.folderWatchers.first(where: { $0.id == watcher.id })?.lastTriggeredAt != nil)
+
+        try store.deleteFolderWatcher(id: watcher.id)
+        #expect(!store.folderWatchers.contains(where: { $0.id == watcher.id }))
+    }
+
+    @Test("folder watcher does not start a second run while the bot is busy")
+    func folderWatcherSkipsWhileBusy() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "watchbusy@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Scout", title: "watcher")
+        let inbox = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GrizzyWatch-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+        var watcher = FolderWatcherRecord.makeNew()
+        watcher.name = "Inbox"
+        watcher.watchPath = inbox.path
+        watcher.botId = bot.id
+        try? store.saveFolderWatcher(watcher)
+
+        let first = store.runFolderWatcherNow(id: watcher.id)
+        let second = store.runFolderWatcherNow(id: watcher.id)
+        let echo = store.handleFolderWatcherEvent(
+            id: watcher.id,
+            changedPaths: [inbox.appendingPathComponent("Applications/a.dmg").path]
+        )
+        #expect(first.contains("Triggered"))
+        #expect(second.contains("Skipped"))
+        #expect(echo.contains("Skipped"))
+        #expect(store.messages(for: bot.id).filter { $0.role == .user }.count == 1)
+    }
+
+    @Test("automatic watcher echoes stay skipped after the run until cooldown ends")
+    func folderWatcherSkipsEchoAfterRun() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "watchecho@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Scout", title: "watcher")
+        store.chatCompleter = QueueChatClient([ChatCompletionResponse(text: "organized")])
+        let inbox = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GrizzyWatch-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+        var watcher = FolderWatcherRecord.makeNew()
+        watcher.name = "Inbox"
+        watcher.watchPath = inbox.path
+        watcher.botId = bot.id
+        try? store.saveFolderWatcher(watcher)
+
+        #expect(store.runFolderWatcherNow(id: watcher.id).contains("Triggered"))
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        let echo = store.handleFolderWatcherEvent(
+            id: watcher.id,
+            changedPaths: [
+                inbox.appendingPathComponent("a.dmg").path,
+                inbox.appendingPathComponent("Applications/a.dmg").path,
+            ]
+        )
+        #expect(echo.contains("Skipped"))
+        let manual = store.runFolderWatcherNow(id: watcher.id)
+        #expect(manual.contains("Triggered"))
+        #expect(store.messages(for: bot.id).filter { $0.role == .user }.count == 2)
+    }
+
+    @Test("bot text and cards already have a copy control; user text does not")
+    func inlineCopyControl() {
+        let botCard = ThreadMessage(
+            id: "1",
+            threadId: "t",
+            seq: 1,
+            role: .bot,
+            blocks: [.card(lines: [CardLine(k: "mcp", v: "list")])]
+        )
+        let botText = ThreadMessage(
+            id: "2",
+            threadId: "t",
+            seq: 2,
+            role: .bot,
+            blocks: [.text("listed the folder")]
+        )
+        let userText = ThreadMessage(
+            id: "3",
+            threadId: "t",
+            seq: 3,
+            role: .user,
+            blocks: [.text("clean downloads")]
+        )
+        #expect(botCard.hasInlineCopyControl)
+        #expect(botText.hasInlineCopyControl)
+        #expect(!userText.hasInlineCopyControl)
+    }
+
+    @Test("folder watcher prompt names the watch path and blocks skill authoring")
+    func folderWatcherPromptRules() {
+        var watcher = FolderWatcherRecord.makeNew()
+        watcher.name = "Folder-Organize"
+        watcher.watchPath = "/Volumes/Storage/Downloads"
+        watcher.instructions = "paste these into Skills as SKILL.md"
+        let msg = FolderWatcherPromptBuilder.userMessage(
+            watcher: watcher,
+            changedPaths: [],
+            manual: true
+        )
+        #expect(msg.contains("/Volumes/Storage/Downloads"))
+        #expect(msg.contains("SKILL.md"))
+        #expect(msg.contains("move_file"))
+        #expect(msg.contains("one organize pass"))
+        #expect(msg.contains("whichever bot"))
+        #expect(msg.contains("browser skill"))
+        #expect(msg.contains("Instructions:"))
+        #expect(msg.contains("paste these into Skills as SKILL.md"))
     }
 
     private static func testJPEG() -> Data? {

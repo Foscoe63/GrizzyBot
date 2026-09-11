@@ -94,6 +94,11 @@ struct SecretFieldTests {
         #expect(config.sentryConfigured)
         config.clearSecret(.sentry)
         #expect(!config.sentryConfigured)
+        config.applySecret(.googleClientId, input: "cid.apps.googleusercontent.com")
+        config.applySecret(.googleClientSecret, input: "gsecret")
+        #expect(config.googleOAuthConfigured)
+        config.clearSecret(.googleClientSecret)
+        #expect(!config.googleOAuthConfigured)
     }
 }
 

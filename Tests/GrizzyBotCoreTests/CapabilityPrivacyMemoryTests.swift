@@ -124,6 +124,36 @@ struct FolderWatcherGlobTests {
     }
 }
 
+@Suite("FolderWatcherFirePolicy")
+struct FolderWatcherFirePolicyTests {
+    @Test("busy bots never fire; cooldown only blocks automatic events")
+    func skipReasons() {
+        #expect(
+            FolderWatcherFirePolicy.skipReason(botBusy: true, suppressed: false, manual: true)
+                == "Skipped: bot is already running."
+        )
+        #expect(
+            FolderWatcherFirePolicy.skipReason(botBusy: false, suppressed: true, manual: false)
+                == "Skipped: watcher is cooling down."
+        )
+        #expect(FolderWatcherFirePolicy.skipReason(botBusy: false, suppressed: true, manual: true) == nil)
+        #expect(FolderWatcherFirePolicy.skipReason(botBusy: false, suppressed: false, manual: false) == nil)
+    }
+
+    @Test("suppress bumps generation so in-flight timers cannot fire")
+    func generationBumps() {
+        let id = UUID().uuidString
+        #expect(!FolderWatcherSuppression.shared.isSuppressed(id))
+        let first = FolderWatcherSuppression.shared.suppress(id)
+        #expect(FolderWatcherSuppression.shared.isSuppressed(id))
+        let second = FolderWatcherSuppression.shared.suppress(id)
+        #expect(second != first)
+        FolderWatcherSuppression.shared.release(id)
+        #expect(!FolderWatcherSuppression.shared.isSuppressed(id))
+        #expect(FolderWatcherSuppression.shared.currentGeneration(id) == second)
+    }
+}
+
 @Suite("MacUseArgDefaults")
 struct MacUseArgDefaultsTests {
     @Test("get_tool_definitions defaults names to *")

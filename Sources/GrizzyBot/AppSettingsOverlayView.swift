@@ -10,6 +10,9 @@ struct AppSettingsOverlayView: View {
     @State private var profileEmail = ""
     @State private var composioConnect = ""
     @State private var composioApi = ""
+    @State private var googleClientId = ""
+    @State private var googleClientSecret = ""
+    @State private var googleSetupExpanded = false
     @State private var boxToken = ""
     @State private var braveSearchKey = ""
     @State private var ttsKey = ""
@@ -27,12 +30,9 @@ struct AppSettingsOverlayView: View {
     @State private var addMcpOpen = false
     @State private var snapshotName = ""
     @State private var confirmWipeWorkspace = false
+    @State private var confirmResetAllTokens = false
     @State private var sessionNotice: String?
     @State private var bonjourHits: [MCPBonjourDiscovery.Entry] = []
-    @State private var watcherName = ""
-    @State private var watcherPath = ""
-    @State private var watcherInstructions = ""
-    @State private var watcherBotId = ""
     @State private var gatewayPort = "8787"
     @State private var gatewayKey = ""
     @State private var panelSize = AppSettingsPanelMetrics.saved
@@ -86,6 +86,14 @@ struct AppSettingsOverlayView: View {
             }
         } message: {
             Text("Removes every bot, chat, routine, and file. Your account stays. Snapshots are kept until you delete them.")
+        }
+        .alert("Reset token counters for every bot?", isPresented: $confirmResetAllTokens) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset all", role: .destructive) {
+                store.resetChatTokens()
+            }
+        } message: {
+            Text("Prompt, Sent, and Recv go back to zero on every bot. Chat messages stay. Sidebar weekly usage uses the same ledger.")
         }
         .alert("Session", isPresented: Binding(
             get: { sessionNotice != nil },
@@ -330,6 +338,13 @@ struct AppSettingsOverlayView: View {
                         }
 
                         settingsCard(
+                            title: "Token counters",
+                            subtitle: "Prompt, Sent, and Recv on the composer come from this bot’s billed usage. Reset them to start a session from zero. Chat messages are not deleted."
+                        ) {
+                            tokenCountersBody
+                        }
+
+                        settingsCard(
                             title: "Session",
                             subtitle: "Save a restore point, export the whole workspace, or wipe it. Backup uses the iCloud container when this build is team-signed, otherwise iCloud Drive’s GrizzyBot Backups folder, then Documents."
                         ) {
@@ -425,7 +440,7 @@ struct AppSettingsOverlayView: View {
                     case .connections:
                         settingsCard(
                             title: "Keys",
-                            subtitle: "Composio Connect turns Plugins into real browser OAuth (Gmail, Slack, GitHub, Box, …). Without Connect, paste an API token per app. Keys stay on this Mac. Clear removes a stored key."
+                            subtitle: "Composio Connect turns Plugins into real browser OAuth (Slack, GitHub, Box, …). Google apps can use Composio or your own Client ID/Secret below. Keys stay on this Mac. Clear removes a stored key."
                         ) {
                             secretRow(
                                 title: "Composio Connect",
@@ -460,6 +475,78 @@ struct AppSettingsOverlayView: View {
                                 .padding(.top, 8)
                             GrizzyButton(title: "Save keys", variant: .cream, size: .sm) {
                                 persistKeys()
+                            }
+                            .padding(.top, 14)
+                        }
+
+                        settingsCard(
+                            title: "Google (bypass Composio)",
+                            subtitle: "Your Google Cloud OAuth Client ID/Secret for Gmail, Calendar, Sheets, Docs, and Drive. Keep using the same credentials if sign-in already worked once."
+                        ) {
+                            DisclosureGroup(isExpanded: $googleSetupExpanded) {
+                                VStack(alignment: .leading, spacing: 14) {
+                                    ForEach(Array(GoogleOAuth.setupGuide.enumerated()), id: \.element.id) { index, step in
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("\(index + 1). \(step.title)")
+                                                .font(.system(size: 13, weight: .semibold))
+                                                .foregroundStyle(Theme.textBright)
+                                            Text(step.body)
+                                                .font(.system(size: 12.5))
+                                                .foregroundStyle(Theme.textSecondary)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                            if let link = step.linkURL {
+                                                Button(step.linkTitle ?? link.host ?? "Open") {
+                                                    NSWorkspace.shared.open(link)
+                                                }
+                                                .buttonStyle(.plain)
+                                                .font(.system(size: 12.5))
+                                                .foregroundStyle(Theme.textGhost)
+                                                .padding(.top, 2)
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(.top, 8)
+                            } label: {
+                                Text(googleSetupExpanded ? "Hide setup guide" : "Show step-by-step setup guide")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(Theme.textBright)
+                            }
+
+                            secretRow(
+                                title: "Google Client ID",
+                                configured: !(store.appConfig.googleClientId ?? "").isEmpty,
+                                text: $googleClientId,
+                                onClear: { store.clearSecret(.googleClientId) }
+                            )
+                            .padding(.top, 12)
+                            secretRow(
+                                title: "Google Client Secret",
+                                configured: !(store.appConfig.googleClientSecret ?? "").isEmpty,
+                                text: $googleClientSecret,
+                                onClear: { store.clearSecret(.googleClientSecret) }
+                            )
+                            .padding(.top, 12)
+
+                            Text(
+                                store.appConfig.googleOAuthConfigured
+                                    ? "Configured. Open Plugins and Connect Gmail, or use Sign in with Google for all Google apps at once."
+                                    : "After saving both fields, open Plugins → Connect on Gmail (or Sign in with Google)."
+                            )
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.textSecondary)
+                            .padding(.top, 8)
+
+                            HStack(spacing: 10) {
+                                GrizzyButton(title: "Save Google credentials", variant: .cream, size: .sm) {
+                                    persistGoogleKeys()
+                                }
+                                if store.appConfig.googleOAuthConfigured {
+                                    GrizzyButton(title: "Open Plugins", variant: .outline, size: .sm) {
+                                        store.closeAppSettings()
+                                        store.openPlugins()
+                                    }
+                                }
                             }
                             .padding(.top, 14)
                         }
@@ -709,67 +796,9 @@ struct AppSettingsOverlayView: View {
                     case .watchers:
                         settingsCard(
                             title: "Folder watchers",
-                            subtitle: "FSEvents → bot run (next to routines). Debounced with include/exclude globs."
+                            subtitle: "Each watcher is a card. Select one to edit, run it now, or delete it. FSEvents still fire while this is enabled."
                         ) {
-                            Toggle("Enable folder watchers", isOn: Binding(
-                                get: { store.appConfig.enableFolderWatchers },
-                                set: { value in
-                                    var config = store.appConfig
-                                    config.enableFolderWatchers = value
-                                    store.saveAppConfig(config)
-                                }
-                            ))
-                            .toggleStyle(.switch)
-                            GrizzyField(label: "Name", placeholder: "Inbox watcher", text: $watcherName)
-                                .padding(.top, 8)
-                            GrizzyField(label: "Watch path", placeholder: "~/Documents/Inbox", text: $watcherPath)
-                                .padding(.top, 8)
-                            GrizzyField(
-                                label: "Instructions",
-                                placeholder: "Summarize new files…",
-                                text: $watcherInstructions,
-                                axis: .vertical,
-                                lineLimit: 2...4
-                            )
-                            .padding(.top, 8)
-                            if !store.bots.isEmpty {
-                                Picker("Bot", selection: $watcherBotId) {
-                                    ForEach(store.bots) { bot in
-                                        Text(bot.name).tag(bot.id)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .padding(.top, 8)
-                            }
-                            GrizzyButton(title: "Add watcher", variant: .cream, size: .sm) {
-                                var w = FolderWatcherRecord.makeNew()
-                                w.name = watcherName.isEmpty ? "Untitled watcher" : watcherName
-                                w.watchPath = watcherPath
-                                w.instructions = watcherInstructions
-                                w.botId = watcherBotId.isEmpty ? store.activeBotId : watcherBotId
-                                try? store.saveFolderWatcher(w)
-                                watcherName = ""
-                                watcherPath = ""
-                                watcherInstructions = ""
-                            }
-                            .padding(.top, 10)
-                            ForEach(store.folderWatchers()) { watcher in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(watcher.name)
-                                            .foregroundStyle(Theme.textBright)
-                                        Text(watcher.watchPath)
-                                            .font(.system(size: 11.5))
-                                            .foregroundStyle(Theme.textSecondary)
-                                    }
-                                    Spacer()
-                                    Button("Run") { store.runFolderWatcherNow(id: watcher.id) }
-                                    Button("Delete", role: .destructive) {
-                                        try? store.deleteFolderWatcher(id: watcher.id)
-                                    }
-                                }
-                                .padding(.top, 8)
-                            }
+                            FolderWatchersSettingsBlock()
                         }
 
                         settingsCard(
@@ -964,6 +993,54 @@ struct AppSettingsOverlayView: View {
         }
     }
 
+    private var tokenCountersBody: some View {
+        let botId = store.activeBotId
+        let bot = store.bots.first(where: { $0.id == botId })
+        let stats = store.chatTokenStats(botId: botId ?? "")
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 16) {
+                Text(bot?.name ?? "No bot selected")
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundStyle(Theme.textBright)
+                Spacer()
+                tokenCounterStat(label: "Prompt", value: stats.lastPromptTokens)
+                tokenCounterStat(label: "Sent", value: stats.sentTokens)
+                tokenCounterStat(label: "Recv", value: stats.receivedTokens)
+            }
+            HStack(spacing: 12) {
+                GrizzyButton(
+                    title: "Reset this bot",
+                    variant: .cream,
+                    size: .sm,
+                    disabled: botId == nil
+                ) {
+                    if let botId {
+                        store.resetChatTokens(botId: botId)
+                    }
+                }
+                GrizzyButton(
+                    title: "Reset all bots",
+                    variant: .outline,
+                    size: .sm
+                ) {
+                    confirmResetAllTokens = true
+                }
+            }
+        }
+    }
+
+    private func tokenCounterStat(label: String, value: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textMuted)
+            Text(TokenAccounting.grouped(value))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
     private func settingsCard<Content: View>(
         title: String,
         subtitle: String,
@@ -1098,13 +1175,14 @@ struct AppSettingsOverlayView: View {
         ttsVoice = config.ttsVoice ?? "Rachel"
         composioConnect = ""
         composioApi = ""
+        googleClientId = ""
+        googleClientSecret = ""
         boxToken = ""
         braveSearchKey = ""
         ttsKey = ""
         sentryDSN = ""
         gatewayPort = "\(config.localGateway.port)"
         gatewayKey = config.localGateway.apiKey
-        watcherBotId = store.activeBotId ?? store.bots.first?.id ?? ""
         if store.appSettingsSection == .tools {
             store.probeAllMcpServers()
         }
@@ -1126,6 +1204,16 @@ struct AppSettingsOverlayView: View {
         composioApi = ""
         boxToken = ""
         braveSearchKey = ""
+    }
+
+    private func persistGoogleKeys() {
+        store.applySecret(.googleClientId, input: googleClientId)
+        store.applySecret(.googleClientSecret, input: googleClientSecret)
+        googleClientId = ""
+        googleClientSecret = ""
+        if !store.appConfig.googleOAuthConfigured {
+            googleSetupExpanded = true
+        }
     }
 
     private func persistVoice() {
@@ -1169,6 +1257,286 @@ private enum AppSettingsPanelMetrics {
             height = min(height, max(bounds.height - 32, 320))
         }
         return CGSize(width: width, height: height)
+    }
+}
+
+private struct FolderWatchersSettingsBlock: View {
+    @Environment(AppStore.self) private var store
+    @State private var selectedId: String?
+    @State private var name = ""
+    @State private var path = ""
+    @State private var instructions = ""
+    @State private var botId = ""
+    @State private var recursive = true
+    @State private var enabled = true
+    @State private var notice: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle("Enable folder watchers", isOn: Binding(
+                get: { store.appConfig.enableFolderWatchers },
+                set: { value in
+                    var config = store.appConfig
+                    config.enableFolderWatchers = value
+                    store.saveAppConfig(config)
+                }
+            ))
+            .toggleStyle(.switch)
+
+            if store.folderWatchers.isEmpty {
+                Text("No watchers yet. Choose a folder below and click Add watcher — a card will appear here.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(store.folderWatchers) { watcher in
+                        watcherCard(watcher)
+                    }
+                }
+            }
+
+            Divider()
+                .overlay(Theme.borderListRowsAlt)
+
+            Text(selectedId == nil ? "New watcher" : "Edit watcher")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.textBright)
+
+            GrizzyField(label: "Name", placeholder: "Inbox watcher", text: $name)
+            HStack(alignment: .bottom, spacing: 8) {
+                GrizzyField(label: "Watch folder", placeholder: "~/Documents/Inbox", text: $path)
+                Button("Browse…") { pickFolder() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textGhost)
+                    .padding(.bottom, 8)
+            }
+            GrizzyField(
+                label: "Instructions",
+                placeholder: "Summarize new files…",
+                text: $instructions,
+                axis: .vertical,
+                lineLimit: 2...4
+            )
+            if !store.bots.isEmpty {
+                Picker("Bot", selection: $botId) {
+                    Text("Active bot").tag("")
+                    ForEach(store.bots) { bot in
+                        Text(bot.name).tag(bot.id)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+            Toggle("Watch subfolders", isOn: $recursive)
+                .toggleStyle(.switch)
+            Toggle("Enabled", isOn: $enabled)
+                .toggleStyle(.switch)
+
+            if let notice {
+                Text(notice)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(notice.hasPrefix("Triggered") || notice.hasPrefix("Saved")
+                        ? Theme.green
+                        : Theme.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 10) {
+                GrizzyButton(
+                    title: selectedId == nil ? "Add watcher" : "Save changes",
+                    variant: .cream,
+                    size: .sm
+                ) {
+                    saveFromForm()
+                }
+                if selectedId != nil {
+                    GrizzyButton(title: "Run now", variant: .outline, size: .sm) {
+                        if let selectedId { run(id: selectedId) }
+                    }
+                    Button("New") { resetForm() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textGhost)
+                }
+            }
+        }
+        .onAppear {
+            store.reloadFolderWatchers()
+            if botId.isEmpty {
+                botId = store.activeBotId ?? store.bots.first?.id ?? ""
+            }
+        }
+    }
+
+    private func watcherCard(_ watcher: FolderWatcherRecord) -> some View {
+        let selected = selectedId == watcher.id
+        let botName = store.bots.first(where: { $0.id == watcher.botId })?.name
+        let folderExists = FileManager.default.fileExists(
+            atPath: (watcher.watchPath as NSString).expandingTildeInPath
+        )
+        return VStack(alignment: .leading, spacing: 8) {
+            Button {
+                select(watcher)
+            } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text(watcher.name)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Theme.textBright)
+                            .lineLimit(1)
+                        if selected {
+                            Text("editing")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Theme.textGhost)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    Text(watcher.watchPath.isEmpty ? "No folder chosen" : watcher.watchPath)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                    HStack(spacing: 8) {
+                        Text(botName ?? "Active bot")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Theme.textMuted)
+                        if let last = watcher.lastTriggeredAt {
+                            Text("Last run \(last)")
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(Theme.textMuted)
+                                .lineLimit(1)
+                        }
+                        if !folderExists {
+                            Text("Folder missing")
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(Theme.orange)
+                        }
+                    }
+                    if let error = watcher.lastError, !error.isEmpty {
+                        Text(error)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Theme.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 12) {
+                Toggle("On", isOn: Binding(
+                    get: { watcher.enabled },
+                    set: { value in
+                        var updated = watcher
+                        updated.enabled = value
+                        persist(updated)
+                    }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .accessibilityLabel("\(watcher.name) enabled")
+                Spacer()
+                Button("Edit") { select(watcher) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textGhost)
+                Button("Run now") { run(id: watcher.id) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textGhost)
+                Button("Delete", role: .destructive) { delete(watcher) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.orange)
+            }
+        }
+        .padding(12)
+        .background(Theme.bgCard)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(selected ? Theme.orange.opacity(0.55) : Theme.borderListRowsAlt, lineWidth: selected ? 1.5 : 1)
+        }
+    }
+
+    private func select(_ watcher: FolderWatcherRecord) {
+        selectedId = watcher.id
+        name = watcher.name
+        path = watcher.watchPath
+        instructions = watcher.instructions
+        botId = watcher.botId ?? ""
+        recursive = watcher.recursive
+        enabled = watcher.enabled
+        notice = nil
+    }
+
+    private func resetForm() {
+        selectedId = nil
+        name = ""
+        path = ""
+        instructions = ""
+        botId = store.activeBotId ?? store.bots.first?.id ?? ""
+        recursive = true
+        enabled = true
+        notice = nil
+    }
+
+    private func saveFromForm() {
+        var record = store.folderWatchers.first(where: { $0.id == selectedId }) ?? FolderWatcherRecord.makeNew()
+        record.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if record.name.isEmpty { record.name = "Untitled watcher" }
+        record.watchPath = path
+        record.instructions = instructions
+        record.botId = botId.isEmpty ? store.activeBotId : botId
+        record.recursive = recursive
+        record.enabled = enabled
+        persist(record)
+        selectedId = record.id
+    }
+
+    private func persist(_ record: FolderWatcherRecord) {
+        do {
+            try store.saveFolderWatcher(record)
+            notice = "Saved \(record.name)."
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
+    private func run(id: String) {
+        let result = store.runFolderWatcherNow(id: id)
+        notice = result
+        if result.hasPrefix("Triggered") {
+            store.closeAppSettings()
+        }
+    }
+
+    private func delete(_ watcher: FolderWatcherRecord) {
+        do {
+            try store.deleteFolderWatcher(id: watcher.id)
+            if selectedId == watcher.id { resetForm() }
+            notice = "Deleted \(watcher.name)."
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
+    private func pickFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Choose"
+        panel.message = "Folder GrizzyBot should watch"
+        let expanded = (path as NSString).expandingTildeInPath
+        if !expanded.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: expanded)
+        }
+        if panel.runModal() == .OK, let url = panel.url {
+            path = url.path
+        }
     }
 }
 

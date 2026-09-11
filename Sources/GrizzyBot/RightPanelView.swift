@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct RightPanelView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.rightPanelResizing) private var isResizing
 
     @State private var createName = ""
     @State private var createTitle = ""
@@ -39,16 +40,19 @@ struct RightPanelView: View {
                             CanvasPanelView()
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 17)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 17)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 }
                 .grizzyScroll()
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 Color.clear
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, 28) // clear traffic lights under fullSizeContentView
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
     }
 
     private var bot: Bot? { store.activeBot }
@@ -75,12 +79,21 @@ struct RightPanelView: View {
                         .multilineTextAlignment(.center)
                         .padding(16)
                 } else if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
-                    ThisMacScreenPreview(botId: bot.id, pollSeconds: 3, fill: true)
+                    if isResizing {
+                        Theme.bgScreen
+                        Text("Resizing…")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.textMuted)
+                    } else {
+                        ThisMacScreenPreview(botId: bot.id, pollSeconds: 3, fill: true)
+                    }
                 } else if let bot, let data = AppComputerRuntime.shared.cachedJPEG(for: bot.id),
                           let image = NSImage(data: data) {
                     Image(nsImage: image)
                         .resizable()
                         .scaledToFill()
+                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                        .clipped()
                 } else {
                     screenLabel
                         .font(.system(size: 13.5))
@@ -88,36 +101,39 @@ struct RightPanelView: View {
                         .multilineTextAlignment(.center)
                         .padding(16)
                 }
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { store.openComputerOverlay() }
             }
+            .frame(maxWidth: .infinity)
             .aspectRatio(16 / 10, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .onTapGesture { store.openComputerOverlay() }
 
-            HStack {
+            VStack(alignment: .leading, spacing: 10) {
                 Text(statusCaption)
                     .font(.system(size: 13.5))
                     .foregroundStyle(Theme.textSecondary)
-                Spacer()
+                    .fixedSize(horizontal: false, vertical: true)
                 if let bot {
                     if computer?.controlHolder == .user {
                         GrizzyButton(title: "Release", variant: .outline, size: .sm) {
                             store.release(botId: bot.id)
                         }
                     } else {
+                        // Take control only — full window is the preview tap. Avoids overlay remount churn.
                         GrizzyButton(title: "Take control", variant: .outline, size: .sm) {
-                            store.openComputerOverlay()
+                            store.takeControl(botId: bot.id)
                         }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 12)
 
             if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
                 Text("Preview only — the bot clicks your real Mac. Take control to type passwords yourself.")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 8)
             }
 

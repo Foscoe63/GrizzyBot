@@ -57,7 +57,7 @@ public struct PluginClient: PluginConnecting {
             )
             let name = ((json["data"] as? [String: Any])?["viewer"] as? [String: Any])?["name"] as? String ?? "linear"
             return PluginAccount(slug: slug, label: name, token: trimmed)
-        case "gmail", "google-calendar":
+        case "gmail", "google-calendar", "google-sheets", "google-docs", "google-drive", "googledrive", "gdrive":
             let json = try await getJSON(
                 "https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=\(urlEncode(trimmed))",
                 token: nil
@@ -154,7 +154,7 @@ public struct PluginClient: PluginConnecting {
     }
 
     public func search(slug: String, token: String, query: String) async throws -> String {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let q = ComposioClient.normalizedReadQuery(slug: slug, query: query)
         guard !q.isEmpty else { throw PluginError.rejected("query is required") }
         switch slug {
         case "github":
@@ -180,6 +180,60 @@ public struct PluginClient: PluginConnecting {
             let entries = (json["entries"] as? [[String: Any]]) ?? []
             if entries.isEmpty { return "No Box items for \(q)." }
             return entries.prefix(5).compactMap { item in
+                let name = item["name"] as? String ?? ""
+                let id = item["id"] as? String ?? ""
+                return "• \(name) (\(id))"
+            }.joined(separator: "\n")
+        case "gmail":
+            let encoded = urlEncode(q)
+            let json = try await getJSON(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=\(encoded)&maxResults=8",
+                token: token
+            )
+            let messages = (json["messages"] as? [[String: Any]]) ?? []
+            if messages.isEmpty { return "No Gmail messages for \(q)." }
+            var lines: [String] = []
+            for message in messages.prefix(8) {
+                guard let id = message["id"] as? String else { continue }
+                let detail = try await getJSON(
+                    "https://gmail.googleapis.com/gmail/v1/users/me/messages/\(id)?format=metadata&metadataHeaders=Subject&metadataHeaders=From",
+                    token: token
+                )
+                let headers = ((detail["payload"] as? [String: Any])?["headers"] as? [[String: Any]]) ?? []
+                func header(_ name: String) -> String {
+                    headers.first(where: { ($0["name"] as? String)?.lowercased() == name.lowercased() })?["value"] as? String ?? ""
+                }
+                let subject = header("Subject")
+                let from = header("From")
+                lines.append("• \(subject.isEmpty ? id : subject) — \(from)")
+            }
+            return lines.joined(separator: "\n")
+        case "google-calendar", "googlecalendar":
+            let encoded = urlEncode(q)
+            let json = try await getJSON(
+                "https://www.googleapis.com/calendar/v3/calendars/primary/events?q=\(encoded)&maxResults=8&singleEvents=true&orderBy=startTime",
+                token: token
+            )
+            let items = (json["items"] as? [[String: Any]]) ?? []
+            if items.isEmpty { return "No Calendar events for \(q)." }
+            return items.prefix(8).compactMap { item in
+                let summary = item["summary"] as? String ?? "(no title)"
+                let start = ((item["start"] as? [String: Any])?["dateTime"] as? String)
+                    ?? ((item["start"] as? [String: Any])?["date"] as? String)
+                    ?? ""
+                return "• \(summary) — \(start)"
+            }.joined(separator: "\n")
+        case "google-sheets", "googlesheets":
+            return "Google Sheets search needs a spreadsheet id in the query (spreadsheetId …). Connected via Google OAuth."
+        case "google-docs", "googledocs":
+            let encoded = urlEncode("mimeType='application/vnd.google-apps.document' \(q)")
+            let json = try await getJSON(
+                "https://www.googleapis.com/drive/v3/files?q=\(encoded)&pageSize=8&fields=files(id,name)",
+                token: token
+            )
+            let files = (json["files"] as? [[String: Any]]) ?? []
+            if files.isEmpty { return "No Google Docs for \(q)." }
+            return files.prefix(8).compactMap { item in
                 let name = item["name"] as? String ?? ""
                 let id = item["id"] as? String ?? ""
                 return "• \(name) (\(id))"
@@ -211,7 +265,7 @@ public struct PluginClient: PluginConnecting {
                 return "• \(name) (\(id))"
             }.joined(separator: "\n")
         default:
-            throw PluginError.rejected("Paste-token \(slug) has no read API in GrizzyBot. Connect Composio for search.")
+            throw PluginError.rejected("Paste-token \(slug) has no read API in GrizzyBot. Connect Composio or Google OAuth for search.")
         }
     }
 
@@ -226,7 +280,8 @@ public struct PluginClient: PluginConnecting {
         case "slack": return "Slack bot token or incoming webhook URL"
         case "notion": return "Notion integration secret"
         case "linear": return "Linear API key"
-        case "gmail", "google-calendar": return "Google OAuth access token"
+        case "gmail", "google-calendar", "google-sheets", "google-docs", "google-drive":
+            return "Google OAuth access token — or use Client ID/Secret in Settings → Google"
         case "jira": return "Atlassian API token"
         case "trello": return "Trello token (or key=…&token=…)"
         case "asana": return "Asana personal access token"
@@ -251,7 +306,15 @@ public struct PluginClient: PluginConnecting {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
-            throw PluginError.rejected("HTTP \(status)")
+            let body = String(data: data, encoding: .utf8) ?? ""
+            let hint: String
+            if status == 401 || status == 403 {
+                hint = " Google sign-in expired — reconnect Gmail from Plugins (Sign in with Google)."
+            } else {
+                hint = ""
+            }
+            let detail = body.split(separator: "\n").first.map(String.init) ?? body
+            throw PluginError.rejected("HTTP \(status)\(hint)\(detail.isEmpty ? "" : ": \(String(detail.prefix(200)))")")
         }
         return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
@@ -279,7 +342,11 @@ public struct PluginClient: PluginConnecting {
         if data.isEmpty { return ["ok": status] }
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? ["raw": String(data: data, encoding: .utf8) ?? ""]
         guard (200..<300).contains(status) else {
-            throw PluginError.rejected("HTTP \(status)")
+            let bodyText = String(data: data, encoding: .utf8) ?? ""
+            let hint = (status == 401 || status == 403)
+                ? " Google sign-in expired — reconnect from Plugins."
+                : ""
+            throw PluginError.rejected("HTTP \(status)\(hint)\(bodyText.isEmpty ? "" : ": \(String(bodyText.prefix(200)))")")
         }
         return json
     }

@@ -62,7 +62,7 @@ struct MessageView: View {
                     }
                 }
 
-                if canCopy {
+                if canCopy, !message.hasInlineCopyControl {
                     copyButton
                 }
                 if message.role != .user {
@@ -191,9 +191,10 @@ struct MessageView: View {
                                 .foregroundStyle(.white)
                             Text("→")
                                 .foregroundStyle(Theme.textSecondary)
-                            Text(line.v)
+                            Text(Self.displayCardValue(line.v))
                                 .font(.system(size: 15))
                                 .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(4)
                         }
                     }
                 }
@@ -201,7 +202,7 @@ struct MessageView: View {
                 .padding(.vertical, 16)
                 .background(Theme.bgBubble)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                bubbleCopyButton(lines.map { "\($0.k): \($0.v)" }.joined(separator: "\n"))
+                bubbleCopyButton(lines.map { "\($0.k): \(Self.displayCardValue($0.v))" }.joined(separator: "\n"))
             }
             .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
 
@@ -227,6 +228,20 @@ struct MessageView: View {
 
     private func bubbleMax(_ fraction: CGFloat) -> CGFloat {
         900 * fraction
+    }
+
+    /// Avoid dumping raw Composio/JSON payloads into chat bubbles.
+    private static func displayCardValue(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {
+            let failed = trimmed.localizedCaseInsensitiveContains("\"successful\": false")
+                || trimmed.localizedCaseInsensitiveContains("error_count")
+            return ComposioClient.chatSummary(slug: "plugin", query: "", result: trimmed, failed: failed)
+        }
+        if trimmed.count > 220 {
+            return String(trimmed.prefix(200)) + "…"
+        }
+        return trimmed
     }
 
     private var copyableText: String {

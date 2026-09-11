@@ -26,6 +26,7 @@ public final class AppStore {
     public var route: Route = .welcome
     public var session: Session?
     public var bots: [Bot] = []
+    public var folderWatchers: [FolderWatcherRecord] = []
     public var activeBotId: String?
     public var threads: [String: ThreadData] = [:]
     public var routines: [String: [Routine]] = [:]
@@ -114,12 +115,26 @@ public final class AppStore {
         composioClient != nil || appConfig.composioConfigured
     }
 
+    public var googlePluginsReady: Bool {
+        googleOAuthClient != nil || appConfig.googleOAuthConfigured
+    }
+
     private func liveComposio() -> (any ComposioConnecting)? {
         if let composioClient { return composioClient }
         let key = (appConfig.composioConnectKey ?? appConfig.composioApiKey ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { return nil }
         return ComposioClient(connectKey: key, apiKey: appConfig.composioApiKey)
+    }
+
+    private func liveGoogleOAuth() -> (any GoogleOAuthConnecting)? {
+        if let googleOAuthClient { return googleOAuthClient }
+        guard appConfig.googleOAuthConfigured else { return nil }
+        return GoogleOAuthClient(openURL: { [weak self] url in
+            Task { @MainActor in
+                self?.pluginAuthURL = url
+            }
+        })
     }
 
     private var users: [UserAccount] = []
@@ -136,6 +151,10 @@ public final class AppStore {
 
     /// Shorter delays in tests so `swift test` stays fast.
     public var delayScale: Double = 1.0
+    /// Watcher runs pin file tools to the watch path until the run goes idle.
+    private var runWorkingFolderOverride: [String: String] = [:]
+    /// Bot currently executing a watcher-triggered run (for echo suppression).
+    private var watcherRunByBotId: [String: String] = [:]
     /// Injected chat client (tests). Production uses `OpenAIChatClient.shared`.
     public var chatCompleter: (any ChatCompleting)?
     public var oauthJSON: String?
@@ -144,6 +163,7 @@ public final class AppStore {
     public var computerRuntime: (any ComputerRuntime)?
     public var pluginClient: any PluginConnecting = PluginClient.shared
     public var composioClient: (any ComposioConnecting)?
+    public var googleOAuthClient: (any GoogleOAuthConnecting)?
     public var pluginError: String?
     public var connectingSlug: String?
     public var pluginAuthURL: URL?
@@ -151,6 +171,9 @@ public final class AppStore {
     public var composioCatalog: [ConnectionItem] = []
     public var composioCatalogLoading = false
     public var composioCatalogError: String?
+    /// Discovered Composio account aliases per plugin slug (e.g. gmail → [gmail_a, gmail_b]).
+    public var composioAccountChoices: [String: [String]] = [:]
+    public var composioAccountsLoadingSlug: String?
 
     public struct RoutineDraft: Sendable, Equatable {
         public var name: String = ""
@@ -262,6 +285,7 @@ public final class AppStore {
         attachUserPersistence(userId: session.userId)
         self.session = session
         loadWorkspace(for: session.userId)
+        reloadFolderWatchers()
         route = bots.isEmpty ? .onboarding : .shell
         showHostPrompt = route == .shell && deployment.computerHost == nil
         globalPersistence.saveSession(session)
@@ -293,6 +317,7 @@ public final class AppStore {
         groups = []
         customTools = []
         mcpServers = []
+        folderWatchers = []
         actionPolicy = .openDefault
         knowledgeSources = []
         pluginGrants = []
@@ -897,7 +922,23 @@ public final class AppStore {
             || threads[threadKey(for: botId)]?.run?.status == .waitingInput
     }
 
-    public func send(botId: String, text: String, attaching files: [URL] = []) {
+    /// File tools resolve here for the current run (watcher watch path, else the bot folder).
+    public func effectiveWorkingFolder(for bot: Bot) -> String? {
+        let override = runWorkingFolderOverride[bot.id]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let override, !override.isEmpty { return override }
+        return bot.workingFolder
+    }
+
+    private func extraShellWriteRoots(for bot: Bot) -> [String] {
+        guard let folder = effectiveWorkingFolder(for: bot)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !folder.isEmpty
+        else { return [] }
+        let expanded = BotHomeStore.expandPath(folder)
+        guard WorkingFolder.isTrusted(expanded, workingFolder: expanded) else { return [] }
+        return [expanded]
+    }
+
+    public func send(botId: String, text: String, attaching files: [URL] = [], workingFolderOverride: String? = nil) {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         var imported: [String] = []
         for file in files {
@@ -970,6 +1011,9 @@ public final class AppStore {
         bots[botIdx].preview = trimmed.count > 80 ? String(trimmed.prefix(80)) + "…" : trimmed
         bots[botIdx].updatedAt = .now
         save()
+        if let folder = workingFolderOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !folder.isEmpty {
+            runWorkingFolderOverride[botId] = (folder as NSString).expandingTildeInPath
+        }
         launchRun(botId: botId, threadKey: threadKey, prompt: trimmed, promptImageJPEGBase64: attachedJPEG)
     }
 
@@ -1138,20 +1182,25 @@ public final class AppStore {
         )
         let botSkills = skills(for: bot)
         let slash = SlashCommand.resolve(prompt, skills: botSkills)
+        let pinFolderToRun = runWorkingFolderOverride[botId] != nil
         let agentPromptRaw: String
         let injected: [AgentSkill]
         switch slash {
         case .skill(let skill, let skillPrompt):
             agentPromptRaw = skillPrompt
-            var matched = SkillMarkdown.matching(botSkills, prompt: skillPrompt)
-            matched.removeAll { $0.id == skill.id }
-            injected = [skill] + matched
+            if pinFolderToRun {
+                injected = []
+            } else {
+                var matched = SkillMarkdown.matching(botSkills, prompt: skillPrompt)
+                matched.removeAll { $0.id == skill.id }
+                injected = [skill] + matched
+            }
         case .plain(let plain):
             agentPromptRaw = plain
-            injected = SkillMarkdown.matching(botSkills, prompt: plain)
+            injected = pinFolderToRun ? [] : SkillMarkdown.matching(botSkills, prompt: plain)
         case .unknown, .help:
             agentPromptRaw = prompt
-            injected = SkillMarkdown.matching(botSkills, prompt: prompt)
+            injected = pinFolderToRun ? [] : SkillMarkdown.matching(botSkills, prompt: prompt)
         }
         let agentPrompt: String
         do {
@@ -1179,12 +1228,16 @@ public final class AppStore {
                 threads[threadKey] = t
             }
             save()
+            releaseWorkingFolderOverrideIfNeeded(botId: botId)
             return
         }
         let skillText = SkillMarkdown.catalogPrompt(from: botSkills, injected: injected)
         let homePath = (try? botHome.homeURL(botId: botId).path) ?? ""
         let computerNote = computerNote(for: bot)
-        let workingFolderNote = WorkingFolder.promptNote(bot.workingFolder)
+        let workingFolderNote = WorkingFolder.promptNote(
+            effectiveWorkingFolder(for: bot),
+            scopedToRun: pinFolderToRun
+        )
 
         var blocks: [MessageBlock] = []
         var pause: AgentPause?
@@ -1324,7 +1377,14 @@ public final class AppStore {
                     execute: execute
                 )
             }
-            blocks.append(contentsOf: result.blocks)
+            blocks.append(contentsOf: result.blocks.filter { block in
+                // Live tool messages already show status cards; keep interactive blocks only.
+                switch block {
+                case .card: return false
+                case .ask, .approval, .choice, .connect, .component, .computer: return true
+                default: return true
+                }
+            })
             replyText = result.text
             pause = result.pause
             inputTokens = result.inputTokens
@@ -1441,6 +1501,7 @@ public final class AppStore {
             error: thread2.run?.error ?? (failed ? replyText : nil)
         )
         announceFinished(botId: botId, text: replyText, status: thread2.run?.status)
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     private func runScriptedAgent(botId: String, threadKey: String, runId: String, prompt: String) async {
@@ -1562,6 +1623,7 @@ public final class AppStore {
 
         runTasks.removeValue(forKey: runId)
         announceFinished(botId: botId, text: botMsg.firstText, status: thread2.run?.status)
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     private func setThinkingProgress(threadKey: String, runId: String, messageId: String, text: String) {
@@ -1600,6 +1662,7 @@ public final class AppStore {
             bots[idx].preview = preview.count > 80 ? String(preview.prefix(80)) + "…" : preview
             if status?.isActive != true && status != .waitingInput && status != .waitingTakeover {
                 bots[idx].status = "idle"
+                releaseWorkingFolderOverrideIfNeeded(botId: botId)
             }
             bots[idx].updatedAt = .now
             if activeBotId != botId {
@@ -1635,14 +1698,14 @@ public final class AppStore {
             return AgentToolCallResult(output: "Unknown bot.")
         }
         func resolveToolPath(_ raw: String) -> String {
-            WorkingFolder.resolve(raw, workingFolder: bot.workingFolder)
+            WorkingFolder.resolve(raw, workingFolder: effectiveWorkingFolder(for: bot))
         }
         func hostGate(tool: String, paths: String..., argumentsJSON: String) -> AgentToolCallResult? {
             for path in paths where BotHomeStore.isHostPath(path) {
                 if BotHomeStore.isDeniedHostPath(path) {
                     return AgentToolCallResult(output: "\(tool) failed: \(BotHomeError.hostDenied.localizedDescription)")
                 }
-                if WorkingFolder.isTrusted(path, workingFolder: bot.workingFolder) {
+                if WorkingFolder.isTrusted(path, workingFolder: effectiveWorkingFolder(for: bot)) {
                     continue
                 }
                 if let gated = gatedWrite(
@@ -2052,7 +2115,13 @@ public final class AppStore {
             }
             let allowed = bot.autoApprove || bot.alwaysAllowTools.contains("shell.exec")
             do {
-                let result = try await botHome.runShell(botId: botId, command: command, cwd: cwd, timeout: timeout)
+                let result = try await botHome.runShell(
+                    botId: botId,
+                    command: command,
+                    cwd: cwd,
+                    timeout: timeout,
+                    extraWriteRoots: extraShellWriteRoots(for: bot)
+                )
                 let status: ApprovalStatus = allowed ? .alwaysAllowed : .allowed
                 return AgentToolCallResult(
                     output: result.combined,
@@ -2905,9 +2974,32 @@ public final class AppStore {
             return AgentToolCallResult(output: action?.output ?? "Pressed \(key).")
 
         case "plugin_call":
-            let slug = s("slug")
+            let slug = s("slug").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if slug.isEmpty {
+                return AgentToolCallResult(output: "plugin_call needs a slug (e.g. gmail or google-calendar).")
+            }
+            if slug == "composio_connect" || slug == "composio" || slug == "composio_api" {
+                let hasKey = pluginsUseOAuth
+                return AgentToolCallResult(
+                    output: hasKey
+                        ? "Composio Connect is a Settings key (already saved), not a plugin. Open Plugins and Connect Gmail / Google Calendar, then call plugin_call with slug gmail or google-calendar."
+                        : "Composio Connect is a Settings → Connections → Keys field, not a plugin. Save a Composio Connect key there, then Connect Gmail from Plugins."
+                )
+            }
+            if !connections.contains(where: { $0.slug == slug && $0.connected }) {
+                await syncComposioConnection(slug: slug)
+            }
             guard connections.contains(where: { $0.slug == slug && $0.connected }) else {
-                return AgentToolCallResult(output: "Plugin \(slug) is not connected.")
+                let hint: String
+                if pluginsUseOAuth {
+                    hint = " Open Plugins → \(slug) → Connect (browser OAuth via Composio), then try again."
+                } else {
+                    hint = " Save a Composio Connect key in Settings → Connections → Keys, then Connect \(slug) from Plugins."
+                }
+                return AgentToolCallResult(
+                    output: "Plugin \(slug) is not connected.\(hint)",
+                    blocks: [.card(lines: [CardLine(k: "plugin_call", v: "Plugin \(slug) is not connected.")])]
+                )
             }
             let action = s("action").lowercased()
             let isWrite = action.isEmpty || action == "write"
@@ -2921,24 +3013,48 @@ public final class AppStore {
                 return gated
             }
             do {
+                let account = s("account", "connected_account", "connected_account_id")
+                if !account.isEmpty {
+                    storeAccountPreferenceFromTool(slug: slug, account: account)
+                }
                 if isWrite {
-                    let remote = try await writePlugin(slug: slug, title: s("title"), body: s("body"))
+                    let remote = try await writePlugin(
+                        slug: slug,
+                        title: s("title"),
+                        body: s("body"),
+                        account: account.isEmpty ? nil : account
+                    )
                     return AgentToolCallResult(
                         output: "Plugin \(slug) wrote \(remote).",
-                        blocks: [.card(lines: [CardLine(k: slug, v: remote)])]
+                        blocks: [.card(lines: [
+                            CardLine(k: slug, v: ComposioClient.chatSummary(slug: slug, query: s("title"), result: remote, failed: false)),
+                        ])]
                     )
                 }
-                let query = s("query", "q", "body", "title")
-                let remote = try await readPlugin(slug: slug, query: query.isEmpty ? action : query)
+                let rawQuery = s("query", "q", "body", "title")
+                let query = ComposioClient.normalizedReadQuery(
+                    slug: slug,
+                    query: rawQuery.isEmpty ? action : rawQuery
+                )
+                let remote = try await readPlugin(
+                    slug: slug,
+                    query: query,
+                    account: account.isEmpty ? nil : account
+                )
+                let summary = ComposioClient.chatSummary(slug: slug, query: query, result: remote, failed: false)
                 return AgentToolCallResult(
                     output: remote,
                     blocks: [.card(lines: [
-                        CardLine(k: slug, v: action.isEmpty ? "search" : action),
-                        CardLine(k: "query", v: query),
+                        CardLine(k: slug, v: summary),
                     ])]
                 )
             } catch {
-                return AgentToolCallResult(output: "Plugin failed: \(error.localizedDescription)")
+                let detail = error.localizedDescription
+                let summary = ComposioClient.chatSummary(slug: slug, query: "", result: detail, failed: true)
+                return AgentToolCallResult(
+                    output: "Plugin failed: \(detail)",
+                    blocks: [.card(lines: [CardLine(k: slug, v: summary)])]
+                )
             }
 
         default:
@@ -3417,6 +3533,7 @@ public final class AppStore {
         }
         save()
         runTasks.removeValue(forKey: runId)
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     private func finishCancelled(botId: String, threadKey: String? = nil, runId: String) {
@@ -3434,6 +3551,7 @@ public final class AppStore {
         runTasks.removeValue(forKey: runId)
         save()
         finishRoutineIfNeeded(botId: botId, threadKey: key, status: .cancelled, error: "cancelled")
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     private func finishRoutineIfNeeded(
@@ -3495,6 +3613,7 @@ public final class AppStore {
         threads[botId] = thread
         _ = answer
         save()
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     private func upsertMemory(botId: String, text: String) {
@@ -4209,6 +4328,9 @@ public final class AppStore {
         if liveComposio() != nil {
             await browseComposioCatalog(query: "")
             await refreshComposioStatus(slugs: connections.map(\.slug).prefix(40).map { $0 })
+            for item in connections where item.connected && item.viaComposio && GoogleOAuth.isGooglePlugin(item.slug) {
+                await refreshComposioAccountChoices(slug: item.slug)
+            }
         } else {
             composioCatalog = []
             composioCatalogError = nil
@@ -4305,6 +4427,17 @@ public final class AppStore {
         save()
     }
 
+    /// Pull one toolkit's live Composio status into local plugin state (used by plugin_call).
+    @discardableResult
+    public func syncComposioConnection(slug: String) async -> Bool {
+        guard liveComposio() != nil else { return false }
+        if connections.first(where: { $0.slug == slug }) == nil {
+            _ = addToolkit(slug: slug)
+        }
+        await refreshComposioStatus(slugs: [slug])
+        return connections.first(where: { $0.slug == slug })?.connected == true
+    }
+
     public func connect(slug: String, token: String? = nil) {
         guard !connectionPending.contains(slug) else { return }
         let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -4315,6 +4448,11 @@ public final class AppStore {
                     connections[idx].accountLabel = slug
                 }
                 save()
+                return
+            }
+            // Prefer direct Google OAuth when Client ID/Secret are configured (bypasses Composio).
+            if GoogleOAuth.isGooglePlugin(slug), liveGoogleOAuth() != nil {
+                startGoogleOAuth(slugs: [slug])
                 return
             }
             if liveComposio() != nil {
@@ -4349,6 +4487,11 @@ public final class AppStore {
         pluginTasks[slug] = task
     }
 
+    /// One Google sign-in for Gmail + Calendar + Sheets + Docs + Drive.
+    public func connectGoogleSuite() {
+        startGoogleOAuth(slugs: GoogleOAuth.allGoogleSlugs)
+    }
+
     /// Open the paste-token sheet instead of (or after) browser OAuth.
     public func promptPluginToken(slug: String) {
         pluginTasks[slug]?.cancel()
@@ -4357,6 +4500,108 @@ public final class AppStore {
         pluginAuthURL = nil
         connectingSlug = slug
         pluginError = nil
+    }
+
+    private static let googleTokenSentinel = "google-oauth"
+
+    private func startGoogleOAuth(slugs: [String]) {
+        guard let google = liveGoogleOAuth() else { return }
+        let clientId = (appConfig.googleClientId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientSecret = (appConfig.googleClientSecret ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard googleOAuthClient != nil || (!clientId.isEmpty && !clientSecret.isEmpty) else {
+            pluginError = GoogleOAuthError.missingCredentials.localizedDescription
+            return
+        }
+        let targetSlugs = slugs.filter { GoogleOAuth.isGooglePlugin($0) }
+        guard !targetSlugs.isEmpty else { return }
+        for slug in targetSlugs {
+            connectionPending.insert(slug)
+            pluginTasks[slug]?.cancel()
+        }
+        pluginError = nil
+        oauthWaitSlug = targetSlugs.first
+        let waitKey = targetSlugs.joined(separator: ",")
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                var scopes = GoogleOAuth.scopes(for: targetSlugs)
+                if let existing = GoogleOAuth.decodeCredential(self.connectionSecrets[GoogleOAuth.credentialSecretKey]) {
+                    for scope in existing.scopes where !scopes.contains(scope) {
+                        scopes.append(scope)
+                    }
+                }
+                let cred = try await google.authorize(
+                    clientId: clientId.isEmpty ? "test-client" : clientId,
+                    clientSecret: clientSecret.isEmpty ? "test-secret" : clientSecret,
+                    scopes: scopes
+                )
+                self.applyGoogleCredential(cred, slugs: targetSlugs)
+                self.pluginError = nil
+            } catch {
+                self.pluginError = error.localizedDescription
+            }
+            for slug in targetSlugs {
+                self.connectionPending.remove(slug)
+                self.pluginTasks.removeValue(forKey: slug)
+            }
+            if self.oauthWaitSlug == targetSlugs.first { self.oauthWaitSlug = nil }
+            self.pluginAuthURL = nil
+            self.save()
+            _ = waitKey
+        }
+        for slug in targetSlugs {
+            pluginTasks[slug] = task
+        }
+    }
+
+    private func applyGoogleCredential(_ cred: GoogleOAuthCredential, slugs: [String]) {
+        if let encoded = GoogleOAuth.encodeCredential(cred) {
+            connectionSecrets[GoogleOAuth.credentialSecretKey] = encoded
+        }
+        let label = cred.email ?? "Google"
+        for slug in slugs {
+            if connections.first(where: { $0.slug == slug }) == nil {
+                _ = addToolkit(slug: slug)
+            }
+            if let idx = connections.firstIndex(where: { $0.slug == slug }) {
+                connections[idx].connected = true
+                connections[idx].viaComposio = false
+                connections[idx].accountLabel = label
+            }
+            connectionSecrets[slug] = Self.googleTokenSentinel
+        }
+    }
+
+    private func liveGoogleAccessToken(for slug: String) async throws -> String? {
+        guard GoogleOAuth.isGooglePlugin(slug) else { return nil }
+        guard connectionSecrets[slug] == Self.googleTokenSentinel else { return nil }
+        guard var cred = GoogleOAuth.decodeCredential(connectionSecrets[GoogleOAuth.credentialSecretKey]) else {
+            throw PluginError.rejected(
+                "Google sign-in is missing for \(slug). Open Plugins → Sign in with Google, then try again."
+            )
+        }
+        if cred.isExpired {
+            guard let google = liveGoogleOAuth(),
+                  let clientId = appConfig.googleClientId,
+                  let clientSecret = appConfig.googleClientSecret
+            else {
+                throw PluginError.rejected(
+                    "Google token expired and Client ID/Secret are missing. Re-save them in Settings → Google, then Sign in with Google."
+                )
+            }
+            do {
+                cred = try await google.refresh(cred, clientId: clientId, clientSecret: clientSecret)
+            } catch {
+                throw PluginError.rejected(
+                    "Google sign-in expired (\(error.localizedDescription)). Open Plugins → Sign in with Google again."
+                )
+            }
+            if let encoded = GoogleOAuth.encodeCredential(cred) {
+                connectionSecrets[GoogleOAuth.credentialSecretKey] = encoded
+                save()
+            }
+        }
+        return cred.access
     }
 
     private func startComposioOAuth(slug: String) {
@@ -4368,18 +4613,7 @@ public final class AppStore {
         let task = Task { [weak self] in
             guard let self else { return }
             do {
-                let url = try await composio.authorizeURL(for: slug)
-                self.pluginAuthURL = url
-                var connected = false
-                for _ in 0..<12 {
-                    try? await Task.sleep(for: .seconds(max(0.05, 2.5 * self.delayScale)))
-                    if Task.isCancelled { break }
-                    if (try? await composio.isConnected(slug)) == true {
-                        connected = true
-                        break
-                    }
-                }
-                if connected {
+                if (try? await composio.isConnected(slug)) == true {
                     if let idx = self.connections.firstIndex(where: { $0.slug == slug }) {
                         self.connections[idx].connected = true
                         self.connections[idx].viaComposio = true
@@ -4388,10 +4622,42 @@ public final class AppStore {
                     self.connectionSecrets[slug] = ComposioClient.composioTokenSentinel
                     self.pluginError = nil
                 } else {
-                    self.pluginError = "Waiting for sign-in. Finish in the browser, then click Connect again."
+                    let url = try await composio.authorizeURL(for: slug)
+                    self.pluginAuthURL = url
+                    var connected = false
+                    for _ in 0..<24 {
+                        try? await Task.sleep(for: .seconds(max(0.05, 2.5 * self.delayScale)))
+                        if Task.isCancelled { break }
+                        if (try? await composio.isConnected(slug)) == true {
+                            connected = true
+                            break
+                        }
+                    }
+                    if connected {
+                        if let idx = self.connections.firstIndex(where: { $0.slug == slug }) {
+                            self.connections[idx].connected = true
+                            self.connections[idx].viaComposio = true
+                            self.connections[idx].accountLabel = "Signed in"
+                        }
+                        self.connectionSecrets[slug] = ComposioClient.composioTokenSentinel
+                        self.pluginError = nil
+                    } else {
+                        self.pluginError = "Waiting for sign-in. Finish in the browser, then click Connect again."
+                    }
                 }
             } catch {
-                self.pluginError = error.localizedDescription
+                let message = error.localizedDescription
+                if message.localizedCaseInsensitiveContains("already connected") {
+                    if let idx = self.connections.firstIndex(where: { $0.slug == slug }) {
+                        self.connections[idx].connected = true
+                        self.connections[idx].viaComposio = true
+                        self.connections[idx].accountLabel = "Signed in"
+                    }
+                    self.connectionSecrets[slug] = ComposioClient.composioTokenSentinel
+                    self.pluginError = nil
+                } else {
+                    self.pluginError = message
+                }
             }
             self.connectionPending.remove(slug)
             self.oauthWaitSlug = nil
@@ -4409,11 +4675,16 @@ public final class AppStore {
         let token = connectionSecrets[slug]
         let viaComposio = connections.first(where: { $0.slug == slug })?.viaComposio == true
             || token == ComposioClient.composioTokenSentinel
+        let viaGoogle = token == Self.googleTokenSentinel
+            || (GoogleOAuth.isGooglePlugin(slug)
+                && GoogleOAuth.decodeCredential(connectionSecrets[GoogleOAuth.credentialSecretKey]) != nil)
         let task = Task { [weak self] in
             guard let self else { return }
             if viaComposio, let composio = self.liveComposio() {
                 try? await composio.disconnect(slug)
-            } else if let token, token != ComposioClient.composioTokenSentinel {
+            } else if viaGoogle {
+                // Keep shared Google credential if another Google plugin still uses it.
+            } else if let token, token != ComposioClient.composioTokenSentinel, token != Self.googleTokenSentinel {
                 await self.pluginClient.revoke(slug: slug, token: token)
             }
             if let idx = self.connections.firstIndex(where: { $0.slug == slug }) {
@@ -4422,6 +4693,16 @@ public final class AppStore {
                 self.connections[idx].viaComposio = false
             }
             self.connectionSecrets[slug] = nil
+            let stillUsingGoogle = self.connections.contains {
+                $0.connected && GoogleOAuth.isGooglePlugin($0.slug)
+                    && self.connectionSecrets[$0.slug] == Self.googleTokenSentinel
+            }
+            if !stillUsingGoogle, let encoded = self.connectionSecrets[GoogleOAuth.credentialSecretKey],
+               let cred = GoogleOAuth.decodeCredential(encoded),
+               let google = self.liveGoogleOAuth() {
+                await google.revoke(token: cred.refresh.isEmpty ? cred.access : cred.refresh)
+                self.connectionSecrets[GoogleOAuth.credentialSecretKey] = nil
+            }
             self.connectionPending.remove(slug)
             self.save()
             self.pluginTasks.removeValue(forKey: slug)
@@ -4429,32 +4710,151 @@ public final class AppStore {
         pluginTasks[slug] = task
     }
 
-    private func writePlugin(slug: String, title: String, body: String) async throws -> String {
+    public static let pluginAccountAll = "*"
+    public static let pluginAccountKeySuffix = "#account"
+
+    public static func pluginAccountKey(for slug: String) -> String {
+        "\(slug)\(pluginAccountKeySuffix)"
+    }
+
+    /// `nil` = auto (first account), `*` = all accounts, otherwise a Composio account alias.
+    public func pluginAccountPreference(for slug: String) -> String? {
+        let raw = connectionSecrets[Self.pluginAccountKey(for: slug)]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let raw, !raw.isEmpty else { return nil }
+        return raw
+    }
+
+    public func setPluginAccountPreference(slug: String, account: String?) {
+        let key = Self.pluginAccountKey(for: slug)
+        let trimmed = account?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty {
+            connectionSecrets[key] = nil
+        } else {
+            connectionSecrets[key] = trimmed
+        }
+        if trimmed != Self.pluginAccountAll,
+           let idx = connections.firstIndex(where: { $0.slug == slug }),
+           connections[idx].viaComposio {
+            connections[idx].accountLabel = trimmed.isEmpty ? "Composio" : displayName(forPluginAccount: trimmed)
+        }
+        save()
+    }
+
+    private func storeAccountPreferenceFromTool(slug: String, account: String) {
+        let lower = account.lowercased()
+        if lower == "all" || lower == "*" || lower == "every" || lower == "both" {
+            setPluginAccountPreference(slug: slug, account: Self.pluginAccountAll)
+        } else {
+            setPluginAccountPreference(slug: slug, account: account)
+        }
+    }
+
+    public func displayName(forPluginAccount account: String) -> String {
+        if account == Self.pluginAccountAll { return "All accounts" }
+        return account
+            .replacingOccurrences(of: "gmail_", with: "")
+            .replacingOccurrences(of: "googlecalendar_", with: "")
+            .replacingOccurrences(of: "-", with: " ")
+    }
+
+    public func refreshComposioAccountChoices(slug: String) async {
+        guard let composio = liveComposio() else {
+            composioAccountChoices[slug] = []
+            return
+        }
+        composioAccountsLoadingSlug = slug
+        defer { if composioAccountsLoadingSlug == slug { composioAccountsLoadingSlug = nil } }
+        let found = (try? await composio.listAccounts(slug: slug)) ?? []
+        if !found.isEmpty {
+            composioAccountChoices[slug] = found
+        }
+        // Keep a previously chosen specific account if it disappeared.
+        if let pref = pluginAccountPreference(for: slug),
+           pref != Self.pluginAccountAll,
+           !found.isEmpty,
+           !found.contains(pref) {
+            setPluginAccountPreference(slug: slug, account: nil)
+        }
+    }
+
+    private func writePlugin(slug: String, title: String, body: String, account: String? = nil) async throws -> String {
         let item = connections.first(where: { $0.slug == slug })
         let token = connectionSecrets[slug]
             ?? (slug == "box" ? appConfig.boxToken : nil)
+        if let googleToken = try await liveGoogleAccessToken(for: slug) {
+            return try await pluginClient.write(slug: slug, token: googleToken, title: title, body: body)
+        }
         if item?.viaComposio == true || token == ComposioClient.composioTokenSentinel,
            let composio = liveComposio() {
-            return try await composio.execute(slug: slug, title: title, body: body)
+            let pref = account ?? pluginAccountPreference(for: slug)
+            if pref == Self.pluginAccountAll {
+                let accounts = try await ensureComposioAccounts(slug: slug, composio: composio)
+                guard !accounts.isEmpty else {
+                    return try await composio.execute(slug: slug, title: title, body: body, account: nil)
+                }
+                var parts: [String] = []
+                for name in accounts {
+                    let remote = try await composio.execute(slug: slug, title: title, body: body, account: name)
+                    parts.append("[\(displayName(forPluginAccount: name))]\n\(remote)")
+                }
+                return parts.joined(separator: "\n\n")
+            }
+            return try await composio.execute(slug: slug, title: title, body: body, account: pref)
         }
-        guard let token, token != ComposioClient.composioTokenSentinel else {
+        guard let token, token != ComposioClient.composioTokenSentinel, token != Self.googleTokenSentinel else {
             throw PluginError.rejected("Plugin \(slug) is not connected.")
         }
         return try await pluginClient.write(slug: slug, token: token, title: title, body: body)
     }
 
-    private func readPlugin(slug: String, query: String) async throws -> String {
+    private func readPlugin(slug: String, query: String, account: String? = nil) async throws -> String {
         let item = connections.first(where: { $0.slug == slug })
         let token = connectionSecrets[slug]
             ?? (slug == "box" ? appConfig.boxToken : nil)
+        if let googleToken = try await liveGoogleAccessToken(for: slug) {
+            return try await pluginClient.search(slug: slug, token: googleToken, query: query)
+        }
         if item?.viaComposio == true || token == ComposioClient.composioTokenSentinel,
            let composio = liveComposio() {
-            return try await composio.search(slug: slug, query: query)
+            let pref = account ?? pluginAccountPreference(for: slug)
+            if pref == Self.pluginAccountAll {
+                let accounts = try await ensureComposioAccounts(slug: slug, composio: composio)
+                guard !accounts.isEmpty else {
+                    return try await composio.search(slug: slug, query: query, account: nil)
+                }
+                var parts: [String] = []
+                for name in accounts {
+                    let remote = try await composio.search(slug: slug, query: query, account: name)
+                    parts.append("## \(displayName(forPluginAccount: name))\n\(remote)")
+                }
+                return parts.joined(separator: "\n\n")
+            }
+            do {
+                return try await composio.search(slug: slug, query: query, account: pref)
+            } catch {
+                // Cache account aliases from the error so the Plugins picker can populate.
+                if let names = ComposioClient.multipleAccountChoices(in: error.localizedDescription) {
+                    composioAccountChoices[slug] = names
+                } else if error.localizedDescription.localizedCaseInsensitiveContains("Multiple accounts") {
+                    await refreshComposioAccountChoices(slug: slug)
+                }
+                throw error
+            }
         }
-        guard let token, token != ComposioClient.composioTokenSentinel else {
+        guard let token, token != ComposioClient.composioTokenSentinel, token != Self.googleTokenSentinel else {
             throw PluginError.rejected("Plugin \(slug) is not connected.")
         }
         return try await pluginClient.search(slug: slug, token: token, query: query)
+    }
+
+    private func ensureComposioAccounts(slug: String, composio: any ComposioConnecting) async throws -> [String] {
+        if let cached = composioAccountChoices[slug], !cached.isEmpty { return cached }
+        let found = try await composio.listAccounts(slug: slug)
+        if !found.isEmpty {
+            composioAccountChoices[slug] = found
+        }
+        return found
     }
 
     private func recordAudit(
@@ -4786,7 +5186,18 @@ public final class AppStore {
         guard var thread = threads[threadKey], thread.run?.id == runId else { return }
         var blocks = result.blocks
         if blocks.isEmpty {
-            blocks = [.card(lines: [CardLine(k: name, v: String(result.output.prefix(160)))])]
+            let preview: String
+            if name == "plugin_call" {
+                preview = ComposioClient.chatSummary(
+                    slug: "plugin",
+                    query: "",
+                    result: result.output,
+                    failed: result.output.localizedCaseInsensitiveContains("failed")
+                )
+            } else {
+                preview = String(result.output.prefix(120))
+            }
+            blocks = [.card(lines: [CardLine(k: name, v: preview)])]
         }
         let msg = ThreadMessage(
             id: Ids.new(),
@@ -4891,6 +5302,21 @@ public final class AppStore {
             sentTokens: records.reduce(0) { $0 + $1.inputTokens },
             receivedTokens: records.reduce(0) { $0 + $1.outputTokens }
         )
+    }
+
+    /// Zeros composer Prompt / Sent / Recv. Pass a bot id for that bot only; `nil` clears every bot.
+    /// Chat messages, memory, and files are left alone. Weekly usage uses the same ledger.
+    @discardableResult
+    public func resetChatTokens(botId: String? = nil) -> Int {
+        let before = usage.count
+        if let botId {
+            usage.removeAll { $0.botId == botId }
+        } else {
+            usage.removeAll()
+        }
+        let removed = before - usage.count
+        save()
+        return removed
     }
 
     public func exportManifest(botId: String, redacted: Bool = false) -> ExportManifest? {
@@ -5198,24 +5624,49 @@ public final class AppStore {
         Task { await self.syncLocalGateway() }
     }
 
-    public func folderWatchers() -> [FolderWatcherRecord] {
-        (try? FolderWatcherPersistence.loadAll(root: userPersistence.root)) ?? []
+    public func reloadFolderWatchers() {
+        folderWatchers = (try? FolderWatcherPersistence.loadAll(root: userPersistence.root)) ?? []
     }
 
     public func saveFolderWatcher(_ watcher: FolderWatcherRecord) throws {
-        try FolderWatcherPersistence.save(watcher, root: userPersistence.root)
+        var record = watcher
+        record.watchPath = (record.watchPath as NSString).expandingTildeInPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !record.watchPath.isEmpty else {
+            throw FolderWatcherError.emptyPath
+        }
+        try FolderWatcherPersistence.save(record, root: userPersistence.root)
+        reloadFolderWatchers()
         refreshLocalIntegrations()
     }
 
     public func deleteFolderWatcher(id: String) throws {
+        FolderWatcherSuppression.shared.release(id)
         try FolderWatcherPersistence.delete(id: id, root: userPersistence.root)
+        reloadFolderWatchers()
         refreshLocalIntegrations()
     }
 
-    public func runFolderWatcherNow(id: String) {
-        Task {
-            _ = try? await FolderWatcherService.shared.runWatcherNow(id: id)
+    /// Sends the watcher prompt to its bot immediately (does not wait for FSEvents).
+    @discardableResult
+    public func runFolderWatcherNow(id: String) -> String {
+        guard let watcher = folderWatchers.first(where: { $0.id == id }) else {
+            return FolderWatcherError.notFound.localizedDescription
         }
+        let result = fireFolderWatcher(watcher, changedPaths: [], manual: true)
+        var updated = watcher
+        if result.hasPrefix("No bot") {
+            updated.lastError = result
+        } else if result.hasPrefix("Triggered") {
+            updated.lastTriggeredAt = FolderWatcherRecord.isoNow()
+            updated.lastError = nil
+            if let botId = updated.botId ?? activeBotId ?? bots.first?.id {
+                selectBot(botId)
+            }
+        }
+        try? FolderWatcherPersistence.save(updated, root: userPersistence.root)
+        reloadFolderWatchers()
+        return result
     }
 
     public func discoverMcpBonjour(timeoutSeconds: TimeInterval = 5) async -> [MCPBonjourDiscovery.Entry] {
@@ -5250,9 +5701,19 @@ public final class AppStore {
         await FolderWatcherService.shared.configure(root: root, runner: runner)
         if appConfig.enableFolderWatchers {
             await FolderWatcherService.shared.start()
+            await FolderWatcherService.shared.reloadNow()
         } else {
             await FolderWatcherService.shared.stop()
         }
+    }
+
+    /// Test/UI seam: apply an automatic FSEvent-style fire (honors busy + cooldown skips).
+    @discardableResult
+    public func handleFolderWatcherEvent(id: String, changedPaths: [String]) -> String {
+        guard let watcher = folderWatchers.first(where: { $0.id == id }) else {
+            return FolderWatcherError.notFound.localizedDescription
+        }
+        return fireFolderWatcher(watcher, changedPaths: changedPaths, manual: false)
     }
 
     private func fireFolderWatcher(
@@ -5262,13 +5723,55 @@ public final class AppStore {
     ) -> String {
         let botId = watcher.botId ?? activeBotId ?? bots.first?.id
         guard let botId else { return "No bot configured for watcher." }
+        if let skip = FolderWatcherFirePolicy.skipReason(
+            botBusy: isRunActive(botId: botId),
+            suppressed: FolderWatcherSuppression.shared.isSuppressed(watcher.id),
+            manual: manual
+        ) {
+            return skip
+        }
+        FolderWatcherSuppression.shared.suppress(watcher.id)
+        watcherRunByBotId[botId] = watcher.id
+        Task { await FolderWatcherService.shared.dropPending(watcherId: watcher.id) }
         let prompt = FolderWatcherPromptBuilder.userMessage(
             watcher: watcher,
             changedPaths: changedPaths,
             manual: manual
         )
-        send(botId: botId, text: prompt)
+        let watchPath = (watcher.watchPath as NSString).expandingTildeInPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        send(
+            botId: botId,
+            text: prompt,
+            workingFolderOverride: watchPath.isEmpty ? nil : watchPath
+        )
         return "Triggered bot \(botId)"
+    }
+
+    private func watcherEchoCooldown(for watcherId: String) -> TimeInterval {
+        let responsiveness = folderWatchers.first(where: { $0.id == watcherId })?.responsiveness ?? "balanced"
+        return FolderWatcherGlobMatching.debounceSeconds(for: responsiveness)
+    }
+
+    private func releaseWorkingFolderOverrideIfNeeded(botId: String) {
+        let status = threads[threadKey(for: botId)]?.run?.status
+        switch status {
+        case .waitingInput, .waitingTakeover, .queued, .leased, .running:
+            return
+        default:
+            runWorkingFolderOverride.removeValue(forKey: botId)
+            releaseWatcherSuppressionIfNeeded(botId: botId)
+        }
+    }
+
+    private func releaseWatcherSuppressionIfNeeded(botId: String) {
+        guard let watcherId = watcherRunByBotId.removeValue(forKey: botId) else { return }
+        let cooldown = watcherEchoCooldown(for: watcherId)
+        Task {
+            try? await Task.sleep(for: .seconds(cooldown))
+            FolderWatcherSuppression.shared.release(watcherId)
+            await FolderWatcherService.shared.dropPending(watcherId: watcherId)
+        }
     }
 
     private func syncLocalGateway() async {
@@ -5959,6 +6462,7 @@ public final class AppStore {
                 bots[idx].status = "idle"
             }
             save()
+            releaseWorkingFolderOverrideIfNeeded(botId: botId)
             return
         }
         threads[key] = thread
@@ -6006,6 +6510,7 @@ public final class AppStore {
             bots[idx].status = "idle"
         }
         save()
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     public func answerChoice(botId: String, messageId: String, option: ChoiceOption) {
@@ -6244,6 +6749,9 @@ public final class AppStore {
         var config = appConfig
         config.applySecret(secret, input: input)
         saveAppConfig(config)
+        if secret == .composioConnect || secret == .composioApi {
+            Task { await refreshPluginCatalog() }
+        }
     }
 
     @discardableResult
@@ -6263,6 +6771,8 @@ public final class AppStore {
                     }
                     if imported.composioConnectKey != nil { existing.composioConnectKey = imported.composioConnectKey }
                     if imported.composioApiKey != nil { existing.composioApiKey = imported.composioApiKey }
+                    if imported.googleClientId != nil { existing.googleClientId = imported.googleClientId }
+                    if imported.googleClientSecret != nil { existing.googleClientSecret = imported.googleClientSecret }
                     if imported.boxToken != nil { existing.boxToken = imported.boxToken }
                     if imported.ttsKey != nil { existing.ttsKey = imported.ttsKey }
                     if imported.sentryDSN != nil { existing.sentryDSN = imported.sentryDSN }

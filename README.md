@@ -55,13 +55,13 @@ Markdown, tool cards, live step progress. Per-bot model picker and token stats o
 <td width="50%" valign="top">
 
 **Computer & canvas**
-This Mac preview or in-app browser. Screenshot → target list → click / type / key. Shared canvases for screenshots and marks. Exclusive takeover for login.
+This Mac preview or in-app browser. Resizable computer side panel (monitor icon). Screenshot → target list → click / type / key. Shared canvases. Exclusive takeover for login.
 
 **Governance**
 CEL policy, MCP grant matrix, knowledge ACLs, published components, owner/operator roles, searchable audit with a boot boundary.
 
 **Connect**
-OpenRouter, OpenAI, Anthropic, local Ollama/LM Studio, Composio plugins, MCP / Toolport (stdio / HTTP / SSE), and AG-UI coworkers.
+OpenRouter, OpenAI, Anthropic, local Ollama/LM Studio, Composio plugins, direct Google OAuth (Gmail / Calendar / Sheets / Docs / Drive), MCP / Toolport (stdio / HTTP / SSE), and AG-UI coworkers.
 
 </td>
 </tr>
@@ -121,11 +121,11 @@ The model menu sits on the **top-left** of the composer capsule. Token stats sit
 
 | Label | Meaning |
 |---|---|
-| **Prompt** | While you type: live estimate of this box (~4 characters per token, including dictation). After a reply: billed input of the **first** model call that turn (system + history + this message) — not the summed agent-loop total. |
-| **Sent** | Billed input tokens for **this chat** (every run on this bot). |
-| **Recv** | Billed output tokens for **this chat**. |
+| **Prompt** (`P` when the right panel is open) | While you type: live estimate of this box (~4 characters per token, including dictation). After a reply: billed input of the **first** model call that turn (system + history + this message) — not the summed agent-loop total. |
+| **Sent** (`S`) | Billed input tokens for **this chat** (every run on this bot). |
+| **Recv** (`R`) | Billed output tokens for **this chat**. |
 
-Hover the numbers for the same explanation. Switching bots does not mix totals. Sidebar **Weekly usage** is still the last seven days across the workspace.
+Hover the numbers for the same explanation. With the computer / settings panel open, labels compact to **P / S / R** and the composer placeholder shortens so the bar stays readable. Switching bots does not mix totals. Sidebar **Weekly usage** is still the last seven days across the workspace. Settings → General → **Token counters** zeros Prompt / Sent / Recv for the current bot (or every bot) without deleting chats.
 
 ### Agent loop
 
@@ -171,11 +171,15 @@ Two real hosts — no cloud VM or Docker.
 | This Mac | Live screenshot preview + Accessibility clicks on the main display (OpenMaus-style: preview is not a remote desktop) |
 | Off | Computer tools disabled |
 
+**Computer mode** (bot Settings) is *how* this bot may use a computer. It is **not** where you Release control. For mail-only work, prefer **Off** or **In-app browser** so the bot does not reach for This Mac tools.
+
 Workflow: open a URL → screenshot (JPEG + a **Targets** list in the same pixel space) → click / scroll / type / key. Clicks can be right-click or double-click. Keys accept chords (`cmd+c`, `shift+enter`). If there is no screenshot yet, one is taken before the click.
 
-**This Mac UI.** The computer panel and full window poll Screen Recording frames every few seconds. You do not click inside that preview — the bot drives your real Mac via tools. **Take control** pauses bot computer tools so you can type passwords on the real desktop; **Release** hands the wheel back.
+**Side panel.** The monitor icon in the chat header opens the **Computer** right panel (live preview, routines, bot files). Drag the left edge to resize (width is remembered). Tap the preview for a full-window view. Closing that window does **not** Release control.
 
-**Exclusive takeover.** Login, captcha, or 2FA: the bot calls `request_takeover` and you drive. While you hold the wheel, bot computer actions are refused and audited. Headless routine ticks skip This Mac tools (no Screen Recording session).
+**Take control / Release.** Under the preview: **Take control** pauses bot computer tools so you can type passwords on the real desktop; **Release** hands the wheel back (and closes the full-window overlay if it is open). The same buttons appear in the full-window chrome. While you hold control, computer tools are refused with an audited “person is driving” reason (often shown as a `refusals` card).
+
+**Exclusive takeover.** Login, captcha, or 2FA: the bot calls `request_takeover` and you drive. Headless routine ticks skip This Mac tools (no Screen Recording session).
 
 Settings → Computer shows Accessibility and Screen Recording status with deep links to System Settings.
 
@@ -299,7 +303,9 @@ Each provider keeps its own profile. A bot can use the workspace default or a ca
 
 ## Plugins, MCP, destinations
 
-**Plugins** — Composio Connect OAuth, or paste a token. Catalog includes Gmail, Slack, GitHub, Notion, Linear, Google Calendar / Sheets / Docs / Drive, OneDrive, HubSpot, Salesforce, Jira, Trello, Asana, Intercom, Discord, X, Stripe, Dropbox, Box, Figma, Airtable. `plugin_call` can search/list/get or write.
+**Plugins** — Composio Connect OAuth, your own Google Client ID/Secret (Gmail / Calendar / Sheets / Docs / Drive without Composio), or paste a token. Catalog includes Gmail, Slack, GitHub, Notion, Linear, Google Calendar / Sheets / Docs / Drive, OneDrive, HubSpot, Salesforce, Jira, Trello, Asana, Intercom, Discord, X, Stripe, Dropbox, Box, Figma, Airtable. `plugin_call` can search/list/get or write; chat cards show a short summary (for example `gmail → 8 results · in:inbox`) instead of dumping the full payload.
+
+**Google / Gmail.** Settings → Connections → Google walks through a **Desktop** OAuth client (loopback `http://127.0.0.1:<port>/`). One sign-in can unlock the Google suite. When Google credentials are set, Plugins prefer direct Google OAuth over Composio for those apps. Empty Gmail searches default to `in:inbox`. With several linked inboxes, use the Plugins **Account** menu (auto / one alias / **All accounts**) or pass `account` / `account=all` on `plugin_call`.
 
 **MCP** — stdio, streamable HTTP, or legacy SSE. Settings → Tools probes each server (`tools/list`) and shows connected / failed. The parent toggle is `mcp:<serverId>`; each advertised tool is `mcp:<serverId>/<toolName>`. Homebrew is prepended on PATH for GUI-launched stdio servers. Calls go through the grant matrix and action policy.
 
@@ -340,11 +346,12 @@ Reliability built into `mcp_list_tools` / `mcp_call`:
 ## App chrome
 
 - Sidebar of bots, rooms, routines, plugins, skills, weekly usage.
-- Right panel: files, computer preview, shared canvas editor, memory.
-- Settings: General, Connections, Computer, Voice, **Tools** (MCP first), Themes, Diagnostics, Privacy, Watchers, **Governance**, **Knowledge**, **Components**.
+- Chat header: session menu, search (⌘F), **monitor** (Computer panel), canvas, edit.
+- Right panel (resizable): computer preview + Take control / Release, routines, bot files, settings, shared canvas editor, memory.
+- Settings: General, Connections (including Google Client ID/Secret), Computer, Voice, **Tools** (MCP first), Themes, Diagnostics, Privacy, Watchers, **Governance**, **Knowledge**, **Components**.
 - Themes: Grizzy (default), system, light, dark, and the built-in gallery.
 - Menu bar extra; optional menu-bar-only (no window until you open it).
-- Launch at login (signed Release; Debug/ad-hoc shows an honest status).
+- Launch at login (signed Release; Debug/ad-hoc shows an honest status and does not call `SMAppService`).
 - Dictation + TTS (ElevenLabs key or macOS voices).
 - Optional Brave Search key; optional Sentry DSN.
 - Snapshots, redacted export, iCloud backup (container `iCloud.com.grizzybot.app` when team-signed), wipe workspace.
@@ -353,7 +360,7 @@ Reliability built into `mcp_list_tools` / `mcp_call`:
 
 ## Security
 
-- API keys, Composio, Box, TTS, Sentry, OAuth, and connection tokens → **Keychain**. Workspace JSON, exports, backups, and snapshots are stripped.
+- API keys, Composio, Google OAuth (Client ID/Secret + tokens), Box, TTS, Sentry, and connection tokens → **Keychain**. Workspace JSON, exports, backups, and snapshots are stripped.
 - Diagnostics and Sentry events scrub keys, tokens, and home paths.
 - Shell write seatbelt stays inside the bot home unless approved.
 - In-app browser: http/https/about only; desktop HTML escapes filenames.
@@ -379,7 +386,7 @@ flowchart LR
 
 | Target | Role |
 |---|---|
-| `GrizzyBotCore` | Domain, agent loop, token accounting, Keychain, persistence, MCP routing, Composio, policy, audit |
+| `GrizzyBotCore` | Domain, agent loop, token accounting, Keychain, persistence, MCP routing, Composio, Google OAuth, policy, audit |
 | `GrizzyBot` | SwiftUI app, computer-use, TTS, Sentry |
 | `GrizzyBotRoutineAgent` | LaunchAgent helper for background routine ticks |
 | `GrizzyBotCoreTests` | Unit tests (Swift Testing) |

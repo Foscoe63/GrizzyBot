@@ -18,6 +18,7 @@ struct ChatView: View {
     @State private var searchQuery = ""
     @State private var searchThisThread = false
     @State private var pasteOverride = false
+    @State private var stickChatToBottom = true
 
     private var bot: Bot? { store.activeBot }
     private var group: GroupRoom? {
@@ -54,10 +55,12 @@ struct ChatView: View {
         .onChange(of: store.activeBotId) { _, _ in
             draft = ""
             pendingFiles = []
+            stickChatToBottom = true
         }
         .onChange(of: store.activeGroupId) { _, _ in
             draft = ""
             pendingFiles = []
+            stickChatToBottom = true
         }
         .onChange(of: store.pendingComposerText) { _, text in
             if let text {
@@ -82,12 +85,13 @@ struct ChatView: View {
                 Button {
                     store.openPanel(.settings)
                 } label: {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         BotAvatarView(color: bot.color, size: 26)
                         Text(bot.name)
                             .font(.system(size: 16, weight: .medium))
                             .foregroundStyle(Theme.textBright)
                             .lineLimit(1)
+                            .truncationMode(.tail)
                         if bot.chiefOfStaff {
                             Text("Chief")
                                 .font(.system(size: 11, weight: .medium))
@@ -96,14 +100,17 @@ struct ChatView: View {
                                 .padding(.vertical, 2)
                                 .background(Theme.orange.opacity(0.12))
                                 .clipShape(Capsule())
+                                .layoutPriority(1)
                         }
                     }
                 }
                 .buttonStyle(.plain)
+                .layoutPriority(1)
 
                 taskPicker(bot)
+                    .layoutPriority(0)
             }
-            Spacer()
+            Spacer(minLength: 8)
             if group == nil, let bot, store.canUndoSend(botId: bot.id) {
                 Button("Undo send") {
                     if let text = store.undoSend(botId: bot.id) {
@@ -133,12 +140,14 @@ struct ChatView: View {
                         .stroke(Theme.textSub, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
                         .frame(width: 18, height: 18)
                         .frame(width: 30, height: 34)
+                        .contentShape(Rectangle())
                         .background(
                             store.panel == .computer ? Color(hex: "#1B1B1E") : Color.clear
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .help("Computer")
                 .onHover { hoverComputer = $0 }
                 .opacity(hoverComputer || store.panel == .computer ? 1 : 0.9)
                 Button {
@@ -148,6 +157,7 @@ struct ChatView: View {
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(Theme.textSub)
                         .frame(width: 30, height: 34)
+                        .contentShape(Rectangle())
                         .background(
                             store.panel == .canvas || store.canvasOpen ? Color(hex: "#1B1B1E") : Color.clear
                         )
@@ -380,7 +390,10 @@ struct ChatView: View {
     }
 
     private var messages: some View {
-        ScrollViewReader { proxy in
+        let botId = bot?.id
+        let runActive = botId.map { store.isRunActive(botId: $0) } ?? false
+        let count = botId.map { store.messages(for: $0).count } ?? 0
+        return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 13) {
                     if let bot {
@@ -394,7 +407,7 @@ struct ChatView: View {
                                     }
                                 }
                         }
-                        if store.isRunActive(botId: bot.id) {
+                        if runActive {
                             Text("working…")
                                 .font(.system(size: 14.5))
                                 .foregroundStyle(Theme.textSecondary)
@@ -405,6 +418,9 @@ struct ChatView: View {
                                 .grizzyPulse()
                                 .id("working-pulse")
                         }
+                        Color.clear
+                            .frame(height: 1)
+                            .id(ChatScrollBehavior.bottomID)
                     }
                 }
                 .padding(.horizontal, 28)
@@ -412,23 +428,52 @@ struct ChatView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .grizzyScroll()
-            .onChange(of: bot.map { store.messages(for: $0.id).count } ?? 0) { _, _ in
-                scrollToLatest(proxy: proxy)
+            .defaultScrollAnchor(stickChatToBottom ? .bottom : nil)
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .onScrollGeometryChange(for: CGFloat.self) { geo in
+                ChatScrollBehavior.distanceFromBottom(geo)
+            } action: { _, distance in
+                let next = ChatScrollBehavior.shouldStick(
+                    distanceFromBottom: distance,
+                    currentlyStuck: stickChatToBottom
+                )
+                if next != stickChatToBottom {
+                    stickChatToBottom = next
+                }
+            }
+            .onAppear {
+                followChatBottom(proxy: proxy, animated: false)
+            }
+            .onChange(of: count) { _, _ in
+                followChatBottom(
+                    proxy: proxy,
+                    animated: ChatScrollBehavior.animatesFollow(runActive: runActive)
+                )
+            }
+            .onChange(of: runActive) { _, _ in
+                followChatBottom(proxy: proxy, animated: false)
             }
             .onChange(of: store.highlightMessageId) { _, id in
                 if let id {
-                    withAnimation { proxy.scrollTo(id, anchor: .center) }
+                    stickChatToBottom = false
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func scrollToLatest(proxy: ScrollViewProxy) {
-        if let last = bot.flatMap({ store.messages(for: $0.id).last }) {
-            withAnimation {
-                proxy.scrollTo(last.id, anchor: .bottom)
-            }
+    private func followChatBottom(proxy: ScrollViewProxy, animated: Bool) {
+        guard stickChatToBottom else { return }
+        let jump = { proxy.scrollTo(ChatScrollBehavior.bottomID, anchor: .bottom) }
+        if animated {
+            withAnimation(.easeOut(duration: 0.12), jump)
+        } else {
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction, jump)
         }
     }
 
@@ -449,14 +494,31 @@ struct ChatView: View {
                         MessageView(message: message, botId: group.memberIds.first ?? group.id)
                             .id(message.id)
                     }
+                    Color.clear
+                        .frame(height: 1)
+                        .id(ChatScrollBehavior.bottomID)
                 }
                 .padding(.horizontal, 28)
                 .padding(.vertical, 24)
             }
             .grizzyScroll()
+            .defaultScrollAnchor(stickChatToBottom ? .bottom : nil)
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .onScrollGeometryChange(for: CGFloat.self) { geo in
+                ChatScrollBehavior.distanceFromBottom(geo)
+            } action: { _, distance in
+                let next = ChatScrollBehavior.shouldStick(
+                    distanceFromBottom: distance,
+                    currentlyStuck: stickChatToBottom
+                )
+                if next != stickChatToBottom {
+                    stickChatToBottom = next
+                }
+            }
             .onChange(of: store.threads[group.id]?.messages.count ?? 0) { _, _ in
-                if let last = store.threads[group.id]?.messages.last {
-                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                guard stickChatToBottom else { return }
+                withAnimation(.easeOut(duration: 0.12)) {
+                    proxy.scrollTo(ChatScrollBehavior.bottomID, anchor: .bottom)
                 }
             }
         }
@@ -538,12 +600,14 @@ struct ChatView: View {
                 .padding(.horizontal, 28)
             }
             if let bot {
-                HStack(alignment: .center, spacing: 12) {
+                HStack(alignment: .center, spacing: 10) {
                     composerModelPicker(bot)
-                    Spacer(minLength: 8)
+                        .layoutPriority(1)
+                    Spacer(minLength: 4)
                     composerTokenStats(bot)
+                        .layoutPriority(0)
                 }
-                .padding(.horizontal, 28)
+                .padding(.horizontal, 20)
                 .padding(.top, pasteWarning == nil && pendingFiles.isEmpty ? 8 : 0)
             }
             if !pendingFiles.isEmpty {
@@ -605,7 +669,7 @@ struct ChatView: View {
 
                 PromptComposer(
                     text: $draft,
-                    placeholder: bot.map { "Message \($0.name) · / for skills" } ?? "Message",
+                    placeholder: bot.map { store.panel == nil ? "Message \($0.name) · / for skills" : "Message \($0.name)" } ?? "Message",
                     onSend: send,
                     onTabComplete: completeSlashSuggestion
                 )
@@ -653,7 +717,7 @@ struct ChatView: View {
             .overlay {
                 Capsule().stroke(Theme.borderSearch, lineWidth: 1)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 20)
             .padding(.top, pendingFiles.isEmpty ? 4 : 0)
             .padding(.bottom, 24)
         }
@@ -744,10 +808,11 @@ struct ChatView: View {
             draft: liveDraft,
             lastBilledPrompt: billed.lastPromptTokens
         )
-        return HStack(spacing: 12) {
-            composerTokenStat(label: "Prompt", value: prompt)
-            composerTokenStat(label: "Sent", value: billed.sentTokens)
-            composerTokenStat(label: "Recv", value: billed.receivedTokens)
+        let compact = store.panel != nil
+        return HStack(spacing: compact ? 8 : 12) {
+            composerTokenStat(label: compact ? "P" : "Prompt", value: prompt)
+            composerTokenStat(label: compact ? "S" : "Sent", value: billed.sentTokens)
+            composerTokenStat(label: compact ? "R" : "Recv", value: billed.receivedTokens)
         }
         .help(
             "Prompt is this box (~4 characters per token) while you type, then the last billed prompt after a reply. Sent and Recv are billed tokens for this chat."
@@ -759,7 +824,7 @@ struct ChatView: View {
     }
 
     private func composerTokenStat(label: String, value: Int) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
             Text(label)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(Theme.textMuted)
@@ -767,9 +832,11 @@ struct ChatView: View {
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .lineLimit(1)
-        .minimumScaleFactor(0.8)
+        .layoutPriority(0)
     }
 
     private func groupInputBar(_ group: GroupRoom) -> some View {
@@ -818,6 +885,7 @@ struct ChatView: View {
         draft = ""
         pendingFiles = []
         pasteOverride = false
+        stickChatToBottom = true
         if dictation.isListening {
             let spoken = dictation.stop()
             store.send(
@@ -841,7 +909,28 @@ struct ChatView: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         draft = ""
+        stickChatToBottom = true
         store.sendGroupMessage(groupId: group.id, text: text)
+    }
+}
+
+enum ChatScrollBehavior {
+    static let bottomID = "chat-bottom"
+    static let stickSlack: CGFloat = 48
+    static let unstickSlack: CGFloat = 120
+
+    /// Default `withAnimation` is a spring. That overshoot is the bouncing scroller knob.
+    static func animatesFollow(runActive: Bool) -> Bool { !runActive }
+
+    static func distanceFromBottom(_ geo: ScrollGeometry) -> CGFloat {
+        geo.contentSize.height - (geo.contentOffset.y + geo.containerSize.height)
+    }
+
+    static func shouldStick(distanceFromBottom: CGFloat, currentlyStuck: Bool) -> Bool {
+        if currentlyStuck {
+            return distanceFromBottom <= unstickSlack
+        }
+        return distanceFromBottom <= stickSlack
     }
 }
 

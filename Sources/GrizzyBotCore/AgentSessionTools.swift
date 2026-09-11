@@ -140,13 +140,16 @@ public enum WorkingFolder {
         contains(path, workingFolder: workingFolder) && !BotHomeStore.isDeniedHostPath(path)
     }
 
-    public static func promptNote(_ workingFolder: String?) -> String {
+    public static func promptNote(_ workingFolder: String?, scopedToRun: Bool = false) -> String {
         guard let folder = workingFolder?.trimmingCharacters(in: .whitespacesAndNewlines), !folder.isEmpty else {
             return ""
         }
         let root = BotHomeStore.expandPath(folder)
+        let title = scopedToRun
+            ? "Working folder for this run (every bot): \(root)."
+            : "Working folder for this bot: \(root)."
         return """
-        Working folder for this bot: \(root). Relative read_file, write_file, edit_file, move_file, delete_file, and list_files use this folder (empty list_files lists it). Writes here go to that folder on disk without extra approval. Shell ~ stays the bot home. MCP does not inherit this folder — pass absolute paths. MEMORY.md and PLAN.md (no slash) stay in Home path.
+        \(title) Relative read_file, write_file, edit_file, move_file, delete_file, and list_files use this folder (empty list_files lists it). Writes here go to that folder on disk without extra approval. Shell ~ stays the bot home, but shell may mv/rm/mkdir inside this folder. MCP does not inherit this folder — pass absolute paths. MEMORY.md and PLAN.md (no slash) stay in Home path.
         """
     }
 

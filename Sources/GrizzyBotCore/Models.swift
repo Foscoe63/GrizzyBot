@@ -302,6 +302,17 @@ public struct ThreadMessage: Codable, Sendable, Hashable, Identifiable {
         }
         return ""
     }
+
+    /// True when a bubble already draws its own copy control (bot text and tool cards).
+    public var hasInlineCopyControl: Bool {
+        blocks.contains { block in
+            switch block {
+            case .text: return role == .bot
+            case .card: return true
+            default: return false
+            }
+        }
+    }
 }
 
 // MARK: - Run (rakazo `RunSchema` / `RunStatus`)

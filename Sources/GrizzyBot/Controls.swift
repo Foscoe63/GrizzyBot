@@ -318,16 +318,13 @@ struct GrizzySelect<T: Hashable & CustomStringConvertible>: View {
 // MARK: - Pulse
 
 struct PulseModifier: ViewModifier {
-    @State private var dimmed = false
-
     func body(content: Content) -> some View {
-        content
-            .opacity(dimmed ? 0.3 : 1)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                    dimmed = true
-                }
-            }
+        PhaseAnimator([false, true]) { dimmed in
+            content.opacity(dimmed ? 0.3 : 1)
+        } animation: { _ in
+            .easeInOut(duration: 0.6)
+        }
+        .compositingGroup()
     }
 }
 
@@ -339,6 +336,18 @@ extension View {
     func grizzyScroll() -> some View {
         self
             .scrollIndicators(.visible)
+    }
+}
+
+/// True while the user is dragging the right-panel resize handle (pauses heavy previews).
+private struct RightPanelResizingKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var rightPanelResizing: Bool {
+        get { self[RightPanelResizingKey.self] }
+        set { self[RightPanelResizingKey.self] = newValue }
     }
 }
 

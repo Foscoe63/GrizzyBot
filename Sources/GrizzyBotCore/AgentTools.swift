@@ -725,11 +725,12 @@ extension AgentToolCatalog {
         )
         add(
             "plugin_call",
-            description: "Call a connected plugin. action=search|list|get reads; action=write (default) sends a title/body.",
+            description: "Call a connected plugin (gmail, google-calendar, github, …). For Gmail inbox/list: action=search (or list) with optional query like in:inbox or is:unread — do not invent thread_id/attachment ids. action=write sends mail (title=subject, body=text). If multiple Gmail accounts are linked, set account to one alias (gmail_lerwa-gharry) or account=all. Prefer Plugins → Account picker. Do not use slug composio_connect.",
             properties: [
-                "slug": stringProp("Plugin slug, e.g. gmail or github"),
+                "slug": stringProp("Plugin slug, e.g. gmail or google-calendar"),
                 "action": stringProp("search, list, get, or write"),
-                "query": stringProp("Search/list query for reads"),
+                "query": stringProp("Search/list query for reads (optional; defaults to inbox for Gmail)"),
+                "account": stringProp("Composio account alias, or all for every linked inbox"),
                 "title": stringProp("Title for writes"),
                 "body": stringProp("Body for writes"),
             ],

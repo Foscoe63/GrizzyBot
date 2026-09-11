@@ -34,6 +34,9 @@ struct WorkingFolderTests {
         #expect(note.lowercased().contains("relative"))
         #expect(note.lowercased().contains("shell"))
         #expect(WorkingFolder.promptNote(nil).isEmpty)
+        let runNote = WorkingFolder.promptNote("/tmp/proj", scopedToRun: true)
+        #expect(runNote.contains("this run"))
+        #expect(runNote.contains("every bot"))
     }
 }
 
@@ -131,6 +134,167 @@ struct WorkingFolderStoreTests {
         #expect(blob.contains("visible.md"))
     }
 
+    @Test("folder watcher run lists the watch path even when the bot has no working folder")
+    func watcherRunUsesWatchPathWithoutBotFolder() async throws {
+        let (store, _) = tempStore()
+        #expect(store.signUp(name: "A", email: "wfwatch@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Scout", title: "ops")
+        let watchFolder = try projectFolder()
+        defer { try? FileManager.default.removeItem(at: watchFolder) }
+        try "from-watch\n".write(
+            to: watchFolder.appendingPathComponent("watch-me.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let before = store.bots.first(where: { $0.id == bot.id })!
+        #expect(store.effectiveWorkingFolder(for: before) == nil)
+
+        try saveWatcher(store: store, name: "Folder-Organize", path: watchFolder.path, botId: bot.id)
+        let client = listFilesClient()
+        store.chatCompleter = client
+        let result = store.runFolderWatcherNow(id: store.folderWatchers.first { $0.botId == bot.id }!.id)
+        #expect(result.contains("Triggered"))
+        let during = store.bots.first(where: { $0.id == bot.id })!
+        #expect(store.effectiveWorkingFolder(for: during) == watchFolder.path)
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        let after = store.bots.first(where: { $0.id == bot.id })!
+        #expect(store.effectiveWorkingFolder(for: after) == nil)
+        let blob = messageBlob(store.threads[bot.id])
+        #expect(blob.contains("watch-me.md"))
+        let system = client.requests.first?.messages.first { $0.role == "system" }?.content ?? ""
+        #expect(system.contains("this run"))
+        #expect(system.contains(watchFolder.path))
+        #expect(!system.contains("Matched skills for this turn"))
+    }
+
+    @Test("folder watcher pins the watch path for every assigned bot")
+    func watcherRunPinsEveryBot() async throws {
+        let (store, _) = tempStore()
+        #expect(store.signUp(name: "A", email: "wfmulti@b.com", password: "password1") == nil)
+        let operatorBot = store.createBot(from: BotTemplates.desktopOperator)
+        let researcher = store.createBot(from: BotTemplates.researcher)
+        let operatorVault = try projectFolder()
+        let researcherVault = try projectFolder()
+        let operatorWatch = try projectFolder()
+        let researcherWatch = try projectFolder()
+        defer {
+            try? FileManager.default.removeItem(at: operatorVault)
+            try? FileManager.default.removeItem(at: researcherVault)
+            try? FileManager.default.removeItem(at: operatorWatch)
+            try? FileManager.default.removeItem(at: researcherWatch)
+        }
+        try "operator-vault\n".write(
+            to: operatorVault.appendingPathComponent("operator-vault.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "researcher-vault\n".write(
+            to: researcherVault.appendingPathComponent("researcher-vault.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "operator-watch\n".write(
+            to: operatorWatch.appendingPathComponent("operator-watch.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "researcher-watch\n".write(
+            to: researcherWatch.appendingPathComponent("researcher-watch.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        store.updateBot(botId: operatorBot.id, workingFolder: operatorVault.path)
+        store.updateBot(botId: researcher.id, workingFolder: researcherVault.path)
+
+        try saveWatcher(store: store, name: "Operator-Inbox", path: operatorWatch.path, botId: operatorBot.id)
+        try saveWatcher(store: store, name: "Research-Inbox", path: researcherWatch.path, botId: researcher.id)
+
+        store.chatCompleter = listFilesClient()
+        _ = store.runFolderWatcherNow(id: store.folderWatchers.first { $0.botId == operatorBot.id }!.id)
+        #expect(await store.waitForRunCompletion(botId: operatorBot.id))
+        let operatorBlob = messageBlob(store.threads[operatorBot.id])
+        #expect(operatorBlob.contains("operator-watch.md"))
+        #expect(!operatorBlob.contains("operator-vault.md"))
+        #expect(store.effectiveWorkingFolder(for: store.bots.first { $0.id == operatorBot.id }!) == operatorVault.path)
+
+        store.chatCompleter = listFilesClient()
+        _ = store.runFolderWatcherNow(id: store.folderWatchers.first { $0.botId == researcher.id }!.id)
+        #expect(await store.waitForRunCompletion(botId: researcher.id))
+        let researcherBlob = messageBlob(store.threads[researcher.id])
+        #expect(researcherBlob.contains("researcher-watch.md"))
+        #expect(!researcherBlob.contains("researcher-vault.md"))
+        #expect(store.effectiveWorkingFolder(for: store.bots.first { $0.id == researcher.id }!) == researcherVault.path)
+    }
+
+    @Test("watcher runs do not auto-load the Operator browser skill")
+    func watcherRunSkipsSkillInjection() async throws {
+        let (store, _) = tempStore()
+        #expect(store.signUp(name: "A", email: "wfskill@b.com", password: "password1") == nil)
+        let bot = store.createBot(from: BotTemplates.desktopOperator)
+        let vault = try projectFolder()
+        let watchFolder = try projectFolder()
+        defer {
+            try? FileManager.default.removeItem(at: vault)
+            try? FileManager.default.removeItem(at: watchFolder)
+        }
+        try "vault\n".write(to: vault.appendingPathComponent("skills.md"), atomically: true, encoding: .utf8)
+        try "watch\n".write(to: watchFolder.appendingPathComponent("inbox.md"), atomically: true, encoding: .utf8)
+        store.updateBot(botId: bot.id, workingFolder: vault.path)
+        try saveWatcher(
+            store: store,
+            name: "Folder-Organize",
+            path: watchFolder.path,
+            botId: bot.id,
+            instructions: "paste these into Skills as SKILL.md"
+        )
+        let client = listFilesClient()
+        store.chatCompleter = client
+        _ = store.runFolderWatcherNow(id: store.folderWatchers.first { $0.botId == bot.id }!.id)
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        let system = client.requests.first?.messages.first { $0.role == "system" }?.content ?? ""
+        #expect(!system.contains("Matched skills for this turn"))
+        #expect(system.contains("this run"))
+        #expect(system.contains(watchFolder.path))
+        let blob = messageBlob(store.threads[bot.id])
+        #expect(blob.contains("inbox.md"))
+        #expect(!blob.contains("skills.md"))
+    }
+
+    @Test("watcher shell mv can write inside the watch path")
+    func watcherShellMovesInWatchPath() async throws {
+        let (store, _) = tempStore()
+        #expect(store.signUp(name: "A", email: "wfshell@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Scout", title: "ops")
+        if let idx = store.bots.firstIndex(where: { $0.id == bot.id }) {
+            store.bots[idx].autoApprove = true
+        }
+        let watchFolder = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches/GrizzyBotWatch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: watchFolder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: watchFolder) }
+        let src = watchFolder.appendingPathComponent("photo.jpg")
+        try "img\n".write(to: src, atomically: true, encoding: .utf8)
+        try saveWatcher(store: store, name: "Folder-Organize", path: watchFolder.path, botId: bot.id)
+        let dest = watchFolder.appendingPathComponent("Images/photo.jpg")
+        let destDir = watchFolder.appendingPathComponent("Images")
+        let command = "mkdir -p '\(destDir.path)' && mv '\(src.path)' '\(dest.path)'"
+        let escaped = command
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [LLMToolCall(
+                id: "1",
+                name: "shell",
+                arguments: "{\"command\":\"\(escaped)\"}"
+            )]),
+            ChatCompletionResponse(text: "organized"),
+        ])
+        _ = store.runFolderWatcherNow(id: store.folderWatchers.first { $0.botId == bot.id }!.id)
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        #expect(FileManager.default.fileExists(atPath: dest.path))
+        #expect(!FileManager.default.fileExists(atPath: src.path))
+    }
+
     @Test("absolute path outside the working folder still pauses")
     func outsideStillGated() async throws {
         let (store, _) = tempStore()
@@ -173,6 +337,33 @@ struct WorkingFolderStoreTests {
         #expect(prompt.contains("working folder"))
         #expect(prompt.contains("shell"))
         #expect(prompt.contains("MCP does not inherit"))
+        #expect(prompt.contains("every bot"))
+    }
+
+    private func listFilesClient() -> QueueChatClient {
+        QueueChatClient([
+            ChatCompletionResponse(toolCalls: [LLMToolCall(
+                id: "1",
+                name: "list_files",
+                arguments: "{}"
+            )]),
+            ChatCompletionResponse(text: "listed"),
+        ])
+    }
+
+    private func saveWatcher(
+        store: AppStore,
+        name: String,
+        path: String,
+        botId: String,
+        instructions: String = ""
+    ) throws {
+        var watcher = FolderWatcherRecord.makeNew()
+        watcher.name = name
+        watcher.watchPath = path
+        watcher.instructions = instructions
+        watcher.botId = botId
+        try store.saveFolderWatcher(watcher)
     }
 
     private func messageBlob(_ thread: ThreadData?) -> String {

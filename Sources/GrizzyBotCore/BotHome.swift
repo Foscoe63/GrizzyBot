@@ -258,11 +258,13 @@ public struct BotHomeStore: Sendable {
     }
 
     /// Run a command with cwd inside this bot's home. Does not leave the home as cwd.
+    /// `extraWriteRoots` are additional host folders the seatbelt may write (working folder / watch path).
     public func runShell(
         botId: String,
         command: String,
         cwd: String = "",
-        timeout: TimeInterval = ShellTimeout.default
+        timeout: TimeInterval = ShellTimeout.default,
+        extraWriteRoots: [String] = []
     ) async throws -> ShellResult {
         let home = try homeURL(botId: botId)
         let directory = try containedURL(home: home, relative: cwd)
@@ -276,19 +278,46 @@ public struct BotHomeStore: Sendable {
         guard !trimmed.isEmpty else {
             return ShellResult(exitCode: 1, stdout: "", stderr: "empty command")
         }
-        return try await Self.exec(command: trimmed, cwd: directory, home: home, timeout: timeout)
+        return try await Self.exec(
+            command: trimmed,
+            cwd: directory,
+            home: home,
+            extraWriteRoots: Self.sanitizedWriteRoots(extraWriteRoots),
+            timeout: timeout
+        )
+    }
+
+    private static func sanitizedWriteRoots(_ raw: [String]) -> [URL] {
+        var seen = Set<String>()
+        var out: [URL] = []
+        for item in raw {
+            let expanded = expandPath(item)
+            guard !expanded.isEmpty, !isDeniedHostPath(expanded) else { continue }
+            let url = URL(fileURLWithPath: expanded).standardizedFileURL
+            let key = url.path
+            guard seen.insert(key).inserted else { continue }
+            out.append(url)
+        }
+        return out
     }
 
     private static func exec(
         command: String,
         cwd: URL,
         home: URL,
+        extraWriteRoots: [URL],
         timeout: TimeInterval
     ) async throws -> ShellResult {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let result = try runProcess(command: command, cwd: cwd, home: home, timeout: timeout)
+                    let result = try runProcess(
+                        command: command,
+                        cwd: cwd,
+                        home: home,
+                        extraWriteRoots: extraWriteRoots,
+                        timeout: timeout
+                    )
                     continuation.resume(returning: result)
                 } catch {
                     continuation.resume(throwing: error)
@@ -301,11 +330,18 @@ public struct BotHomeStore: Sendable {
         command: String,
         cwd: URL,
         home: URL,
+        extraWriteRoots: [URL],
         timeout: TimeInterval
     ) throws -> ShellResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sandbox-exec")
-        process.arguments = ["-p", seatbeltProfile(home: home), "/bin/zsh", "-lc", command]
+        process.arguments = [
+            "-p",
+            seatbeltProfile(home: home, extraWriteRoots: extraWriteRoots),
+            "/bin/zsh",
+            "-lc",
+            command,
+        ]
         process.currentDirectoryURL = cwd
         if !FileManager.default.isExecutableFile(atPath: "/usr/bin/sandbox-exec") {
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -347,7 +383,7 @@ public struct BotHomeStore: Sendable {
         )
     }
 
-    private static func seatbeltProfile(home: URL) -> String {
+    private static func seatbeltProfile(home: URL, extraWriteRoots: [URL] = []) -> String {
         let tmp = FileManager.default.temporaryDirectory
         func allowWrite(_ url: URL) -> String {
             let paths = seatbeltPaths(url)
@@ -356,11 +392,13 @@ public struct BotHomeStore: Sendable {
                 return "(allow file-write* (subpath \"\(escaped)\"))"
             }.joined(separator: "\n")
         }
+        let extra = extraWriteRoots.map { allowWrite($0) }.joined(separator: "\n")
         return """
         (version 1)
         (allow default)
         (deny file-write*)
         \(allowWrite(home))
+        \(extra)
         (allow file-write* (subpath "/private/tmp"))
         (allow file-write* (subpath "/tmp"))
         \(allowWrite(tmp))
