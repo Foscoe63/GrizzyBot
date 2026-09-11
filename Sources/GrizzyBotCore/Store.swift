@@ -201,8 +201,16 @@ public final class AppStore {
     private var runWorkingFolderOverride: [String: String] = [:]
     /// Bot currently executing a watcher-triggered run (for echo suppression).
     private var watcherRunByBotId: [String: String] = [:]
-    /// Injected chat client (tests). Production uses `OpenAIChatClient.shared`.
+    /// Injected chat client (tests). Production picks one per provider — see
+    /// `defaultClient(for:)`.
     public var chatCompleter: (any ChatCompleting)?
+
+    /// The client that serves `provider`. Everything speaks HTTP to an
+    /// OpenAI-compatible (or Anthropic) endpoint except Local MLX, which runs
+    /// the model in this process.
+    static func defaultClient(for provider: String?) -> any ChatCompleting {
+        MLXProvider.isMLX(provider) ? MLXChatClient.shared : OpenAIChatClient.shared
+    }
     public var oauthJSON: String?
     private var providerCredentials: [String: ProviderCredential] = [:]
     public var connectionSecrets: [String: String] = [:]
@@ -1198,7 +1206,7 @@ public final class AppStore {
         let provider = bot.modelProvider ?? modelProvider
         let providerSettings = modelProviderSettings(for: provider ?? ModelCatalog.defaultProvider)
         let selectedModel = bot.modelId ?? providerSettings.modelId ?? modelId
-        let client: any ChatCompleting = chatCompleter ?? OpenAIChatClient.shared
+        let client: any ChatCompleting = chatCompleter ?? Self.defaultClient(for: provider)
         await warmMcpCatalog(bot: bot, prompt: prompt)
         hydratePromotedFromAdvertised(bot: bot)
         let tools = AgentToolCatalog.chatTools(
@@ -6571,7 +6579,9 @@ public final class AppStore {
                     botId: botId,
                     depth: 0,
                     endpoint: dummy,
-                    client: self.chatCompleter ?? OpenAIChatClient.shared,
+                    client: self.chatCompleter
+                        ?? Self.defaultClient(for: self.bots.first(where: { $0.id == botId })?.modelProvider
+                            ?? self.modelProvider),
                     approved: true
                 )
                 self.send(

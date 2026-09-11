@@ -68,6 +68,8 @@ public enum ModelCatalog {
     public static let defaultModelId = "deepseek/deepseek-v4-flash-0731"
     public static let openaiCompatibleProvider = "openai-compatible"
 
+    /// Providers configured by base URL. Local MLX is deliberately excluded —
+    /// it runs in-process and has no endpoint to point at.
     public static func usesCustomBase(_ provider: String) -> Bool {
         LocalProviders.isLocal(provider) || provider == openaiCompatibleProvider
     }
@@ -214,6 +216,7 @@ public enum ModelCatalog {
             ]
         )
 
+        list.append(MLXProvider.catalogEntry())
         list.append(contentsOf: LocalProviders.catalogEntries())
         list.append(
             CatalogEntry(
@@ -256,6 +259,7 @@ public enum ModelCatalog {
     /// The small hint shown on the right of each provider row.
     public static func hint(for entry: CatalogEntry) -> String {
         if entry.provider == openaiCompatibleProvider { return "Base URL / key" }
+        if entry.provider == MLXProvider.id { return "Runs in app" }
         if entry.kind == .local { return "Local / LAN" }
         if entry.signIn == .deviceCode {
             switch entry.provider {

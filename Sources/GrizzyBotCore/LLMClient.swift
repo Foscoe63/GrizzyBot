@@ -338,6 +338,19 @@ public enum LLMRouting {
             throw LLMError.notConfigured
         }
 
+        // Local MLX runs in-process: there is no endpoint to reach. The model
+        // id carries the bundle path, and `MLXChatClient` reads it from here.
+        if MLXProvider.isMLX(providerId) {
+            guard !model.isEmpty else { throw LLMError.notConfigured }
+            return ModelEndpoint(
+                provider: providerId,
+                model: model,
+                baseURL: MLXProvider.inProcessBaseURL,
+                apiKey: "local",
+                style: .openAI
+            )
+        }
+
         let trimmedKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let customBase = ModelCatalog.usesCustomBase(providerId)
         if trimmedKey.isEmpty && !customBase && (baseUrl == nil || baseUrl?.isEmpty == true) {
@@ -410,6 +423,7 @@ public enum LLMRouting {
         if injectedClient { return true }
         let providerId = provider?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if providerId == "scripted" { return false }
+        if MLXProvider.isMLX(providerId) { return MLXProvider.isSupportedHardware }
         if LocalProviders.isLocal(providerId) { return true }
         if providerId == ModelCatalog.openaiCompatibleProvider {
             return !(baseUrl?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
@@ -435,6 +449,7 @@ public enum LLMRouting {
         case "anthropic": return "https://api.anthropic.com/v1"
         case "github-copilot": return "https://api.githubcopilot.com"
         case "openai-compatible": return ""
+        case MLXProvider.id: return MLXProvider.inProcessBaseURL
         default:
             return LocalProviders.def(for: provider)?.defaultBaseUrl ?? "https://openrouter.ai/api/v1"
         }

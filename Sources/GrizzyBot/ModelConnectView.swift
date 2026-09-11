@@ -31,6 +31,8 @@ struct ModelConnectView: View {
 
     private var isLocal: Bool { LocalProviders.isLocal(selectedProvider) }
     private var isCompatible: Bool { selectedProvider == ModelCatalog.openaiCompatibleProvider }
+    /// Local MLX runs in-process: no base URL, no API key, and its own picker.
+    private var isMLX: Bool { MLXProvider.isMLX(selectedProvider) }
     private var usesCustomBase: Bool { ModelCatalog.usesCustomBase(selectedProvider) }
 
     private var filteredProviders: [CatalogEntry] {
@@ -58,7 +60,7 @@ struct ModelConnectView: View {
     private var modelsForProvider: [CatalogEntry] {
         var byId: [String: CatalogEntry] = [:]
         for entry in ModelCatalog.models(forProvider: selectedProvider) {
-            if (isLocal || isCompatible) && entry.id.hasSuffix("/default") { continue }
+            if (isLocal || isCompatible || isMLX) && entry.id.hasSuffix("/default") { continue }
             byId[entry.id] = entry
         }
         for model in customModels {
@@ -112,13 +114,21 @@ struct ModelConnectView: View {
             providerRail
                 .padding(.top, 12)
 
-            if isLocal || isCompatible || providerEntry?.supportsBaseUrl == true || providerEntry?.kind == .local {
-                localConfig
+            if isMLX {
+                LocalMLXView(
+                    selectedModelId: $selectedModelId,
+                    onModelsChanged: { customModels = $0 }
+                )
+                .padding(.top, 16)
+            } else {
+                if isLocal || isCompatible || providerEntry?.supportsBaseUrl == true || providerEntry?.kind == .local {
+                    localConfig
+                        .padding(.top, 16)
+                }
+
+                modelPicker
                     .padding(.top, 16)
             }
-
-            modelPicker
-                .padding(.top, 16)
 
             if let entry = selectedEntry ?? providerEntry {
                 Text(entry.billing)
@@ -130,7 +140,9 @@ struct ModelConnectView: View {
                     deviceCodeSection(entry)
                 }
 
-                if isLocal || isCompatible {
+                if isMLX {
+                    EmptyView()
+                } else if isLocal || isCompatible {
                     GrizzyField(
                         label: "API key (optional)",
                         placeholder: "Usually not required",
@@ -536,8 +548,13 @@ struct ModelConnectView: View {
         customModels = settings.fetchedModels
         if selectedModelId.isEmpty {
             let first = ModelCatalog.models(forProvider: selectedProvider)
-                .first(where: { !(isLocal && $0.id.hasSuffix("/default")) })
+                .first(where: { !((isLocal || isMLX) && $0.id.hasSuffix("/default")) })
             selectedModelId = first?.id ?? customModels.first?.id ?? ""
+        }
+        // A stale "<provider>/default" placeholder is not a runnable model id;
+        // Local MLX fills this in from the scan instead.
+        if isMLX, selectedModelId.hasSuffix("/default") {
+            selectedModelId = ""
         }
     }
 
@@ -688,6 +705,16 @@ struct ModelConnectView: View {
     }
 
     private func continueModel() {
+        if isMLX {
+            guard !selectedModelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                modelError = "Pick a model that is on this Mac, or download one from Hugging Face first."
+                return
+            }
+            if let reason = MLXRuntime.unavailableReason {
+                modelError = reason
+                return
+            }
+        }
         if usesCustomBase {
             let model = selectedModelId.trimmingCharacters(in: .whitespacesAndNewlines)
             if model.isEmpty && customModels.isEmpty {
