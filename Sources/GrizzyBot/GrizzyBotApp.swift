@@ -1,5 +1,6 @@
 import AppKit
 import GrizzyBotCore
+import GrizzyBotMLX
 import SwiftUI
 
 @MainActor
@@ -31,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         if UITestLaunch.isTestHost { return }
         CrashReporting.prepare()
+        // Makes the Local MLX provider runnable; a no-op on Intel.
+        GrizzyBotMLXBootstrap.install()
         registerRoutineTickListener()
         if Self.isHeadlessRoutineTick {
             for window in NSApp.windows {

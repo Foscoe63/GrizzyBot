@@ -93,10 +93,17 @@ public struct MLXUnavailableGenerator: MLXTextGenerating {
 public struct MLXChatClient: ChatCompleting {
     public static let shared = MLXChatClient()
 
-    private let generator: any MLXTextGenerating
+    /// Injected by tests. In production this is nil and the generator is
+    /// resolved per request, so a client built before the app registered the
+    /// MLX runtime does not cache the "unavailable" stand-in forever.
+    private let injected: (any MLXTextGenerating)?
+
+    private var generator: any MLXTextGenerating {
+        injected ?? MLXRuntime.makeGenerator()
+    }
 
     public init(generator: (any MLXTextGenerating)? = nil) {
-        self.generator = generator ?? MLXRuntime.makeGenerator()
+        self.injected = generator
     }
 
     public func complete(_ request: ChatCompletionRequest) async throws -> ChatCompletionResponse {

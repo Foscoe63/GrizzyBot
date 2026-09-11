@@ -18,6 +18,15 @@ packages:
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa
     from: 9.24.0
+  # In-app MLX inference (the Local MLX provider). MLXLLM / MLXLMCommon live
+  # here rather than in mlx-swift-examples; the tokenizer bridge comes from
+  # swift-transformers via the MLXHuggingFace macros.
+  MLXSwiftLM:
+    url: https://github.com/ml-explore/mlx-swift-lm
+    from: 3.31.4
+  SwiftTransformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: 1.3.0
 
 settings:
   base:
@@ -80,6 +89,36 @@ targets:
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Automatic
 
+  # The MLX runtime behind the Local MLX provider. Kept out of GrizzyBotCore
+  # so the core library and its tests carry no MLX or tokenizer dependency;
+  # the app installs the generator at launch via MLXRuntime.register.
+  GrizzyBotMLX:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: Sources/GrizzyBotMLX
+    dependencies:
+      - target: GrizzyBotCore
+      - package: MLXSwiftLM
+        product: MLXLLM
+      - package: MLXSwiftLM
+        product: MLXLMCommon
+      - package: MLXSwiftLM
+        product: MLXHuggingFace
+      - package: SwiftTransformers
+        product: Tokenizers
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.grizzybot.mlx
+        PRODUCT_NAME: GrizzyBotMLX
+        GENERATE_INFOPLIST_FILE: YES
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+        SWIFT_INSTALL_OBJC_HEADER: NO
+        SWIFT_STRICT_CONCURRENCY: complete
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Automatic
+
   GrizzyBot:
     type: application
     platform: macOS
@@ -95,6 +134,7 @@ targets:
             subpath: Contents/Library/LaunchAgents
     dependencies:
       - target: GrizzyBotCore
+      - target: GrizzyBotMLX
       - target: GrizzyBotRoutineAgent
         embed: true
         link: false
