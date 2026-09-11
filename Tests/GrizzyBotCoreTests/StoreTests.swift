@@ -1,6 +1,9 @@
+import CoreGraphics
 import Foundation
 import GrizzyBotCore
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 
 @Suite("AppStore")
 @MainActor
@@ -86,6 +89,11 @@ struct StoreTests {
         #expect(store.threads[bot.id]?.run?.status == .completed)
         #expect(store.usage.last?.inputTokens == 12)
         #expect(store.usage.last?.outputTokens == 40)
+        #expect(store.usage.last?.promptTokens == 12)
+        let stats = store.chatTokenStats(botId: bot.id)
+        #expect(stats.lastPromptTokens == 12)
+        #expect(stats.sentTokens == 12)
+        #expect(stats.receivedTokens == 40)
         #expect(!store.sidebarPreview(for: store.bots.first!).isEmpty)
     }
 
@@ -187,9 +195,14 @@ struct StoreTests {
         #expect(store.signUp(name: "A", email: "oauth@b.com", password: "password1") == nil)
         let composio = ImmediateComposio()
         store.composioClient = composio
+        var opened: [URL] = []
+        store.openExternalURL = { opened.append($0) }
         store.connect(slug: "gmail")
         await store.waitForPluginTasks()
+        await Task.yield()
+        try? await Task.sleep(for: .milliseconds(50))
         #expect(composio.lastAuthorize == "gmail")
+        #expect(!opened.isEmpty)
         let gmail = store.connections.first(where: { $0.slug == "gmail" })
         #expect(gmail?.connected == true)
         #expect(gmail?.viaComposio == true)
@@ -198,6 +211,113 @@ struct StoreTests {
         await store.waitForPluginTasks()
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == false)
         #expect(store.connections.first(where: { $0.slug == "gmail" })?.viaComposio == false)
+    }
+
+    @Test("X Connect maps to Composio twitter toolkit")
+    func pluginsComposioXTwitter() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "xoauth@b.com", password: "password1") == nil)
+        let composio = ImmediateComposio()
+        store.composioClient = composio
+        var opened: [URL] = []
+        store.openExternalURL = { opened.append($0) }
+        store.connect(slug: "x")
+        await store.waitForPluginTasks()
+        await Task.yield()
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(composio.lastAuthorize == "x")
+        #expect(composio.connected.contains("twitter"))
+        #expect(!opened.isEmpty)
+        #expect(store.connections.first(where: { $0.slug == "x" })?.connected == true)
+    }
+
+    @Test("syncComposioConnection picks up remote ACTIVE status")
+    func syncComposioRemote() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "sync@b.com", password: "password1") == nil)
+        let composio = ImmediateComposio()
+        composio.connected.insert("gmail")
+        store.composioClient = composio
+        #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == false)
+        let ok = await store.syncComposioConnection(slug: "gmail")
+        #expect(ok)
+        #expect(store.connections.first(where: { $0.slug == "gmail" })?.connected == true)
+        #expect(store.connections.first(where: { $0.slug == "gmail" })?.viaComposio == true)
+    }
+
+    @Test("plugin account preference all fans out Composio searches")
+    func pluginAccountAll() async throws {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "multi@b.com", password: "password1") == nil)
+        let composio = ImmediateComposio()
+        composio.connected.insert("gmail")
+        composio.accountsBySlug["gmail"] = ["gmail_dayal-peiser", "gmail_lerwa-gharry"]
+        store.composioClient = composio
+        if let idx = store.connections.firstIndex(where: { $0.slug == "gmail" }) {
+            store.connections[idx].connected = true
+            store.connections[idx].viaComposio = true
+        }
+        store.connectionSecrets["gmail"] = ComposioClient.composioTokenSentinel
+        store.setPluginAccountPreference(slug: "gmail", account: AppStore.pluginAccountAll)
+        store.composioAccountChoices["gmail"] = ["gmail_dayal-peiser", "gmail_lerwa-gharry"]
+
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [
+                LLMToolCall(id: "1", name: "plugin_call", arguments: "{\"slug\":\"gmail\",\"action\":\"search\",\"query\":\"in:inbox\"}"),
+            ]),
+            ChatCompletionResponse(text: "done"),
+        ])
+        let bot = store.createBot(name: "Mailbot", title: "mail")
+        if let idx = store.bots.firstIndex(where: { $0.id == bot.id }) {
+            store.bots[idx].autoApprove = true
+        }
+        store.send(botId: bot.id, text: "check mail")
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        #expect(store.pluginAccountPreference(for: "gmail") == AppStore.pluginAccountAll)
+        #expect(Set(composio.searchedAccounts) == Set(["gmail_dayal-peiser", "gmail_lerwa-gharry"]))
+    }
+
+    @Test("setPluginAccountPreference stores specific Gmail account")
+    func pluginAccountSpecific() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "acct@b.com", password: "password1") == nil)
+        store.setPluginAccountPreference(slug: "gmail", account: "gmail_lerwa-gharry")
+        #expect(store.pluginAccountPreference(for: "gmail") == "gmail_lerwa-gharry")
+        store.setPluginAccountPreference(slug: "gmail", account: nil)
+        #expect(store.pluginAccountPreference(for: "gmail") == nil)
+    }
+
+    @Test("Google Client OAuth connects Gmail without Composio")
+    func googleOAuthBypass() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "google@b.com", password: "password1") == nil)
+        var config = store.appConfig
+        config.googleClientId = "client.apps.googleusercontent.com"
+        config.googleClientSecret = "secret"
+        store.saveAppConfig(config)
+        let google = ImmediateGoogleOAuth()
+        store.googleOAuthClient = google
+        store.connect(slug: "gmail")
+        await store.waitForPluginTasks()
+        #expect(google.authorizeCalls == 1)
+        #expect(google.lastScopes.contains(where: { $0.contains("gmail") }))
+        let gmail = store.connections.first(where: { $0.slug == "gmail" })
+        #expect(gmail?.connected == true)
+        #expect(gmail?.viaComposio == false)
+        #expect(gmail?.accountLabel == "user@gmail.com")
+        #expect(store.connectionSecrets[GoogleOAuth.credentialSecretKey] != nil)
+    }
+
+    @Test("Sign in with Google connects the suite")
+    func googleSuiteConnect() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "suite@b.com", password: "password1") == nil)
+        store.googleOAuthClient = ImmediateGoogleOAuth()
+        store.connectGoogleSuite()
+        await store.waitForPluginTasks()
+        for slug in ["gmail", "google-calendar", "google-sheets", "google-docs", "google-drive"] {
+            #expect(store.connections.first(where: { $0.slug == slug })?.connected == true)
+        }
     }
 
     @Test("bot memory is a file, upserts similar facts, and forgets")
@@ -277,6 +397,114 @@ struct StoreTests {
         #expect(summary.outputTokens == 27)
     }
 
+    @Test("chatTokenStats is per bot and prefers stored promptTokens")
+    func chatTokenStatsPerBot() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "tok@b.com", password: "password1") == nil)
+        let a = store.createBot(name: "A", title: "helper")
+        let b = store.createBot(name: "B", title: "helper")
+        store.usage = [
+            UsageRecord(
+                id: "1",
+                botId: a.id,
+                provider: "p",
+                model: "m",
+                promptTokens: 100,
+                inputTokens: 140,
+                outputTokens: 20,
+                createdAt: Date(timeIntervalSince1970: 1)
+            ),
+            UsageRecord(
+                id: "2",
+                botId: a.id,
+                provider: "p",
+                model: "m",
+                promptTokens: 80,
+                inputTokens: 90,
+                outputTokens: 10,
+                createdAt: Date(timeIntervalSince1970: 2)
+            ),
+            UsageRecord(
+                id: "3",
+                botId: b.id,
+                provider: "p",
+                model: "m",
+                inputTokens: 999,
+                outputTokens: 1,
+                createdAt: Date(timeIntervalSince1970: 3)
+            ),
+        ]
+        let stats = store.chatTokenStats(botId: a.id)
+        #expect(stats.lastPromptTokens == 80)
+        #expect(stats.sentTokens == 230)
+        #expect(stats.receivedTokens == 30)
+        let other = store.chatTokenStats(botId: b.id)
+        #expect(other.lastPromptTokens == 999)
+        #expect(other.sentTokens == 999)
+        #expect(other.receivedTokens == 1)
+    }
+
+    @Test("resetChatTokens zeros one bot and leaves chats")
+    func resetChatTokensPerBot() {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = AppStore(dataDirectory: dir, delayScale: 0.01)
+        store.pluginClient = AlwaysAllowPlugins()
+        #expect(store.signUp(name: "A", email: "reset-tok@b.com", password: "password1") == nil)
+        let a = store.createBot(name: "A", title: "helper")
+        let b = store.createBot(name: "B", title: "helper")
+        var thread = store.threads[a.id] ?? ThreadData(threadId: a.threadId)
+        thread.messages.append(
+            ThreadMessage(
+                id: "keep-1",
+                threadId: thread.threadId,
+                seq: 0,
+                role: .user,
+                blocks: [.text("keep this")]
+            )
+        )
+        store.threads[a.id] = thread
+        store.usage = [
+            UsageRecord(
+                id: "1",
+                botId: a.id,
+                provider: "p",
+                model: "m",
+                promptTokens: 80,
+                inputTokens: 140,
+                outputTokens: 20,
+                createdAt: Date(timeIntervalSince1970: 1)
+            ),
+            UsageRecord(
+                id: "2",
+                botId: b.id,
+                provider: "p",
+                model: "m",
+                inputTokens: 999,
+                outputTokens: 1,
+                createdAt: Date(timeIntervalSince1970: 2)
+            ),
+        ]
+        #expect(store.resetChatTokens(botId: a.id) == 1)
+        let cleared = store.chatTokenStats(botId: a.id)
+        #expect(cleared.lastPromptTokens == 0)
+        #expect(cleared.sentTokens == 0)
+        #expect(cleared.receivedTokens == 0)
+        let other = store.chatTokenStats(botId: b.id)
+        #expect(other.sentTokens == 999)
+        #expect(store.messages(for: a.id).contains(where: { $0.role == .user }))
+
+        let reloaded = AppStore(dataDirectory: dir, delayScale: 0.01)
+        reloaded.pluginClient = AlwaysAllowPlugins()
+        #expect(reloaded.chatTokenStats(botId: a.id).sentTokens == 0)
+        #expect(reloaded.chatTokenStats(botId: b.id).sentTokens == 999)
+
+        #expect(reloaded.resetChatTokens() == 1)
+        #expect(reloaded.usage.isEmpty)
+        #expect(reloaded.chatTokenStats(botId: b.id).sentTokens == 0)
+    }
+
     @Test("clear save export restore and wipe session")
     func sessionLifecycle() async {
         let store = tempStore()
@@ -320,6 +548,15 @@ struct StoreTests {
         #expect(store.connectionSecrets["box"] == "box_dev_token")
         #expect(store.connections.first(where: { $0.slug == "box" })?.connected == true)
         #expect(PluginClient.tokenHint(for: "box").lowercased().contains("box"))
+    }
+
+    @Test("plugin slug twitter resolves to catalog x")
+    func pluginSlugTwitterAlias() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "x@b.com", password: "password1") == nil)
+        #expect(store.resolvePluginSlug("twitter") == "x")
+        #expect(store.resolvePluginSlug("x") == "x")
+        #expect(ComposioClient.toolkitSlug("x") == "twitter")
     }
 
     @Test("updateMcpServer keeps id and rewrites command")
@@ -372,5 +609,213 @@ struct StoreTests {
         #expect(store.addToolkit(slug: "  ") == nil)
         #expect(store.addToolkit(slug: "ClickUp")?.slug == "clickup")
         #expect(store.connections.filter { $0.slug == "clickup" }.count == 1)
+    }
+
+    @Test("shared canvas save open delete is visible to the store")
+    func canvasCrud() {
+        let store = tempStore()
+        let created = store.createCanvas(title: "Iran 2026-08-20")
+        #expect(store.canvases.contains(where: { $0.id == created.id }))
+        store.openCanvas(id: created.id)
+        #expect(store.canvasOpen)
+        #expect(store.activeCanvas()?.title == "Iran 2026-08-20")
+        store.deleteCanvas(id: created.id)
+        #expect(store.canvases.isEmpty)
+    }
+
+    @Test("opening canvas after a screenshot places the jpeg")
+    func canvasOpenPlacesScreenshot() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = AppStore(dataDirectory: dir, delayScale: 0.01)
+        store.pluginClient = AlwaysAllowPlugins()
+        let bot = store.createBot(name: "Cam", title: "cam")
+        let userId = try #require(store.session?.userId)
+        let userDir = AccountLayout.userDirectory(global: dir, userId: userId)
+        let home = try BotHomeStore(root: userDir).homeURL(botId: bot.id)
+        let shotDir = home.appendingPathComponent(".computer", isDirectory: true)
+        try FileManager.default.createDirectory(at: shotDir, withIntermediateDirectories: true)
+        let jpeg = try #require(Self.testJPEG())
+        try jpeg.write(to: shotDir.appendingPathComponent("screen.jpg"))
+        store.openCanvas(id: nil, placingScreenshotFrom: bot.id)
+        let opened = try #require(store.activeCanvas())
+        #expect(!opened.images.isEmpty)
+        #expect(store.canvasOpen)
+    }
+
+    @Test("folder watcher save lists persist and run now sends")
+    func folderWatcherSaveListAndRun() throws {
+        let dataDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
+        let store = AppStore(dataDirectory: dataDir, delayScale: 0.01)
+        store.pluginClient = AlwaysAllowPlugins()
+        #expect(store.signUp(name: "A", email: "watch@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Scout", title: "watcher")
+        let inbox = dataDir.appendingPathComponent("inbox", isDirectory: true)
+        try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+
+        var watcher = FolderWatcherRecord.makeNew()
+        watcher.name = "Inbox"
+        watcher.watchPath = inbox.path
+        watcher.instructions = "Summarize new files"
+        watcher.botId = bot.id
+        try store.saveFolderWatcher(watcher)
+
+        #expect(store.folderWatchers.contains(where: { $0.id == watcher.id && $0.name == "Inbox" }))
+        #expect(throws: FolderWatcherError.emptyPath) {
+            var empty = FolderWatcherRecord.makeNew()
+            empty.name = "No path"
+            try store.saveFolderWatcher(empty)
+        }
+
+        let reloaded = AppStore(dataDirectory: dataDir, delayScale: 0.01)
+        reloaded.pluginClient = AlwaysAllowPlugins()
+        #expect(reloaded.folderWatchers.contains(where: { $0.id == watcher.id && $0.name == "Inbox" }))
+
+        let result = store.runFolderWatcherNow(id: watcher.id)
+        #expect(result.contains("Triggered"))
+        #expect(store.messages(for: bot.id).contains(where: {
+            $0.role == .user
+                && $0.firstText.contains("Inbox")
+                && $0.firstText.contains("SKILL.md")
+                && $0.firstText.contains("move_file")
+        }))
+        #expect(store.folderWatchers.first(where: { $0.id == watcher.id })?.lastTriggeredAt != nil)
+
+        try store.deleteFolderWatcher(id: watcher.id)
+        #expect(!store.folderWatchers.contains(where: { $0.id == watcher.id }))
+    }
+
+    @Test("folder watcher does not start a second run while the bot is busy")
+    func folderWatcherSkipsWhileBusy() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "watchbusy@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Scout", title: "watcher")
+        let inbox = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GrizzyWatch-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+        var watcher = FolderWatcherRecord.makeNew()
+        watcher.name = "Inbox"
+        watcher.watchPath = inbox.path
+        watcher.botId = bot.id
+        try? store.saveFolderWatcher(watcher)
+
+        let first = store.runFolderWatcherNow(id: watcher.id)
+        let second = store.runFolderWatcherNow(id: watcher.id)
+        let echo = store.handleFolderWatcherEvent(
+            id: watcher.id,
+            changedPaths: [inbox.appendingPathComponent("Applications/a.dmg").path]
+        )
+        #expect(first.contains("Triggered"))
+        #expect(second.contains("Skipped"))
+        #expect(echo.contains("Skipped"))
+        #expect(store.messages(for: bot.id).filter { $0.role == .user }.count == 1)
+    }
+
+    @Test("automatic watcher echoes stay skipped after the run until cooldown ends")
+    func folderWatcherSkipsEchoAfterRun() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "watchecho@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Scout", title: "watcher")
+        store.chatCompleter = QueueChatClient([ChatCompletionResponse(text: "organized")])
+        let inbox = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GrizzyWatch-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+        var watcher = FolderWatcherRecord.makeNew()
+        watcher.name = "Inbox"
+        watcher.watchPath = inbox.path
+        watcher.botId = bot.id
+        try? store.saveFolderWatcher(watcher)
+
+        #expect(store.runFolderWatcherNow(id: watcher.id).contains("Triggered"))
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        let echo = store.handleFolderWatcherEvent(
+            id: watcher.id,
+            changedPaths: [
+                inbox.appendingPathComponent("a.dmg").path,
+                inbox.appendingPathComponent("Applications/a.dmg").path,
+            ]
+        )
+        #expect(echo.contains("Skipped"))
+        let manual = store.runFolderWatcherNow(id: watcher.id)
+        #expect(manual.contains("Triggered"))
+        #expect(store.messages(for: bot.id).filter { $0.role == .user }.count == 2)
+    }
+
+    @Test("bot text and cards already have a copy control; user text does not")
+    func inlineCopyControl() {
+        let botCard = ThreadMessage(
+            id: "1",
+            threadId: "t",
+            seq: 1,
+            role: .bot,
+            blocks: [.card(lines: [CardLine(k: "mcp", v: "list")])]
+        )
+        let botText = ThreadMessage(
+            id: "2",
+            threadId: "t",
+            seq: 2,
+            role: .bot,
+            blocks: [.text("listed the folder")]
+        )
+        let userText = ThreadMessage(
+            id: "3",
+            threadId: "t",
+            seq: 3,
+            role: .user,
+            blocks: [.text("clean downloads")]
+        )
+        #expect(botCard.hasInlineCopyControl)
+        #expect(botText.hasInlineCopyControl)
+        #expect(!userText.hasInlineCopyControl)
+    }
+
+    @Test("folder watcher prompt names the watch path and blocks skill authoring")
+    func folderWatcherPromptRules() {
+        var watcher = FolderWatcherRecord.makeNew()
+        watcher.name = "Folder-Organize"
+        watcher.watchPath = "/Volumes/Storage/Downloads"
+        watcher.instructions = "paste these into Skills as SKILL.md"
+        let msg = FolderWatcherPromptBuilder.userMessage(
+            watcher: watcher,
+            changedPaths: [],
+            manual: true
+        )
+        #expect(msg.contains("/Volumes/Storage/Downloads"))
+        #expect(msg.contains("SKILL.md"))
+        #expect(msg.contains("move_file"))
+        #expect(msg.contains("one organize pass"))
+        #expect(msg.contains("whichever bot"))
+        #expect(msg.contains("browser skill"))
+        #expect(msg.contains("Instructions:"))
+        #expect(msg.contains("paste these into Skills as SKILL.md"))
+    }
+
+    private static func testJPEG() -> Data? {
+        let context = CGContext(
+            data: nil,
+            width: 32,
+            height: 24,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+        guard let context else { return nil }
+        context.setFillColor(CGColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 32, height: 24))
+        guard let image = context.makeImage() else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data,
+            UTType.jpeg.identifier as CFString,
+            1,
+            nil
+        ) else { return nil }
+        CGImageDestinationAddImage(destination, image, nil)
+        CGImageDestinationFinalize(destination)
+        return data as Data
     }
 }

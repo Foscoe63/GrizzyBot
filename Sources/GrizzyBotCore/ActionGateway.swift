@@ -49,6 +49,10 @@ public enum ActionGateway {
             return mcpEffect == .read ? .readTool : .writeTool
         case "present_component":
             return .read
+        case "canvas_list", "canvas_open":
+            return .read
+        case "canvas_save", "canvas_delete", "canvas_place_image":
+            return .writeFile
         case "report_decline", "request_takeover":
             return .read
         default:

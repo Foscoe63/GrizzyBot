@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct RightPanelView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.rightPanelResizing) private var isResizing
 
     @State private var createName = ""
     @State private var createTitle = ""
@@ -14,6 +15,7 @@ struct RightPanelView: View {
     @State private var settingsTitle = ""
     @State private var settingsDescription = ""
     @State private var settingsInstructions = ""
+    @State private var settingsWorkingFolder = ""
     @State private var confirmDelete = false
     @State private var deleting = false
     @State private var settingsError: String?
@@ -34,18 +36,23 @@ struct RightPanelView: View {
                             settingsPanel
                         case .routine:
                             routinePanel
+                        case .canvas:
+                            CanvasPanelView()
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 17)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 17)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 }
                 .grizzyScroll()
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 Color.clear
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, 28) // clear traffic lights under fullSizeContentView
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
     }
 
     private var bot: Bot? { store.activeBot }
@@ -71,11 +78,22 @@ struct RightPanelView: View {
                         .foregroundStyle(Theme.textMuted)
                         .multilineTextAlignment(.center)
                         .padding(16)
+                } else if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+                    if isResizing {
+                        Theme.bgScreen
+                        Text("Resizing…")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.textMuted)
+                    } else {
+                        ThisMacScreenPreview(botId: bot.id, pollSeconds: 3, fill: true)
+                    }
                 } else if let bot, let data = AppComputerRuntime.shared.cachedJPEG(for: bot.id),
                           let image = NSImage(data: data) {
                     Image(nsImage: image)
                         .resizable()
                         .scaledToFill()
+                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                        .clipped()
                 } else {
                     screenLabel
                         .font(.system(size: 13.5))
@@ -83,32 +101,41 @@ struct RightPanelView: View {
                         .multilineTextAlignment(.center)
                         .padding(16)
                 }
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { store.openComputerOverlay() }
             }
+            .frame(maxWidth: .infinity)
             .aspectRatio(16 / 10, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .onTapGesture { store.openComputerOverlay() }
 
-            HStack {
+            VStack(alignment: .leading, spacing: 10) {
                 Text(statusCaption)
                     .font(.system(size: 13.5))
                     .foregroundStyle(Theme.textSecondary)
-                Spacer()
+                    .fixedSize(horizontal: false, vertical: true)
                 if let bot {
                     if computer?.controlHolder == .user {
                         GrizzyButton(title: "Release", variant: .outline, size: .sm) {
                             store.release(botId: bot.id)
                         }
                     } else {
+                        // Take control only — full window is the preview tap. Avoids overlay remount churn.
                         GrizzyButton(title: "Take control", variant: .outline, size: .sm) {
-                            // rakazo: Take control opens the full computer (boot + takeover).
-                            store.openComputerOverlay()
+                            store.takeControl(botId: bot.id)
                         }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 12)
+
+            if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+                Text("Preview only — the bot clicks your real Mac. Take control to type passwords yourself.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
+            }
 
             Text("Routines")
                 .font(.system(size: 14))
@@ -223,11 +250,10 @@ struct RightPanelView: View {
 
     @ViewBuilder
     private var screenLabel: some View {
-        // rakazo: when the full overlay is open, the preview says "Open in full window".
         if store.computerOpen {
             Text("Open in full window")
-        } else if computer?.kind == .desktop {
-            Text("This bot runs on this computer, not a Linux desktop. Shell and files use your home folder.")
+        } else if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+            Text("This Mac preview — Screen Recording required")
         } else if store.booting || computer?.state == .booting {
             Text("Booting live desktop…")
         } else if computer?.state == .running {
@@ -242,7 +268,10 @@ struct RightPanelView: View {
     }
 
     private var statusCaption: String {
-        if computer?.controlHolder == .user { return "You have control" }
+        if computer?.controlHolder == .user { return "You have control (real Mac)" }
+        if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+            return "This Mac · live preview"
+        }
         if computer?.state == .suspended { return "Asleep" }
         return "\(bot?.name ?? "Bot")'s screen"
     }
@@ -370,6 +399,16 @@ struct RightPanelView: View {
                 )
                 .padding(.top, 12)
                 GrizzyField(
+                    label: "Working folder",
+                    placeholder: "~/Projects/my-app (optional; relative file tools read and write here)",
+                    text: $settingsWorkingFolder
+                )
+                .padding(.top, 12)
+                Text("Relative read/write/list use this folder. Shell, MEMORY.md, and PLAN.md stay in the bot home. MCP does not inherit it.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 6)
+                GrizzyField(
                     label: "Memory",
                     placeholder: "Facts this bot should keep. Standing rules go under ## Pin.",
                     text: Binding(
@@ -459,8 +498,11 @@ struct RightPanelView: View {
                     .padding(.top, 4)
                 let published = AgentComponentCatalog.allIds + store.sandboxComponents.filter(\.published).map(\.id)
                 ForEach(published, id: \.self) { componentId in
+                    let label = AgentComponentCatalog.allIds.contains(componentId)
+                        ? componentId
+                        : (store.sandboxComponents.first(where: { $0.id == componentId })?.title ?? componentId)
                     settingsToggle(
-                        title: componentId,
+                        title: label,
                         subtitle: AgentComponentCatalog.allIds.contains(componentId)
                             ? "Built-in card"
                             : "Published playground card",
@@ -552,7 +594,8 @@ struct RightPanelView: View {
                             name: settingsName,
                             title: settingsTitle,
                             description: settingsDescription,
-                            instructions: settingsInstructions
+                            instructions: settingsInstructions,
+                            workingFolder: settingsWorkingFolder
                         )
                     } label: {
                         Text("Save")
@@ -676,23 +719,22 @@ struct RightPanelView: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.textMuted)
 
-            ForEach(store.knownToolDefinitions) { tool in
-                settingsToggle(
-                    title: tool.label,
-                    subtitle: tool.kind == .builtin
-                        ? tool.subtitle
-                        : "\(tool.kind == .mcp ? "MCP" : "Custom") · \(tool.subtitle)",
-                    isOn: bot.isToolEnabled(tool.id)
-                ) {
-                    store.setBotTool(bot.id, toolId: tool.id, enabled: !bot.isToolEnabled(tool.id))
-                }
+            if !store.mcpServers.isEmpty {
+                Text("MCP servers")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 6)
+                McpServersToolsBlock(scope: .bot(bot.id))
             }
+
+            GroupedBuiltinToolsList(scope: .bot(bot.id))
 
             Text("Add MCP servers in App Settings → Tools.")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textMuted)
                 .padding(.top, 4)
         }
+        .onAppear { store.probeAllMcpServers() }
     }
 
     private func modelChoices(for bot: Bot) -> [BotModelChoice] {
@@ -716,6 +758,7 @@ struct RightPanelView: View {
         settingsTitle = bot.title
         settingsDescription = bot.description
         settingsInstructions = bot.instructions.isEmpty ? bot.description : bot.instructions
+        settingsWorkingFolder = bot.workingFolder ?? ""
         settingsLoadedFor = bot.id
         confirmDelete = false
         settingsError = nil

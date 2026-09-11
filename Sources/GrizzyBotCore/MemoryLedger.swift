@@ -122,13 +122,19 @@ public enum MemoryLedger {
 
     // MARK: - Parse / compose
 
-    struct Parsed: Equatable {
-        var title: String
-        var pin: [String]
-        var facts: [String]
+    public struct Parsed: Equatable, Sendable {
+        public var title: String
+        public var pin: [String]
+        public var facts: [String]
+
+        public init(title: String = "", pin: [String] = [], facts: [String] = []) {
+            self.title = title
+            self.pin = pin
+            self.facts = facts
+        }
     }
 
-    static func parse(_ raw: String) -> Parsed {
+    public static func parse(_ raw: String) -> Parsed {
         let lines = raw.replacingOccurrences(of: "\r\n", with: "\n").split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
         var title = ""
         var pin: [String] = []
@@ -176,13 +182,13 @@ public enum MemoryLedger {
         return Parsed(title: title, pin: pin, facts: facts)
     }
 
-    static func compose(_ parsed: Parsed) -> String {
+    public static func compose(_ parsed: Parsed) -> String {
         render(title: parsed.title, pin: parsed.pin, facts: parsed.facts, truncated: false) + "\n"
     }
 
     private enum Section { case pin, facts }
 
-    private static func render(title: String, pin: [String], facts: [String], truncated: Bool) -> String {
+    public static func render(title: String, pin: [String], facts: [String], truncated: Bool) -> String {
         var parts: [String] = [title.isEmpty ? botTitle : title]
         if !pin.isEmpty {
             parts.append("## Pin\n" + pin.map { "- \($0)" }.joined(separator: "\n"))

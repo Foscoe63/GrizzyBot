@@ -52,12 +52,37 @@ struct PluginsOverlayView: View {
                     .padding(.top, 14)
 
                 if let err = store.pluginError {
-                    Text(err)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color(hex: "#E8A07A"))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 32)
-                        .padding(.top, 10)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(err)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color(hex: "#E8A07A"))
+                            .fixedSize(horizontal: false, vertical: true)
+                        if store.pluginAuthURL != nil {
+                            HStack(spacing: 14) {
+                                Button("Open sign-in in browser") {
+                                    store.reopenPluginAuthURL()
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Theme.textGhost)
+                                if ComposioClient.requiresCustomAuthConfig(store.oauthWaitSlug ?? "x")
+                                    || (store.pluginError?.localizedCaseInsensitiveContains("twitter") == true)
+                                    || (store.pluginError?.localizedCaseInsensitiveContains("callback") == true) {
+                                    Button("X setup guide") {
+                                        if let guide = ComposioClient.setupGuideURL(for: "twitter") {
+                                            store.presentPluginAuthURL(guide)
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(Theme.textGhost)
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 10)
                 }
 
                 TextField("Search apps or Composio toolkits", text: $search)
@@ -123,9 +148,8 @@ struct PluginsOverlayView: View {
         .onDisappear {
             browseTask?.cancel()
         }
-        .onChange(of: store.pluginAuthURL) { _, url in
-            if let url { NSWorkspace.shared.open(url) }
-        }
+        // Browser open is handled by AppStore.presentPluginAuthURL (deferred). Do not open
+        // here — NSWorkspace during a SwiftUI body/onChange pass crashes the app.
         .sheet(isPresented: Binding(
             get: { store.connectingSlug != nil },
             set: { if !$0 { store.connectingSlug = nil; tokenDraft = "" } }
@@ -294,14 +318,27 @@ struct PluginsOverlayView: View {
 
     @ViewBuilder
     private var oauthBanner: some View {
-        if store.pluginsUseOAuth {
-            Text("Connect opens a browser sign-in via Composio. Paste a token instead if you already have one.")
+        if store.googlePluginsReady {
+            HStack(alignment: .top, spacing: 12) {
+                Text("Google Client ID/Secret is set — Connect on Gmail/Calendar/Sheets/Docs/Drive signs in directly with Google (no Composio).")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textPluginsSub)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Sign in with Google") {
+                    store.connectGoogleSuite()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.textGhost)
+            }
+        } else if store.pluginsUseOAuth {
+            Text("Connect opens a browser sign-in via Composio. Paste a token instead if you already have one. Or add Google Client ID/Secret in Settings to bypass Composio for Google apps. X/Twitter needs an Auth Config in your Composio dashboard (managed OAuth was removed) — Connect will open that setup page when needed.")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textPluginsSub)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             HStack(alignment: .top, spacing: 12) {
-                Text("Add a Composio Connect key in Settings to sign in through the browser. Until then, paste an API token per app.")
+                Text("Add a Composio Connect key, or Google Client ID/Secret in Settings, to sign in through the browser. Until then, paste an API token per app.")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.textPluginsSub)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -319,44 +356,53 @@ struct PluginsOverlayView: View {
     private func pluginRow(_ item: ConnectionItem) -> some View {
         let pending = store.connectionPending.contains(item.slug)
         let waiting = store.oauthWaitSlug == item.slug
-        return HStack(spacing: 16) {
-            pluginLogo(item)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                    .font(.system(size: 15.5, weight: .medium))
-                    .foregroundStyle(Theme.textBright)
-                Text(rowSubtitle(item, waiting: waiting))
-                    .font(.system(size: 13.5))
-                    .foregroundStyle(Theme.textPluginsSub)
-                    .lineLimit(1)
-            }
-            Spacer()
-            if !item.connected && !item.noAuth {
-                Button("Paste token") {
-                    store.promptPluginToken(slug: item.slug)
+        let accounts = store.composioAccountChoices[item.slug] ?? []
+        let showAccountPicker = item.connected && item.viaComposio && (!accounts.isEmpty || GoogleOAuth.isGooglePlugin(item.slug))
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 16) {
+                pluginLogo(item)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.name)
+                        .font(.system(size: 15.5, weight: .medium))
+                        .foregroundStyle(Theme.textBright)
+                    Text(rowSubtitle(item, waiting: waiting))
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Theme.textPluginsSub)
+                        .lineLimit(1)
+                }
+                Spacer()
+                if !item.connected && !item.noAuth {
+                    Button("Paste token") {
+                        store.promptPluginToken(slug: item.slug)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textSecondary)
+                }
+                Button {
+                    if item.connected {
+                        store.revoke(slug: item.slug)
+                    } else {
+                        store.connect(slug: item.slug)
+                    }
+                } label: {
+                    Text(rowAction(item, pending: pending, waiting: waiting))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textPill)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(Theme.bgDarkButtonAlt)
+                        .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 12.5))
-                .foregroundStyle(Theme.textSecondary)
+                .disabled(pending)
+                .opacity(pending ? 0.55 : 1)
             }
-            Button {
-                if item.connected {
-                    store.revoke(slug: item.slug)
-                } else {
-                    store.connect(slug: item.slug)
-                }
-            } label: {
-                Text(rowAction(item, pending: pending, waiting: waiting))
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.textPill)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(Theme.bgDarkButtonAlt)
-                    .clipShape(Capsule())
+
+            if showAccountPicker {
+                accountPicker(for: item, accounts: accounts)
+                    .padding(.leading, 58)
             }
-            .buttonStyle(.plain)
-            .disabled(pending)
-            .opacity(pending ? 0.55 : 1)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -364,14 +410,109 @@ struct PluginsOverlayView: View {
         .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
+    @ViewBuilder
+    private func accountPicker(for item: ConnectionItem, accounts: [String]) -> some View {
+        let pref = store.pluginAccountPreference(for: item.slug)
+        let loading = store.composioAccountsLoadingSlug == item.slug
+        HStack(spacing: 10) {
+            Text("Account")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textMuted)
+            Menu {
+                Button {
+                    store.setPluginAccountPreference(slug: item.slug, account: nil)
+                } label: {
+                    Label("Auto (first account)", systemImage: pref == nil ? "checkmark" : "")
+                }
+                Button {
+                    store.setPluginAccountPreference(slug: item.slug, account: AppStore.pluginAccountAll)
+                } label: {
+                    Label("All accounts", systemImage: pref == AppStore.pluginAccountAll ? "checkmark" : "")
+                }
+                if !accounts.isEmpty {
+                    Divider()
+                    ForEach(accounts, id: \.self) { account in
+                        Button {
+                            store.setPluginAccountPreference(slug: item.slug, account: account)
+                        } label: {
+                            Label(
+                                store.displayName(forPluginAccount: account),
+                                systemImage: pref == account ? "checkmark" : ""
+                            )
+                        }
+                    }
+                }
+                Divider()
+                Button("Refresh accounts…") {
+                    Task { await store.refreshComposioAccountChoices(slug: item.slug) }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(accountPickerLabel(pref: pref, accounts: accounts))
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Theme.textPill)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.textGhost)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Theme.bgDarkButtonAlt)
+                .clipShape(Capsule())
+            }
+            if loading {
+                ProgressView()
+                    .controlSize(.mini)
+            } else if accounts.isEmpty {
+                Text("Open menu → Refresh if you have more than one Gmail")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func accountPickerLabel(pref: String?, accounts: [String]) -> String {
+        if pref == AppStore.pluginAccountAll {
+            let count = accounts.isEmpty ? "" : " (\(accounts.count))"
+            return "All accounts\(count)"
+        }
+        if let pref, !pref.isEmpty {
+            return store.displayName(forPluginAccount: pref)
+        }
+        if accounts.count > 1 {
+            return "Auto · \(accounts.count) linked"
+        }
+        return accounts.first.map { store.displayName(forPluginAccount: $0) } ?? "Auto"
+    }
+
     private func rowSubtitle(_ item: ConnectionItem, waiting: Bool) -> String {
-        if waiting { return "Waiting for sign-in in the browser…" }
+        if waiting {
+            if ComposioClient.requiresCustomAuthConfig(item.slug) {
+                return "Waiting for X sign-in… (Auth Config required)"
+            }
+            return "Waiting for sign-in in the browser…"
+        }
         if item.connected {
+            if item.viaComposio {
+                let pref = store.pluginAccountPreference(for: item.slug)
+                if pref == AppStore.pluginAccountAll {
+                    let n = store.composioAccountChoices[item.slug]?.count ?? 0
+                    return n > 0 ? "All \(n) Composio accounts" : "All Composio accounts"
+                }
+                if let pref, !pref.isEmpty {
+                    return store.displayName(forPluginAccount: pref)
+                }
+            }
             if let label = item.accountLabel, !label.isEmpty { return label }
             return item.viaComposio ? "Signed in" : "Connected"
         }
         if item.noAuth { return "\(item.slug) · no auth" }
         if !item.blurb.isEmpty { return item.blurb }
+        if store.googlePluginsReady && GoogleOAuth.isGooglePlugin(item.slug) {
+            return "Sign in with Google"
+        }
         if store.pluginsUseOAuth { return "Sign in with your account" }
         return PluginClient.tokenHint(for: item.slug)
     }

@@ -8,8 +8,6 @@ struct MarkdownText: View {
     var fontSize: CGFloat = 15.5
     var lineSpacing: CGFloat = 4
 
-    @State private var cursorOn = true
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
@@ -45,15 +43,15 @@ struct MarkdownText: View {
                 }
             }
             if streaming {
-                Text("▍")
-                    .font(.system(size: fontSize, design: .monospaced))
-                    .foregroundStyle(textColor)
-                    .opacity(cursorOn ? 1 : 0.15)
-                    .onAppear {
-                        withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) {
-                            cursorOn.toggle()
-                        }
-                    }
+                PhaseAnimator([true, false]) { on in
+                    Text("▍")
+                        .font(.system(size: fontSize, design: .monospaced))
+                        .foregroundStyle(textColor)
+                        .opacity(on ? 1 : 0.15)
+                } animation: { _ in
+                    .easeInOut(duration: 0.55)
+                }
+                .compositingGroup()
             }
         }
     }

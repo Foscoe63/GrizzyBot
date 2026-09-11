@@ -188,6 +188,8 @@ enum MacAccessibility {
     }
 
     /// Visible AX targets in screenshot-pixel space for the captured display.
+    /// Never descends into this process — querying our own `NSHostingView` off the main
+    /// actor re-enters SwiftUI (`ChatView`) and traps on MainActor isolation.
     static func outline(
         cocoaFrame: CGRect,
         frame: ComputerScreenFrame,
@@ -198,21 +200,25 @@ enum MacAccessibility {
         }
         var lines: [String] = []
         var visited = 0
+        let selfPid = ProcessInfo.processInfo.processIdentifier
         let system = AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
         if AXUIElementCopyAttributeValue(system, kAXFocusedApplicationAttribute as CFString, &focusedRef) == .success,
            let focusedRef
         {
             let focused = unsafeDowncast(focusedRef as AnyObject, to: AXUIElement.self)
-            collect(
-                from: focused,
-                cocoaFrame: cocoaFrame,
-                frame: frame,
-                primaryMaxY: primaryMaxY,
-                depth: 0,
-                lines: &lines,
-                visited: &visited
-            )
+            if !belongsToProcess(focused, pid: selfPid) {
+                collect(
+                    from: focused,
+                    cocoaFrame: cocoaFrame,
+                    frame: frame,
+                    primaryMaxY: primaryMaxY,
+                    depth: 0,
+                    lines: &lines,
+                    visited: &visited,
+                    skipPid: selfPid
+                )
+            }
         }
         if lines.count < 12 {
             collect(
@@ -222,7 +228,8 @@ enum MacAccessibility {
                 primaryMaxY: primaryMaxY,
                 depth: 0,
                 lines: &lines,
-                visited: &visited
+                visited: &visited,
+                skipPid: selfPid
             )
         }
         if lines.isEmpty {
@@ -238,6 +245,12 @@ enum MacAccessibility {
         "AXMenuButton", "AXSearchField",
     ]
 
+    private static func belongsToProcess(_ element: AXUIElement, pid: pid_t) -> Bool {
+        var elementPid: pid_t = 0
+        guard AXUIElementGetPid(element, &elementPid) == .success else { return false }
+        return elementPid == pid
+    }
+
     private static func collect(
         from element: AXUIElement,
         cocoaFrame: CGRect,
@@ -245,9 +258,12 @@ enum MacAccessibility {
         primaryMaxY: CGFloat,
         depth: Int,
         lines: inout [String],
-        visited: inout Int
+        visited: inout Int,
+        skipPid: pid_t
     ) {
         guard depth < 10, lines.count < ComputerOutline.maxLines, visited < 400 else { return }
+        // Skip before any attribute walk — children of our own windows rebuild SwiftUI AX.
+        if belongsToProcess(element, pid: skipPid) { return }
         visited += 1
         let role = axString(element, kAXRoleAttribute as String)
         if interactiveRoles.contains(role) || role == "AXWindow" {
@@ -278,7 +294,8 @@ enum MacAccessibility {
                 primaryMaxY: primaryMaxY,
                 depth: depth + 1,
                 lines: &lines,
-                visited: &visited
+                visited: &visited,
+                skipPid: skipPid
             )
         }
     }
@@ -396,13 +413,18 @@ enum BotDesktopHTML {
         header { padding:14px 18px; background:#1b1e24; border-bottom:1px solid #2a2e36; }
         main { display:flex; height: calc(100vh - 48px); }
         nav { width: 240px; padding: 16px; border-right: 1px solid #2a2e36; overflow:auto; }
-        iframe { flex:1; border:0; background:white; }
+        section.workspace { flex:1; padding:24px; background:#161a22; }
+        .badge { display:inline-block; margin-top:12px; padding:8px 12px; background:#2a9d8f; color:#04120f; border-radius:8px; font-weight:600; }
         </style></head>
         <body>
         <header>GrizzyBot computer — \(title)</header>
         <main>
-          <nav><p>Home files</p><ul>\(items)</ul></nav>
-          <iframe src="about:blank"></iframe>
+          <nav><p>Home files</p><ul>\(items.isEmpty ? "<li><em>empty</em></li>" : items)</ul></nav>
+          <section class="workspace">
+            <h1>Desktop</h1>
+            <p>In-app browser surface for this bot. Use computer_open to load a URL.</p>
+            <div class="badge">Ready</div>
+          </section>
         </main>
         </body></html>
         """

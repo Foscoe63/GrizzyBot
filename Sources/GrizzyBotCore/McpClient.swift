@@ -486,7 +486,7 @@ public enum McpClient {
         return nil
     }
 
-    public static func formatToolList(_ tools: [McpToolInfo]) -> String {
+    public static func formatToolList(_ tools: [McpToolInfo], serverName: String = "") -> String {
         if tools.isEmpty { return "No tools." }
         let gateway = tools.contains { McpGatewayCall.isMetaTool($0.name) }
         var lines: [String] = []
@@ -497,8 +497,14 @@ public enum McpClient {
                 "2. toolport_search_tools once (server: \"github\" with an empty query lists that server).",
                 "3. mcp_call with tool=toolport_call_tool and arguments.name = the exact catalog name (not id). Passing github__search_repositories as mcp_call's tool is also fine — it is wrapped.",
                 "4. Do not search again this turn. Do not curl or shell those APIs when a catalog tool exists.",
+                "5. After you have titles or a dataset, summarize and write — do not toolport_fetch_result (cursors expire) or toolport_run_script.",
                 "",
             ])
+        } else if !serverName.isEmpty {
+            lines.append(
+                "Tools on \(serverName). Call first-class \(serverName)__<tool> names from your list, or mcp_call with server=\(serverName) and tool=<name below>. Do not call toolport_* unless Toolport is enabled."
+            )
+            lines.append("")
         }
         lines.append(contentsOf: tools.map { formatToolLine($0, compact: gateway) })
         return lines.joined(separator: "\n")
@@ -548,7 +554,64 @@ public enum McpCallArguments {
                 }
             }
         }
-        return call
+        return applyAliases(call)
+    }
+
+    /// Fill required MCP/Toolport fields from common LLM aliases (`path` → `filepath`, etc.).
+    public static func applyAliases(_ args: [String: JSONValue]) -> [String: JSONValue] {
+        var out = args
+        fill(&out, canonical: "filepath", aliases: [
+            "path", "file", "filename", "file_path", "note_path", "relative_path", "vault_path",
+        ])
+        fill(&out, canonical: "dirpath", aliases: [
+            "dir", "directory", "folder", "folder_path", "path",
+        ])
+        fill(&out, canonical: "content", aliases: [
+            "text", "body", "markdown", "data", "note", "value",
+        ])
+        fill(&out, canonical: "query", aliases: [
+            "search", "q", "prompt", "term",
+        ])
+        fill(&out, canonical: "url", aliases: [
+            "href", "link", "uri",
+        ])
+        return out
+    }
+
+    /// MacUse / Toolport defaults (e.g. `get_tool_definitions` → `names: ["*"]`).
+    public static func applyToolDefaults(toolName: String, args: [String: JSONValue]) -> [String: JSONValue] {
+        var out = applyAliases(args)
+        let lower = toolName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let isDefs = lower == "get_tool_definitions"
+            || lower.hasSuffix("__get_tool_definitions")
+            || lower.hasSuffix("/get_tool_definitions")
+        guard isDefs else { return out }
+        if out["names"] == nil || out["names"] == .string("") || out["names"] == .array([]) {
+            out["names"] = .array([.string("*")])
+        } else if case .string(let text) = out["names"] {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            out["names"] = .array([.string(trimmed.isEmpty ? "*" : trimmed)])
+        }
+        return out
+    }
+
+    private static func fill(
+        _ out: inout [String: JSONValue],
+        canonical: String,
+        aliases: [String]
+    ) {
+        if out[canonical] != nil { return }
+        for alias in aliases {
+            guard let value = out[alias] else { continue }
+            if case .string(let text) = value {
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                out[canonical] = .string(trimmed)
+                return
+            }
+            out[canonical] = value
+            return
+        }
     }
 }
 
@@ -577,12 +640,13 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
         }
 
         let env = McpClient.stdioEnvironment(userEnv: server.env)
+        let launchArgs = FastFilesystemMcpArgs.normalize(command: command, args: server.args)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: command.hasPrefix("/") ? command : "/usr/bin/env")
         if command.hasPrefix("/") {
-            process.arguments = server.args
+            process.arguments = launchArgs
         } else {
-            process.arguments = [command] + server.args
+            process.arguments = [command] + launchArgs
         }
         process.environment = env
         if let home = env["HOME"] {

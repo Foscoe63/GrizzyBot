@@ -149,6 +149,8 @@ public enum PluginCatalogFilter {
 public enum AppSecret: String, Sendable, CaseIterable {
     case composioConnect
     case composioApi
+    case googleClientId
+    case googleClientSecret
     case box
     case tts
     case sentry
@@ -178,6 +180,8 @@ extension AppConfig {
         switch secret {
         case .composioConnect: return composioConnectKey
         case .composioApi: return composioApiKey
+        case .googleClientId: return googleClientId
+        case .googleClientSecret: return googleClientSecret
         case .box: return boxToken
         case .tts: return ttsKey
         case .sentry: return sentryDSN
@@ -189,6 +193,8 @@ extension AppConfig {
         switch secret {
         case .composioConnect: composioConnectKey = value
         case .composioApi: composioApiKey = value
+        case .googleClientId: googleClientId = value
+        case .googleClientSecret: googleClientSecret = value
         case .box: boxToken = value
         case .tts: ttsKey = value
         case .sentry: sentryDSN = value

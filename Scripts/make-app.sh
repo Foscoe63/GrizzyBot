@@ -4,7 +4,26 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-swift build -c release --product GrizzyBot --product GrizzyBotRoutineAgent
+# Build with Xcode's toolchain, not whatever `swift` happens to be on PATH.
+# An open-source toolchain (e.g. swiftly) has no CryptoKit, so GoogleOAuth.swift
+# fails to compile — and SwiftPM has been observed to link around the missing
+# object without an error, producing an app that launches with the Google
+# sign-in feature silently absent.
+XCODE_TOOLCHAIN="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+if [[ -x "$XCODE_TOOLCHAIN/swift" ]]; then
+  export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+  export PATH="$XCODE_TOOLCHAIN:$PATH"
+else
+  echo "error: Xcode's Swift toolchain not found at $XCODE_TOOLCHAIN" >&2
+  echo "       Install Xcode, or set DEVELOPER_DIR to its Developer directory." >&2
+  exit 1
+fi
+
+# One product per invocation: SwiftPM keeps only the last `--product` flag, so
+# a combined call silently builds just the routine agent and leaves the app
+# binary missing (or stale from an earlier run).
+swift build -c release --product GrizzyBot
+swift build -c release --product GrizzyBotRoutineAgent
 
 APP="$ROOT/GrizzyBot.app"
 BIN="$ROOT/.build/release/GrizzyBot"
@@ -90,6 +109,29 @@ else
 fi
 
 embed_framework Sentry
+
+# MLX's Metal shaders. Without them every Local MLX model load dies with
+# "Failed to load the default metallib". MLX walks the loaded bundles for its
+# SwiftPM resource bundle, so Contents/Resources is both the place it finds and
+# the only place codesign accepts — a loose .metallib in Contents/MacOS is
+# rejected as an unsigned subcomponent.
+embed_mlx_metallib() {
+  local bundle
+  bundle="$(find "$ROOT/.build" -name 'mlx-swift_Cmlx.bundle' -type d | head -1 || true)"
+  if [[ -z "$bundle" ]]; then
+    echo "error: mlx-swift_Cmlx.bundle not found; Local MLX models would not load" >&2
+    exit 1
+  fi
+  rm -rf "$APP/Contents/Resources/mlx-swift_Cmlx.bundle"
+  cp -R "$bundle" "$APP/Contents/Resources/mlx-swift_Cmlx.bundle"
+
+  if [[ ! -f "$APP/Contents/Resources/mlx-swift_Cmlx.bundle/Contents/Resources/default.metallib" ]]; then
+    echo "error: default.metallib missing from the embedded MLX bundle" >&2
+    exit 1
+  fi
+}
+
+embed_mlx_metallib
 
 ICON="$ROOT/Sources/GrizzyBot/Resources/AppIcon.icns"
 if [[ -f "$ICON" ]]; then

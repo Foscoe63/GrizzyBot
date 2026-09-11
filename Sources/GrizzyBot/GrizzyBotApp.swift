@@ -1,5 +1,6 @@
 import AppKit
 import GrizzyBotCore
+import GrizzyBotMLX
 import SwiftUI
 
 @MainActor
@@ -31,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         if UITestLaunch.isTestHost { return }
         CrashReporting.prepare()
+        // Makes the Local MLX provider runnable; a no-op on Intel.
+        GrizzyBotMLXBootstrap.install()
         registerRoutineTickListener()
         if Self.isHeadlessRoutineTick {
             for window in NSApp.windows {
@@ -65,6 +68,12 @@ struct GrizzyBotApp: App {
         }
         let store = AppStore(dataDirectory: UITestLaunch.dataDirectory())
         store.computerRuntime = AppComputerRuntime.shared
+        store.openExternalURL = { url in
+            // Always hop async so Connect never opens a browser inside a SwiftUI update.
+            DispatchQueue.main.async {
+                _ = NSWorkspace.shared.open(url)
+            }
+        }
         if AppDelegate.isHeadlessRoutineTick {
             store.headlessRoutineTick = true
         }
@@ -130,6 +139,12 @@ struct GrizzyBotApp: App {
 
     @CommandsBuilder
     private var appCommands: some Commands {
+        CommandGroup(after: .windowArrangement) {
+            Button("Canvas") {
+                store.toggleCanvasPanel()
+            }
+            .keyboardShortcut("k", modifiers: [.command, .shift])
+        }
         CommandGroup(after: .pasteboard) {
             Button("Find in Chats") {
                 store.openChatSearch()

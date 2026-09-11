@@ -144,6 +144,44 @@ public struct McpServer: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+/// `fast-filesystem-mcp` ignores positional paths. Official `server-filesystem` uses them.
+/// Rewrite leftover absolute paths as `--allow` so Settings args actually take effect.
+public enum FastFilesystemMcpArgs {
+    private static let valueFlags: Set<String> = ["--allow", "--disable-tools", "-dt"]
+
+    public static func matches(command: String, args: [String]) -> Bool {
+        ([command] + args).joined(separator: " ").lowercased().contains("fast-filesystem-mcp")
+    }
+
+    public static func normalize(command: String, args: [String]) -> [String] {
+        guard matches(command: command, args: args) else { return args }
+        var out: [String] = []
+        var i = 0
+        while i < args.count {
+            let token = args[i]
+            if Self.valueFlags.contains(token), i + 1 < args.count {
+                out.append(token)
+                out.append(args[i + 1])
+                i += 2
+                continue
+            }
+            if isAllowPath(token) {
+                out.append("--allow")
+                out.append(token)
+                i += 1
+                continue
+            }
+            out.append(token)
+            i += 1
+        }
+        return out
+    }
+
+    private static func isAllowPath(_ token: String) -> Bool {
+        token.hasPrefix("/") || token.hasPrefix("~/")
+    }
+}
+
 /// Text form helpers for the MCP server editor (env/headers/args).
 public enum McpConfigText {
     public static func parseEnv(_ text: String) -> [String: String] {
@@ -238,12 +276,12 @@ public struct CustomAgentTool: Codable, Sendable, Hashable, Identifiable {
 
 public enum AgentToolCatalog {
     public static let builtin: [AgentToolDefinition] = [
-        .init(id: "write_file", label: "Write file", subtitle: "Create or overwrite files in the bot home"),
-        .init(id: "read_file", label: "Read file", subtitle: "Read bot-home or absolute paths on this Mac"),
+        .init(id: "write_file", label: "Write file", subtitle: "Write the working folder when set, otherwise bot home"),
+        .init(id: "read_file", label: "Read file", subtitle: "Read the working folder, bot home, or approved host paths"),
         .init(id: "edit_file", label: "Edit file", subtitle: "Replace or append file contents"),
-        .init(id: "move_file", label: "Move / rename file", subtitle: "Move files inside the bot home"),
-        .init(id: "delete_file", label: "Delete file", subtitle: "Remove files from the bot home"),
-        .init(id: "list_files", label: "List files", subtitle: "List bot-home or absolute folders on this Mac"),
+        .init(id: "move_file", label: "Move / rename file", subtitle: "Move files in the working folder or bot home"),
+        .init(id: "delete_file", label: "Delete file", subtitle: "Remove files from the working folder or bot home"),
+        .init(id: "list_files", label: "List files", subtitle: "List the working folder when set, otherwise bot home"),
         .init(id: "web_search", label: "Web search", subtitle: "Search the internet and fetch pages"),
         .init(id: "shell", label: "Shell", subtitle: "Run shell commands in the bot home"),
         .init(id: "remember", label: "Remember", subtitle: "Store durable memory facts"),
@@ -266,6 +304,16 @@ public enum AgentToolCatalog {
         .init(id: "search_knowledge", label: "Search knowledge", subtitle: "Search granted knowledge sources"),
         .init(id: "present_component", label: "Present component", subtitle: "Show a form, gallery, or audit component"),
         .init(id: "report_decline", label: "Report decline", subtitle: "Audit that this bot declined a request"),
+        .init(id: "canvas_list", label: "Canvas list", subtitle: "List shared canvases on this Mac"),
+        .init(id: "canvas_open", label: "Canvas open", subtitle: "Open a shared canvas in the editor"),
+        .init(id: "canvas_save", label: "Canvas save", subtitle: "Create or update a shared canvas"),
+        .init(id: "canvas_delete", label: "Canvas delete", subtitle: "Delete a shared canvas"),
+        .init(id: "canvas_place_image", label: "Canvas place image", subtitle: "Drop a screenshot or image onto a canvas"),
+        .init(id: "capabilities_discover", label: "Discover capabilities", subtitle: "Search skills and MCP tools on demand"),
+        .init(id: "capabilities_load", label: "Load capabilities", subtitle: "Activate discovered skills or MCP tools"),
+        .init(id: "todo", label: "Todo", subtitle: "Write a multi-step checklist for this turn"),
+        .init(id: "complete", label: "Complete", subtitle: "Finish the task with a short summary"),
+        .init(id: "clarify", label: "Clarify", subtitle: "Pause and ask the user a question"),
     ]
 
     /// Back-compat alias.
@@ -329,12 +377,15 @@ extension Bot {
     public func isToolEnabled(_ toolId: String) -> Bool {
         if enabledTools.contains(toolId) { return true }
         if toolId.hasPrefix("computer_"), enabledTools.contains("request_takeover") { return true }
+        if CanvasBoardStore.toolIds.contains(toolId) { return true }
         if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
         if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
         if toolId == "import_skills", enabledTools.contains("read_file") { return true }
         if toolId == "search_knowledge", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
             return true
         }
+        if toolId == "capabilities_discover" || toolId == "capabilities_load" { return true }
+        if toolId == "todo" || toolId == "complete" || toolId == "clarify" { return true }
         return false
     }
 
@@ -406,7 +457,9 @@ extension AgentToolCatalog {
         enabledIds: [String],
         mcpServers: [McpServer] = [],
         includeDelegation: Bool = true,
-        skills: [AgentSkill] = []
+        skills: [AgentSkill] = [],
+        promotedMcp: [McpPromotedTool] = [],
+        mcpAdvertised: [String: [String]] = [:]
     ) -> [ChatTool] {
         let enabled = Set(enabledIds)
             .union(enabledIds.contains("read_file") ? ["import_skills"] : [])
@@ -414,6 +467,8 @@ extension AgentToolCatalog {
                 (enabledIds.contains("remember") || enabledIds.contains("search_memory"))
                     ? ["search_knowledge"] : []
             )
+            .union(CanvasBoardStore.toolIds)
+            .union(["capabilities_discover", "capabilities_load", "todo", "complete", "clarify"])
         var tools: [ChatTool] = []
 
         func add(_ id: String, name: String? = nil, description: String, properties: [String: JSONValue], required: [String]) {
@@ -431,24 +486,24 @@ extension AgentToolCatalog {
 
         add(
             "write_file",
-            description: "Write a UTF-8 file into this bot's private home. It shows up in Files.",
+            description: "Write a UTF-8 file. Relative paths use the bot working folder when set, otherwise the bot home. Absolute/~ paths outside the working folder pause for approval.",
             properties: [
-                "path": stringProp("Relative path inside the bot home, e.g. notes/result.txt"),
+                "path": stringProp("Relative path (working folder or bot home) or absolute/~ path"),
                 "content": stringProp("Full file contents"),
             ],
             required: ["path", "content"]
         )
         add(
             "read_file",
-            description: "Read a UTF-8 file from this bot's home. Absolute/~ paths on this Mac pause for approval (for example ~/.agents/skills/orchestration/SKILL.md).",
-            properties: ["path": stringProp("Relative bot-home path or absolute/~ path")],
+            description: "Read a UTF-8 file. Relative paths use the bot working folder when set, otherwise the bot home. Absolute/~ paths outside the working folder pause for approval.",
+            properties: ["path": stringProp("Relative path (working folder or bot home) or absolute/~ path")],
             required: ["path"]
         )
         add(
             "edit_file",
-            description: "Replace or append a file in this bot's home.",
+            description: "Replace or append a file. Relative paths use the working folder when set, otherwise the bot home.",
             properties: [
-                "path": stringProp("Relative path"),
+                "path": stringProp("Relative path (working folder or bot home) or absolute/~ path"),
                 "content": stringProp("New contents, or text to append"),
                 "mode": .object([
                     "type": .string("string"),
@@ -459,23 +514,23 @@ extension AgentToolCatalog {
         )
         add(
             "move_file",
-            description: "Move or rename a file inside this bot's home.",
+            description: "Move or rename a file. Relative paths use the working folder when set, otherwise the bot home.",
             properties: [
-                "from": stringProp("Source relative path"),
-                "to": stringProp("Destination relative path"),
+                "from": stringProp("Source path"),
+                "to": stringProp("Destination path"),
             ],
             required: ["from", "to"]
         )
         add(
             "delete_file",
-            description: "Delete a file or directory inside this bot's home.",
-            properties: ["path": stringProp("Relative path")],
+            description: "Delete a file or directory. Relative paths use the working folder when set, otherwise the bot home.",
+            properties: ["path": stringProp("Relative path (working folder or bot home) or absolute/~ path")],
             required: ["path"]
         )
         add(
             "list_files",
-            description: "List a directory in this bot's home. Absolute/~ folders on this Mac pause for approval.",
-            properties: ["directory": stringProp("Relative directory, empty for home root, or an absolute/~ path")],
+            description: "List a directory. Empty lists the working folder when set, otherwise the bot home. Absolute/~ folders outside the working folder pause for approval.",
+            properties: ["directory": stringProp("Relative directory, empty for the file root, or an absolute/~ path")],
             required: []
         )
         add(
@@ -571,6 +626,43 @@ extension AgentToolCatalog {
             required: ["reason"]
         )
         add(
+            "canvas_list",
+            description: "List shared canvases on this Mac. Every bot can see the same boards.",
+            properties: [:],
+            required: []
+        )
+        add(
+            "canvas_open",
+            description: "Open a shared canvas in the GrizzyBot editor. Pass id or title from canvas_list. If the bot just took a screenshot, this places it on the board.",
+            properties: ["id": stringProp("Canvas id or title")],
+            required: []
+        )
+        add(
+            "canvas_save",
+            description: "Create or update a shared canvas. write_file cannot write these boards.",
+            properties: [
+                "id": stringProp("Existing canvas id or title to update"),
+                "title": stringProp("Canvas name, e.g. Iran 2026-08-20"),
+            ],
+            required: []
+        )
+        add(
+            "canvas_delete",
+            description: "Delete a shared canvas by id or title.",
+            properties: ["id": stringProp("Canvas id or title")],
+            required: ["id"]
+        )
+        add(
+            "canvas_place_image",
+            description: "Place the latest computer screenshot (or a bot-home image path) onto a shared canvas. Creates a canvas if id is omitted.",
+            properties: [
+                "id": stringProp("Canvas id or title; omit to create one"),
+                "title": stringProp("Name when creating a canvas"),
+                "path": stringProp("Optional bot-home or absolute image path; default is the last screenshot"),
+            ],
+            required: []
+        )
+        add(
             "request_takeover",
             description: "Ask the user to take over the computer for login or human judgment.",
             properties: ["reason": stringProp("Why you need the user")],
@@ -633,11 +725,12 @@ extension AgentToolCatalog {
         )
         add(
             "plugin_call",
-            description: "Call a connected plugin. action=search|list|get reads; action=write (default) sends a title/body.",
+            description: "Call a connected plugin (gmail, google-calendar, github, x, …). For Gmail inbox/list: action=search (or list) with optional query like in:inbox or is:unread — do not invent thread_id/attachment ids. action=write sends mail (title=subject, body=text). If multiple Gmail accounts are linked, set account to one alias (gmail_lerwa-gharry) or account=all. Prefer Plugins → Account picker. For X/Twitter use slug x (twitter also works). Do not use slug composio_connect.",
             properties: [
-                "slug": stringProp("Plugin slug, e.g. gmail or github"),
+                "slug": stringProp("Plugin slug, e.g. gmail, google-calendar, or x"),
                 "action": stringProp("search, list, get, or write"),
-                "query": stringProp("Search/list query for reads"),
+                "query": stringProp("Search/list query for reads (optional; defaults to inbox for Gmail)"),
+                "account": stringProp("Composio account alias, or all for every linked inbox"),
                 "title": stringProp("Title for writes"),
                 "body": stringProp("Body for writes"),
             ],
@@ -648,6 +741,41 @@ extension AgentToolCatalog {
             description: "Import every SKILL.md under a folder into GrizzyBot’s skill library so bots can use them. Path may be absolute (e.g. ~/.agents/skills) or inside the bot home.",
             properties: ["path": stringProp("Folder that contains SKILL.md files")],
             required: ["path"]
+        )
+        add(
+            "capabilities_discover",
+            description: "Search skills, builtins, and known MCP tools by keyword. Prefer this over guessing catalog names. Then call capabilities_load with matching ids.",
+            properties: [
+                "query": stringProp("What you need, e.g. gmail, obsidian, screenshot"),
+                "top_k": stringProp("Max results (default 8)"),
+            ],
+            required: ["query"]
+        )
+        add(
+            "capabilities_load",
+            description: "Activate discovered capabilities by id (skills inject instructions; MCP tools become first-class). Pass comma-separated or JSON array of ids from capabilities_discover.",
+            properties: [
+                "ids": stringProp("Capability ids to load, e.g. research,gmail__messages_list"),
+            ],
+            required: ["ids"]
+        )
+        add(
+            "todo",
+            description: "Write or replace an OPTIONAL checklist for multi-step work (3+ steps). Each line must start with `- [ ]` or `- [x]`. Full-list replace each call.",
+            properties: ["markdown": stringProp("Markdown checklist")],
+            required: ["markdown"]
+        )
+        add(
+            "complete",
+            description: "Finish the current multi-step task with a one-paragraph summary, then stop.",
+            properties: ["summary": stringProp("Short summary of what was done")],
+            required: ["summary"]
+        )
+        add(
+            "clarify",
+            description: "Pause and ask the user a clarifying question before continuing.",
+            properties: ["question": stringProp("Question for the user")],
+            required: ["question"]
         )
         if !skills.isEmpty {
             let ids = skills.map(\.id).joined(separator: ", ")
@@ -701,20 +829,29 @@ extension AgentToolCatalog {
         if !mcpEnabled.isEmpty {
             let names = mcpEnabled.map(\.name).joined(separator: ", ")
             let hasGateway = mcpEnabled.contains { McpGatewayCall.isGateway($0) }
+            let only = mcpEnabled.count == 1
+            let omitHint = only
+                ? "Omit server to use \(mcpEnabled[0].name)."
+                : (hasGateway
+                    ? "Always pass server=<name> unless calling a Toolport catalog tool (name contains __). Available: \(names)."
+                    : "Always pass server=<name>. Do not omit server. Do not call Toolport unless that name is listed. Available: \(names).")
             let listDescription = hasGateway
-                ? "List tools on an MCP server. Servers: \(names). Toolport returns gateway meta-tools (status/search/call), not GitHub or Obsidian — search once, then mcp_call. Do not list the same server again this turn."
-                : "List tools on an MCP server. Servers: \(names). Call mcp_list_tools once, then mcp_call. Do not list the same server again this turn."
+                ? "List tools on an MCP server. Servers: \(names). \(omitHint) Toolport returns gateway meta-tools (status/search/call), not GitHub or Obsidian — search once, then mcp_call. Do not list the same server again this turn."
+                : "List tools on an MCP server. Servers: \(names). \(omitHint) Call mcp_list_tools once, then mcp_call. Prefer first-class server__tool names already in your list. Do not list the same server again this turn."
             let callDescription = hasGateway
-                ? "Call a tool on an MCP server. Servers: \(names). `tool` is a name from mcp_list_tools, or a Toolport catalog name like github__search_repositories (wrapped for you). For Toolport call_tool, pass arguments.name — never id. Do not use shell/curl when an MCP tool exists. write_file cannot write an Obsidian vault."
-                : "Call a tool on an MCP server. Servers: \(names). Pass the MCP tool's own fields (filepath, content, …) nested in arguments or as top-level parameters. write_file cannot write an Obsidian vault."
+                ? "Call a tool on an MCP server. Servers: \(names). \(omitHint) `tool` is a name from mcp_list_tools, or a Toolport catalog name like github__search_repositories (wrapped for you). For toolport_call_tool, arguments.name must be non-empty — never id, never blank. Prefer filepath+content (path aliases to filepath). Do not call toolport_fetch_result after you already have results. Do not invent catalog names — search once if unsure."
+                : "Call a tool on an MCP server. Servers: \(names). \(omitHint) Pass the MCP tool's own fields nested in arguments or as top-level parameters. path aliases to filepath. Prefer first-class server__tool tools already in your list over mcp_call."
+            let serverProp = only
+                ? "MCP server name or id; omit to use \(mcpEnabled[0].name)"
+                : "MCP server name or id from: \(names). Required when more than one MCP is enabled."
             tools.append(
                 ChatTool(
                     function: ChatToolFunction(
                         name: "mcp_list_tools",
                         description: listDescription,
                         parameters: objectSchema(
-                            ["server": stringProp("MCP server name or id")],
-                            required: ["server"]
+                            ["server": stringProp(serverProp)],
+                            required: []
                         )
                     )
                 )
@@ -726,7 +863,7 @@ extension AgentToolCatalog {
                         description: callDescription,
                         parameters: objectSchema(
                             [
-                                "server": stringProp("MCP server name or id"),
+                                "server": stringProp(serverProp),
                                 "tool": stringProp(
                                     hasGateway
                                         ? "MCP tool name, or a Toolport catalog name such as github__search_repositories"
@@ -736,17 +873,44 @@ extension AgentToolCatalog {
                                     "type": .string("object"),
                                     "description": .string(
                                         hasGateway
-                                            ? "Arguments for the MCP tool. Toolport call_tool needs name plus nested arguments."
+                                            ? "Arguments for the MCP tool. Toolport call_tool needs non-empty name plus nested arguments (filepath/content, etc.)."
                                             : "Arguments object for the MCP tool"
                                     ),
                                 ]),
                                 "prompt": stringProp("Fallback text if the server expects a single prompt"),
                             ],
-                            required: ["server", "tool"]
+                            required: ["tool"]
                         )
                     )
                 )
             )
+        }
+
+        var existingNames = Set(tools.map(\.function.name))
+        let advertisedPromoted = McpCatalogPromote.fromAdvertised(
+            servers: mcpEnabled,
+            advertised: mcpAdvertised.mapValues(McpCatalogPromote.uniqueAdvertisedNames),
+            reserved: existingNames.union(AgentToolCatalog.builtinIds)
+        )
+        var seeded: [String: McpPromotedTool] = [:]
+        for promo in promotedMcp {
+            seeded[promo.chatName] = promo
+        }
+        let combinedPromoted = McpCatalogPromote.merge(existing: seeded, adding: advertisedPromoted)
+        let gatedPromoted = combinedPromoted.values.filter { promo in
+            let advertised = mcpAdvertised[promo.serverId] ?? []
+            return McpToolGate.isToolEnabled(
+                enabledIds: enabledIds,
+                serverId: promo.serverId,
+                toolName: promo.executeTool,
+                advertised: advertised
+            )
+        }
+        .sorted { $0.chatName < $1.chatName }
+        for promoted in McpCatalogPromote.chatTools(from: gatedPromoted) {
+            guard !existingNames.contains(promoted.function.name) else { continue }
+            existingNames.insert(promoted.function.name)
+            tools.append(promoted)
         }
 
         return tools

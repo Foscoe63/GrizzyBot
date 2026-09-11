@@ -116,6 +116,18 @@ struct OverlaySnapshotTests {
     }
 }
 
+@Suite("Chat scroll")
+struct ChatScrollTests {
+    @Test("follow-scroll is not a spring while the bot is working")
+    func noSpringWhileWorking() {
+        #expect(ChatScrollBehavior.animatesFollow(runActive: true) == false)
+        #expect(ChatScrollBehavior.animatesFollow(runActive: false) == true)
+        #expect(ChatScrollBehavior.shouldStick(distanceFromBottom: 10, currentlyStuck: true))
+        #expect(!ChatScrollBehavior.shouldStick(distanceFromBottom: 200, currentlyStuck: true))
+        #expect(!ChatScrollBehavior.shouldStick(distanceFromBottom: 80, currentlyStuck: false))
+    }
+}
+
 private enum SnapshotError: Error {
     case noBitmap
     case noPNG

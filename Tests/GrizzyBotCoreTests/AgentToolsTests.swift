@@ -76,6 +76,9 @@ struct AgentToolsTests {
         #expect(bot.noToolsEnabled)
         bot.setAllTools(enabled: true)
         #expect(bot.allToolsEnabled)
+        #expect(bot.isToolEnabled("canvas_list"))
+        bot.setTool("canvas_list", enabled: false)
+        #expect(bot.isToolEnabled("canvas_list"))
     }
 
     @Test("MCP env and header text round-trips")
@@ -93,5 +96,67 @@ struct AgentToolsTests {
         #expect(McpConfigText.headerLines(["Z": "9", "A": "1"]) == "A: 1\nZ: 9")
         #expect(McpConfigText.parseArgs(" -y  @pkg  /tmp ") == ["-y", "@pkg", "/tmp"])
         #expect(McpConfigText.argsLine(["-y", "@pkg"]) == "-y @pkg")
+    }
+
+    @Test("fast-filesystem-mcp positional paths become --allow")
+    func fastFilesystemAllowFlags() {
+        let rewritten = FastFilesystemMcpArgs.normalize(
+            command: "npx",
+            args: [
+                "-y",
+                "fast-filesystem-mcp",
+                "/Users/ewg",
+                "/Volumes/Storage",
+                "/Volumes/AppsX",
+            ]
+        )
+        #expect(rewritten == [
+            "-y",
+            "fast-filesystem-mcp",
+            "--allow", "/Users/ewg",
+            "--allow", "/Volumes/Storage",
+            "--allow", "/Volumes/AppsX",
+        ])
+        #expect(
+            FastFilesystemMcpArgs.normalize(command: "npx", args: rewritten) == rewritten
+        )
+        #expect(
+            FastFilesystemMcpArgs.normalize(
+                command: "npx",
+                args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+            ) == ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+        )
+    }
+
+    @Test("disabled builtins point at connected MCP instead of Settings")
+    func disabledBuiltinUsesMcp() {
+        let fs = McpServer(id: "fs", name: "fast-filesystem", command: "npx")
+        let write = DisabledBuiltinFallback.toolResult(
+            tool: "write_file",
+            argumentsJSON: "{\"path\":\"Iran 2026-08-20.md\",\"content\":\"brief\"}",
+            hasMcp: true,
+            context: McpFallbackContext.from(
+                servers: [fs],
+                advertised: ["fs": ["write_file", "read_file"]],
+                firstClassNames: ["fast-filesystem__write_file"]
+            )
+        )
+        #expect(write.contains("disabled"))
+        #expect(write.contains("fast-filesystem"))
+        #expect(write.contains("Iran 2026-08-20.md"))
+        #expect(!write.contains("Enable it in Settings → Tools."))
+        #expect(!write.lowercased().contains("toolport_search_tools"))
+        #expect(DisabledBuiltinFallback.searchQuery(for: "web_search") == "web search")
+        #expect(DisabledBuiltinFallback.toolResult(tool: "write_file", argumentsJSON: "{}", hasMcp: false)
+            .contains("add an MCP server"))
+        #expect(DisabledBuiltinFallback.toolResult(tool: "computer_click", argumentsJSON: "{}", hasMcp: true)
+            .contains("no MCP equivalent"))
+        let note = DisabledBuiltinFallback.promptNote(
+            available: ["mcp_call"],
+            context: McpFallbackContext.from(servers: [fs])
+        )
+        #expect(note?.contains("write_file") == true)
+        #expect(note?.contains("Do not ask to enable") == true)
+        #expect(note?.contains("Toolport is in that server list") == true)
     }
 }

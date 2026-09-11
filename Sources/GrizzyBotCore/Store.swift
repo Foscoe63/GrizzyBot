@@ -16,6 +16,7 @@ public enum Panel: String, Sendable, Equatable {
     case create
     case settings
     case routine
+    case canvas
 }
 
 /// Heart of the app: local store mirroring rakazo Shell.tsx state + API behavior.
@@ -25,6 +26,7 @@ public final class AppStore {
     public var route: Route = .welcome
     public var session: Session?
     public var bots: [Bot] = []
+    public var folderWatchers: [FolderWatcherRecord] = []
     public var activeBotId: String?
     public var threads: [String: ThreadData] = [:]
     public var routines: [String: [Routine]] = [:]
@@ -50,6 +52,13 @@ public final class AppStore {
     public var pluginGrants: [PluginGrant] = []
     public var sandboxComponents: [SandboxComponent] = []
     public var mcpAdvertisedTools: [String: [String]] = [:]
+    /// Session cache of Toolport/MacUse catalog tools promoted to first-class ChatTools.
+    public var mcpPromotedTools: [String: McpPromotedTool] = [:]
+    /// Live MCP connection probes (not persisted).
+    public var mcpProbeStatus: [String: McpProbeStatus] = [:]
+    /// Last successful `tools/list` payloads for UI subtitles (not persisted).
+    public var mcpListedTools: [String: [McpToolInfo]] = [:]
+    private var mcpProbeGeneration: [String: UInt64] = [:]
     public var auditEvents: [AuditEvent] = []
     public var appSettingsOpen: Bool = false
     public var appSettingsSection: AppSettingsSection = .general
@@ -64,7 +73,7 @@ public final class AppStore {
     public var pendingAuthEmail: String = ""
 
     public enum AppSettingsSection: String, Sendable, CaseIterable, Identifiable {
-        case general, connections, computer, voice, tools, themes, diagnostics, governance, knowledge, components
+        case general, connections, computer, voice, tools, themes, privacy, watchers, diagnostics, governance, knowledge, components
         public var id: String { rawValue }
         public var label: String {
             switch self {
@@ -74,6 +83,8 @@ public final class AppStore {
             case .voice: return "Voice"
             case .tools: return "Tools"
             case .themes: return "Themes"
+            case .privacy: return "Privacy"
+            case .watchers: return "Watchers"
             case .diagnostics: return "Diagnostics"
             case .governance: return "Governance"
             case .knowledge: return "Knowledge"
@@ -84,6 +95,10 @@ public final class AppStore {
 
     public var panel: Panel? = nil
     public var computerOpen: Bool = false
+    public var canvasOpen: Bool = false
+    public var activeCanvasId: String?
+    public var canvases: [CanvasRecord] = []
+    public var canvasRevision: Int = 0
     public var booting: Bool = false
     public var pluginsOpen: Bool = false
     public var skillsOpen: Bool = false
@@ -100,6 +115,10 @@ public final class AppStore {
         composioClient != nil || appConfig.composioConfigured
     }
 
+    public var googlePluginsReady: Bool {
+        googleOAuthClient != nil || appConfig.googleOAuthConfigured
+    }
+
     private func liveComposio() -> (any ComposioConnecting)? {
         if let composioClient { return composioClient }
         let key = (appConfig.composioConnectKey ?? appConfig.composioApiKey ?? "")
@@ -108,12 +127,69 @@ public final class AppStore {
         return ComposioClient(connectKey: key, apiKey: appConfig.composioApiKey)
     }
 
+    private func liveGoogleOAuth() -> (any GoogleOAuthConnecting)? {
+        if let googleOAuthClient { return googleOAuthClient }
+        guard appConfig.googleOAuthConfigured else { return nil }
+        return GoogleOAuthClient(openURL: { [weak self] url in
+            Task { @MainActor in
+                self?.presentPluginAuthURL(url)
+            }
+        })
+    }
+
+    /// Open a Composio/Google sign-in URL in the system browser and keep it visible in the Plugins UI.
+    public func presentPluginAuthURL(_ url: URL, setupHint: String? = nil) {
+        let openable = Self.browserOpenableURL(url) ?? url
+        pluginAuthURL = openable
+        if let setupHint {
+            pluginError = setupHint
+        } else if ComposioClient.isAuthConfigSetupURL(url) || ComposioClient.isAuthConfigSetupURL(openable) {
+            pluginError = ComposioClient.authSetupMessage(for: "x", url: openable)
+        }
+        // Defer past the current SwiftUI transaction — opening a browser mid-body update crashes.
+        let open = openExternalURL
+        DispatchQueue.main.async {
+            open?(openable)
+        }
+    }
+
+    public func reopenPluginAuthURL() {
+        guard let url = pluginAuthURL else { return }
+        let open = openExternalURL
+        DispatchQueue.main.async {
+            open?(url)
+        }
+    }
+
+    /// Prefer http(s). Bare Composio API/auth-apps links often show “could not open app” in the browser.
+    private static func browserOpenableURL(_ url: URL) -> URL? {
+        let scheme = (url.scheme ?? "").lowercased()
+        guard scheme == "http" || scheme == "https" else { return nil }
+        if ComposioClient.isAuthConfigSetupURL(url) {
+            return URL(string: "https://app.composio.dev")
+        }
+        return url
+    }
+
+    /// Resolve catalog aliases (`twitter` ↔ `x`) so plugin_call and Connect share one connection.
+    public func resolvePluginSlug(_ slug: String) -> String {
+        let trimmed = slug.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return trimmed }
+        if connections.contains(where: { $0.slug == trimmed }) { return trimmed }
+        let key = ComposioClient.toolkitSlug(trimmed)
+        if let match = connections.first(where: { ComposioClient.toolkitSlug($0.slug) == key }) {
+            return match.slug
+        }
+        return trimmed
+    }
+
     private var users: [UserAccount] = []
     private let globalRoot: URL
     private var globalPersistence: Persistence
     private var userPersistence: Persistence
     private var botHome: BotHomeStore
     private var destinations: DestinationStore
+    private var canvasBoard: CanvasBoardStore
     private var runTasks: [String: Task<Void, Never>] = [:]
     private var bootTasks: [String: Task<Void, Never>] = [:]
     private var pluginTasks: [String: Task<Void, Never>] = [:]
@@ -121,14 +197,31 @@ public final class AppStore {
 
     /// Shorter delays in tests so `swift test` stays fast.
     public var delayScale: Double = 1.0
-    /// Injected chat client (tests). Production uses `OpenAIChatClient.shared`.
+    /// Watcher runs pin file tools to the watch path until the run goes idle.
+    private var runWorkingFolderOverride: [String: String] = [:]
+    /// Bot currently executing a watcher-triggered run (for echo suppression).
+    private var watcherRunByBotId: [String: String] = [:]
+    /// Injected chat client (tests). Production picks one per provider — see
+    /// `defaultClient(for:)`.
     public var chatCompleter: (any ChatCompleting)?
+
+    /// The client that serves `provider`. Everything speaks HTTP to an
+    /// OpenAI-compatible (or Anthropic) endpoint except Local MLX, which runs
+    /// the model in this process.
+    static func defaultClient(for provider: String?) -> any ChatCompleting {
+        MLXProvider.isMLX(provider) ? MLXChatClient.shared : OpenAIChatClient.shared
+    }
     public var oauthJSON: String?
     private var providerCredentials: [String: ProviderCredential] = [:]
     public var connectionSecrets: [String: String] = [:]
     public var computerRuntime: (any ComputerRuntime)?
     public var pluginClient: any PluginConnecting = PluginClient.shared
     public var composioClient: (any ComposioConnecting)?
+    public var googleOAuthClient: (any GoogleOAuthConnecting)?
+    /// App layer opens OAuth / Composio URLs (NSWorkspace). Must not be observed — storing a
+    /// closure on an `@Observable` property crashes PluginsOverlayView body updates (SIGBUS).
+    @ObservationIgnored
+    public var openExternalURL: ((URL) -> Void)?
     public var pluginError: String?
     public var connectingSlug: String?
     public var pluginAuthURL: URL?
@@ -136,6 +229,9 @@ public final class AppStore {
     public var composioCatalog: [ConnectionItem] = []
     public var composioCatalogLoading = false
     public var composioCatalogError: String?
+    /// Discovered Composio account aliases per plugin slug (e.g. gmail → [gmail_a, gmail_b]).
+    public var composioAccountChoices: [String: [String]] = [:]
+    public var composioAccountsLoadingSlug: String?
 
     public struct RoutineDraft: Sendable, Equatable {
         public var name: String = ""
@@ -165,16 +261,20 @@ public final class AppStore {
         self.userPersistence = Persistence(root: root)
         self.botHome = BotHomeStore(root: root)
         self.destinations = DestinationStore(root: root)
+        self.canvasBoard = CanvasBoardStore(root: root)
         self.computerRuntime = FileDesktopRuntime()
         self.delayScale = delayScale
         bootstrap()
         reloadSkills()
-        optInNewTool("import_skills")
-        optInNewTool("forget")
-        optInNewTool("computer_scroll")
-        optInNewTool("search_knowledge")
-        optInNewTool("present_component")
-        optInNewTool("report_decline")
+        reloadCanvases()
+        seedSeenToolIdsIfNeeded()
+        var catalogChanged = false
+        for id in AgentToolCatalog.builtinIds + CanvasBoardStore.toolIds {
+            if optInNewTool(id) { catalogChanged = true }
+        }
+        if catalogChanged {
+            save()
+        }
         if delayScale >= 1 {
             startRoutineScheduler()
         }
@@ -243,10 +343,12 @@ public final class AppStore {
         attachUserPersistence(userId: session.userId)
         self.session = session
         loadWorkspace(for: session.userId)
+        reloadFolderWatchers()
         route = bots.isEmpty ? .onboarding : .shell
         showHostPrompt = route == .shell && deployment.computerHost == nil
         globalPersistence.saveSession(session)
         recordBootBoundary()
+        refreshLocalIntegrations()
     }
 
     private func loadWorkspace(for userId: String) {
@@ -273,11 +375,16 @@ public final class AppStore {
         groups = []
         customTools = []
         mcpServers = []
+        folderWatchers = []
         actionPolicy = .openDefault
         knowledgeSources = []
         pluginGrants = []
         sandboxComponents = []
         mcpAdvertisedTools = [:]
+        mcpPromotedTools = [:]
+        mcpProbeStatus = [:]
+        mcpListedTools = [:]
+        mcpProbeGeneration = [:]
         auditEvents = []
         oauthJSON = nil
         connectionSecrets = [:]
@@ -285,6 +392,7 @@ public final class AppStore {
         activeGroupId = nil
         panel = nil
         computerOpen = false
+        canvasOpen = false
         booting = false
         pluginsOpen = false
         showHostPrompt = false
@@ -310,7 +418,11 @@ public final class AppStore {
         groups = ws.groups
         appConfig = ws.appConfig
         customTools = ws.customTools
-        mcpServers = ws.mcpServers
+        mcpServers = ws.mcpServers.map { server in
+            var copy = server
+            copy.args = FastFilesystemMcpArgs.normalize(command: copy.command, args: copy.args)
+            return copy
+        }
         actionPolicy = ws.actionPolicy
         knowledgeSources = ws.knowledgeSources
         pluginGrants = ws.pluginGrants
@@ -353,11 +465,13 @@ public final class AppStore {
         activeGroupId = nil
         panel = nil
         computerOpen = false
+        canvasOpen = false
         booting = false
         pluginsOpen = false
         skillsOpen = false
         mainView = .chat
         hydrateMemoryFiles()
+        seedSeenToolIdsIfNeeded()
     }
 
     private func currentWorkspace() -> UserWorkspace {
@@ -618,6 +732,7 @@ public final class AppStore {
         bootTasks.removeAll()
         panel = nil
         computerOpen = false
+        canvasOpen = false
         booting = false
         pluginsOpen = false
         showHostPrompt = false
@@ -799,13 +914,18 @@ public final class AppStore {
         name: String? = nil,
         title: String? = nil,
         description: String? = nil,
-        instructions: String? = nil
+        instructions: String? = nil,
+        workingFolder: String? = nil
     ) {
         guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
         if let name { bots[idx].name = name }
         if let title { bots[idx].title = title }
         if let description { bots[idx].description = description }
         if let instructions { bots[idx].instructions = instructions }
+        if let workingFolder {
+            let trimmed = workingFolder.trimmingCharacters(in: .whitespacesAndNewlines)
+            bots[idx].workingFolder = trimmed.isEmpty ? nil : trimmed
+        }
         bots[idx].updatedAt = .now
         save()
     }
@@ -824,6 +944,7 @@ public final class AppStore {
             panel = nil
         }
         computerOpen = false
+        canvasOpen = false
         if bots.isEmpty {
             route = .onboarding
             showHostPrompt = false
@@ -859,7 +980,23 @@ public final class AppStore {
             || threads[threadKey(for: botId)]?.run?.status == .waitingInput
     }
 
-    public func send(botId: String, text: String, attaching files: [URL] = []) {
+    /// File tools resolve here for the current run (watcher watch path, else the bot folder).
+    public func effectiveWorkingFolder(for bot: Bot) -> String? {
+        let override = runWorkingFolderOverride[bot.id]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let override, !override.isEmpty { return override }
+        return bot.workingFolder
+    }
+
+    private func extraShellWriteRoots(for bot: Bot) -> [String] {
+        guard let folder = effectiveWorkingFolder(for: bot)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !folder.isEmpty
+        else { return [] }
+        let expanded = BotHomeStore.expandPath(folder)
+        guard WorkingFolder.isTrusted(expanded, workingFolder: expanded) else { return [] }
+        return [expanded]
+    }
+
+    public func send(botId: String, text: String, attaching files: [URL] = [], workingFolderOverride: String? = nil) {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         var imported: [String] = []
         for file in files {
@@ -867,14 +1004,47 @@ public final class AppStore {
                 imported.append(path)
             }
         }
+        let attachedJPEG = ComposerImage.jpegBase64(from: files)
+            ?? ComposerImage.jpegBase64(fromPathInText: trimmed)
+        if let attachedJPEG, !attachedJPEG.isEmpty {
+            // Path-only paste (`/Users/…/Screenshot.png`) → treat as an image caption.
+            if ComposerImage.isImagePath(trimmed) || SlashCommand.looksLikeFilesystemPath(token: trimmed, full: trimmed) {
+                trimmed = "Please describe this image."
+            }
+        }
         if !imported.isEmpty {
             let list = imported.map { "- `\($0)`" }.joined(separator: "\n")
             let note = "Attached files (in your home):\n\(list)"
             trimmed = trimmed.isEmpty ? note : "\(trimmed)\n\n\(note)"
         }
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty || !(attachedJPEG?.isEmpty ?? true) else { return }
+        if trimmed.isEmpty {
+            trimmed = "Please describe this image."
+        }
+        guard let bot = bots.first(where: { $0.id == botId }) else { return }
+        let botSkills = skills(for: bot)
+
+        switch SlashCommand.resolve(trimmed, skills: botSkills) {
+        case .help(let listed):
+            appendLocalAssistant(
+                botId: botId,
+                userText: trimmed,
+                reply: SlashCommand.helpText(skills: listed)
+            )
+            return
+        case .unknown(let name):
+            appendLocalAssistant(
+                botId: botId,
+                userText: trimmed,
+                reply: "Unknown command `/\(name)`. Type `/help` to list skills enabled for this bot."
+            )
+            return
+        case .skill, .plain:
+            break
+        }
+
         let threadKey: String = {
-            if let bot = bots.first(where: { $0.id == botId }), let taskId = bot.activeTaskId {
+            if let taskId = bot.activeTaskId {
                 return taskId
             }
             return botId
@@ -899,10 +1069,56 @@ public final class AppStore {
         bots[botIdx].preview = trimmed.count > 80 ? String(trimmed.prefix(80)) + "…" : trimmed
         bots[botIdx].updatedAt = .now
         save()
-        launchRun(botId: botId, threadKey: threadKey, prompt: trimmed)
+        if let folder = workingFolderOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !folder.isEmpty {
+            runWorkingFolderOverride[botId] = (folder as NSString).expandingTildeInPath
+        }
+        launchRun(botId: botId, threadKey: threadKey, prompt: trimmed, promptImageJPEGBase64: attachedJPEG)
     }
 
-    private func launchRun(botId: String, threadKey: String, prompt: String) {
+    /// Slash / local replies that do not start an LLM run.
+    private func appendLocalAssistant(botId: String, userText: String, reply: String) {
+        let threadKey: String = {
+            if let bot = bots.first(where: { $0.id == botId }), let taskId = bot.activeTaskId {
+                return taskId
+            }
+            return botId
+        }()
+        guard var thread = threads[threadKey] ?? threads[botId] else { return }
+        if threads[threadKey] == nil {
+            threads[threadKey] = thread
+        }
+        guard let botIdx = bots.firstIndex(where: { $0.id == botId }) else { return }
+
+        let userMsg = ThreadMessage(
+            id: Ids.new(),
+            threadId: thread.threadId,
+            seq: thread.nextSeq,
+            role: .user,
+            blocks: [.text(userText)]
+        )
+        thread.messages.append(userMsg)
+        thread.cursor = userMsg.seq
+        let assistant = ThreadMessage(
+            id: Ids.new(),
+            threadId: thread.threadId,
+            seq: thread.nextSeq,
+            role: .bot,
+            blocks: [.text(reply)]
+        )
+        thread.messages.append(assistant)
+        thread.cursor = assistant.seq
+        threads[threadKey] = thread
+        bots[botIdx].preview = reply.count > 80 ? String(reply.prefix(80)) + "…" : reply
+        bots[botIdx].updatedAt = .now
+        save()
+    }
+
+    private func launchRun(
+        botId: String,
+        threadKey: String,
+        prompt: String,
+        promptImageJPEGBase64: String? = nil
+    ) {
         guard var thread = threads[threadKey] else { return }
         guard let botIdx = bots.firstIndex(where: { $0.id == botId }) else { return }
         let run = Run(
@@ -918,18 +1134,37 @@ public final class AppStore {
         bots[botIdx].updatedAt = .now
         save()
         let runId = run.id
-        appendRunLog(botId: botId, kind: "run", text: "start \(String(prompt.prefix(240)))")
+        let imageNote = (promptImageJPEGBase64?.isEmpty == false) ? " +image" : ""
+        appendRunLog(botId: botId, kind: "run", text: "start \(String(prompt.prefix(240)))\(imageNote)")
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.runAgent(botId: botId, threadKey: threadKey, runId: runId, prompt: prompt)
+            await self.runAgent(
+                botId: botId,
+                threadKey: threadKey,
+                runId: runId,
+                prompt: prompt,
+                promptImageJPEGBase64: promptImageJPEGBase64
+            )
         }
         runTasks[runId] = task
     }
 
-    private func runAgent(botId: String, threadKey: String, runId: String, prompt: String) async {
+    private func runAgent(
+        botId: String,
+        threadKey: String,
+        runId: String,
+        prompt: String,
+        promptImageJPEGBase64: String? = nil
+    ) async {
         guard let bot = bots.first(where: { $0.id == botId }) else { return }
         if canRunLLM(for: bot) {
-            await runLLMAgent(botId: botId, threadKey: threadKey, runId: runId, prompt: prompt)
+            await runLLMAgent(
+                botId: botId,
+                threadKey: threadKey,
+                runId: runId,
+                prompt: prompt,
+                promptImageJPEGBase64: promptImageJPEGBase64
+            )
         } else {
             await runScriptedAgent(botId: botId, threadKey: threadKey, runId: runId, prompt: prompt)
         }
@@ -946,7 +1181,13 @@ public final class AppStore {
         ) || !(settings.oauthJSON?.isEmpty ?? true)
     }
 
-    private func runLLMAgent(botId: String, threadKey: String, runId: String, prompt: String) async {
+    private func runLLMAgent(
+        botId: String,
+        threadKey: String,
+        runId: String,
+        prompt: String,
+        promptImageJPEGBase64: String? = nil
+    ) async {
         guard var thread = threads[threadKey], thread.run?.id == runId else { return }
         guard let bot = bots.first(where: { $0.id == botId }) else { return }
 
@@ -965,12 +1206,16 @@ public final class AppStore {
         let provider = bot.modelProvider ?? modelProvider
         let providerSettings = modelProviderSettings(for: provider ?? ModelCatalog.defaultProvider)
         let selectedModel = bot.modelId ?? providerSettings.modelId ?? modelId
-        let client: any ChatCompleting = chatCompleter ?? OpenAIChatClient.shared
+        let client: any ChatCompleting = chatCompleter ?? Self.defaultClient(for: provider)
+        await warmMcpCatalog(bot: bot, prompt: prompt)
+        hydratePromotedFromAdvertised(bot: bot)
         let tools = AgentToolCatalog.chatTools(
             enabledIds: bot.enabledTools,
             mcpServers: mcpServers,
             includeDelegation: true,
-            skills: skills(for: bot)
+            skills: skills(for: bot),
+            promotedMcp: Array(mcpPromotedTools.values),
+            mcpAdvertised: mcpAdvertisedTools
         )
         var prior = thread.messages.filter { $0.id != progressMsg.id }
         if prior.last?.role == .user {
@@ -982,20 +1227,81 @@ public final class AppStore {
             return AgentHistoryTurn(role: message.role, text: text)
         }
         let priorLLM = thread.llmMessages
-        let memoryText = MemoryIndex.excerpt(
-            memory.first(where: { $0.botId == botId && $0.path == "MEMORY.md" })?.content ?? ""
+        let memoryRaw = memory.first(where: { $0.botId == botId && $0.path == "MEMORY.md" })?.content ?? ""
+        let memoryText = MemoryLeanInject.excerpt(
+            content: memoryRaw,
+            query: prompt,
+            mode: appConfig.memoryRelevanceMode
         )
-        let sharedText = MemoryIndex.excerpt(sharedMemory)
+        let sharedText = MemoryLeanInject.excerpt(
+            content: sharedMemory,
+            query: prompt,
+            mode: appConfig.memoryRelevanceMode
+        )
         let botSkills = skills(for: bot)
-        let injected = SkillMarkdown.matching(botSkills, prompt: prompt)
+        let slash = SlashCommand.resolve(prompt, skills: botSkills)
+        let pinFolderToRun = runWorkingFolderOverride[botId] != nil
+        let agentPromptRaw: String
+        let injected: [AgentSkill]
+        switch slash {
+        case .skill(let skill, let skillPrompt):
+            agentPromptRaw = skillPrompt
+            if pinFolderToRun {
+                injected = []
+            } else {
+                var matched = SkillMarkdown.matching(botSkills, prompt: skillPrompt)
+                matched.removeAll { $0.id == skill.id }
+                injected = [skill] + matched
+            }
+        case .plain(let plain):
+            agentPromptRaw = plain
+            injected = pinFolderToRun ? [] : SkillMarkdown.matching(botSkills, prompt: plain)
+        case .unknown, .help:
+            agentPromptRaw = prompt
+            injected = pinFolderToRun ? [] : SkillMarkdown.matching(botSkills, prompt: prompt)
+        }
+        let agentPrompt: String
+        do {
+            agentPrompt = try PrivacyFilter.applyForSend(
+                agentPromptRaw,
+                settings: appConfig.privacyFilter,
+                logDirectory: userPersistence.root,
+                logContext: "bot:\(botId)"
+            )
+        } catch {
+            let message = error.localizedDescription
+            let failMsg = ThreadMessage(
+                id: progressMsg.id,
+                threadId: thread.threadId,
+                seq: progressMsg.seq,
+                role: .bot,
+                blocks: [.text(message)],
+                runId: runId
+            )
+            if var t = threads[threadKey] {
+                if let idx = t.messages.firstIndex(where: { $0.id == progressMsg.id }) {
+                    t.messages[idx] = failMsg
+                }
+                t.run = nil
+                threads[threadKey] = t
+            }
+            save()
+            releaseWorkingFolderOverrideIfNeeded(botId: botId)
+            return
+        }
         let skillText = SkillMarkdown.catalogPrompt(from: botSkills, injected: injected)
         let homePath = (try? botHome.homeURL(botId: botId).path) ?? ""
         let computerNote = computerNote(for: bot)
+        let workingFolderNote = WorkingFolder.promptNote(
+            effectiveWorkingFolder(for: bot),
+            scopedToRun: pinFolderToRun
+        )
 
         var blocks: [MessageBlock] = []
         var pause: AgentPause?
         var inputTokens = 0
         var outputTokens = 0
+        var promptTokens = 0
         var steps = 0
         var replyText = ""
         var failed = false
@@ -1045,11 +1351,13 @@ public final class AppStore {
                 homePath: homePath,
                 history: textHistory,
                 priorMessages: priorLLM,
-                prompt: prompt,
+                prompt: agentPrompt,
+                promptImageJPEGBase64: promptImageJPEGBase64,
                 tools: tools,
                 maxSteps: 48,
                 charBudget: AgentLoopRequest.charBudget(provider: provider),
                 computerNote: computerNote,
+                workingFolderNote: workingFolderNote,
                 stallMs: stallMs
             )
             let execute: @Sendable (String, String) async -> AgentToolCallResult = { [weak self] name, arguments in
@@ -1069,7 +1377,9 @@ public final class AppStore {
             if bot.runtime == .agui, let agui = bot.aguiURL?.trimmingCharacters(in: .whitespacesAndNewlines), !agui.isEmpty {
                 var aguiMessages: [ChatMessage] = [.system(AgentLoop.systemPrompt(for: loopRequest))]
                 aguiMessages.append(contentsOf: priorLLM.filter { $0.role != "system" })
-                aguiMessages.append(.user(prompt))
+                aguiMessages.append(
+                    ChatMessage(role: "user", content: agentPrompt, imageJPEGBase64: promptImageJPEGBase64)
+                )
                 var headers: [String: String] = [:]
                 if let token = connectionSecrets["agui:\(botId)"], !token.isEmpty {
                     headers["Authorization"] = "Bearer \(token)"
@@ -1125,11 +1435,19 @@ public final class AppStore {
                     execute: execute
                 )
             }
-            blocks.append(contentsOf: result.blocks)
+            blocks.append(contentsOf: result.blocks.filter { block in
+                // Live tool messages already show status cards; keep interactive blocks only.
+                switch block {
+                case .card: return false
+                case .ask, .approval, .choice, .connect, .component, .computer: return true
+                default: return true
+                }
+            })
             replyText = result.text
             pause = result.pause
             inputTokens = result.inputTokens
             outputTokens = result.outputTokens
+            promptTokens = result.promptTokens
             steps = result.steps
             transcript = result.messages
             if result.failed {
@@ -1227,6 +1545,7 @@ public final class AppStore {
                 runId: runId,
                 provider: provider ?? ModelCatalog.defaultProvider,
                 model: selectedModel ?? ModelCatalog.defaultModelId,
+                promptTokens: promptTokens > 0 ? promptTokens : nil,
                 inputTokens: inputTokens,
                 outputTokens: outputTokens
             )
@@ -1240,6 +1559,7 @@ public final class AppStore {
             error: thread2.run?.error ?? (failed ? replyText : nil)
         )
         announceFinished(botId: botId, text: replyText, status: thread2.run?.status)
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     private func runScriptedAgent(botId: String, threadKey: String, runId: String, prompt: String) async {
@@ -1348,6 +1668,7 @@ public final class AppStore {
                 runId: runId,
                 provider: modelProvider ?? ModelCatalog.defaultProvider,
                 model: modelId ?? ModelCatalog.defaultModelId,
+                promptTokens: 12,
                 inputTokens: 12,
                 outputTokens: 40
             )
@@ -1360,6 +1681,7 @@ public final class AppStore {
 
         runTasks.removeValue(forKey: runId)
         announceFinished(botId: botId, text: botMsg.firstText, status: thread2.run?.status)
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     private func setThinkingProgress(threadKey: String, runId: String, messageId: String, text: String) {
@@ -1398,6 +1720,7 @@ public final class AppStore {
             bots[idx].preview = preview.count > 80 ? String(preview.prefix(80)) + "…" : preview
             if status?.isActive != true && status != .waitingInput && status != .waitingTakeover {
                 bots[idx].status = "idle"
+                releaseWorkingFolderOverrideIfNeeded(botId: botId)
             }
             bots[idx].updatedAt = .now
             if activeBotId != botId {
@@ -1432,18 +1755,116 @@ public final class AppStore {
         guard let bot = bots.first(where: { $0.id == botId }) else {
             return AgentToolCallResult(output: "Unknown bot.")
         }
+        func resolveToolPath(_ raw: String) -> String {
+            WorkingFolder.resolve(raw, workingFolder: effectiveWorkingFolder(for: bot))
+        }
+        func hostGate(tool: String, paths: String..., argumentsJSON: String) -> AgentToolCallResult? {
+            for path in paths where BotHomeStore.isHostPath(path) {
+                if BotHomeStore.isDeniedHostPath(path) {
+                    return AgentToolCallResult(output: "\(tool) failed: \(BotHomeError.hostDenied.localizedDescription)")
+                }
+                if WorkingFolder.isTrusted(path, workingFolder: effectiveWorkingFolder(for: bot)) {
+                    continue
+                }
+                if let gated = gatedWrite(
+                    tool: tool,
+                    detail: path,
+                    argumentsJSON: argumentsJSON,
+                    bot: bot,
+                    approved: approved
+                ) {
+                    return gated
+                }
+            }
+            return nil
+        }
+
+        let enabledMcp = enabledMcpServers(bot: bot)
+        if name != "mcp_call", name != "mcp_list_tools",
+           !AgentToolCatalog.builtinIds.contains(name),
+           name != "web_fetch",
+           let hit = McpToolRouting.resolveDirectTool(
+            name: name,
+            promoted: mcpPromotedTools,
+            servers: enabledMcp,
+            advertised: advertisedMcpTools(for: bot)
+           ) {
+            switch hit {
+            case .promoted(let promoted):
+                let rewritten = McpCatalogPromote.mcpCallArguments(promoted: promoted, raw: args)
+                return await executeAgentTool(
+                    name: "mcp_call",
+                    argumentsJSON: JSONValue.object(rewritten).jsonString(),
+                    botId: botId,
+                    depth: depth,
+                    endpoint: endpoint,
+                    client: client,
+                    approved: approved
+                )
+            case .advertised(let serverId, let toolName):
+                var rewritten = args
+                rewritten["server"] = .string(serverId)
+                rewritten["tool"] = .string(toolName)
+                return await executeAgentTool(
+                    name: "mcp_call",
+                    argumentsJSON: JSONValue.object(rewritten).jsonString(),
+                    botId: botId,
+                    depth: depth,
+                    endpoint: endpoint,
+                    client: client,
+                    approved: approved
+                )
+            case .missingGateway(let tool):
+                let output = McpToolRouting.missingGatewayMessage(tool: tool, enabled: enabledMcp)
+                appendRunLog(botId: botId, kind: "tool", text: output)
+                return AgentToolCallResult(output: output)
+            }
+        }
 
         let catalogId: String = {
             switch name {
             case "web_fetch": return "web_search"
             case "mcp_list_tools", "mcp_call": return ""
-            default: return name
+            default:
+                if CanvasBoardStore.toolIds.contains(name) { return "" }
+                if mcpPromotedTools[name] != nil { return "" }
+                if AgentToolCatalog.builtinIds.contains(name) { return name }
+                return ""
             }
         }()
         if !catalogId.isEmpty, !bot.isToolEnabled(catalogId) {
-            let output = "Tool \(name) is disabled for this bot. Enable it in Settings → Tools."
+            let hasMcp = !enabledMcp.isEmpty
+            let context = McpFallbackContext.from(
+                servers: enabledMcp,
+                advertised: advertisedMcpTools(for: bot),
+                firstClassNames: Array(mcpPromotedTools.keys)
+            )
+            let output = DisabledBuiltinFallback.toolResult(
+                tool: name,
+                argumentsJSON: argumentsJSON,
+                hasMcp: hasMcp,
+                context: context
+            )
             appendRunLog(botId: botId, kind: "tool", text: output)
-            return AgentToolCallResult(output: output)
+            return AgentToolCallResult(
+                output: output,
+                blocks: [.card(lines: [
+                    CardLine(k: name, v: hasMcp ? "disabled — use MCP" : output),
+                ])]
+            )
+        }
+
+        if let promoted = mcpPromotedTools[name] {
+            let rewritten = McpCatalogPromote.mcpCallArguments(promoted: promoted, raw: args)
+            return await executeAgentTool(
+                name: "mcp_call",
+                argumentsJSON: JSONValue.object(rewritten).jsonString(),
+                botId: botId,
+                depth: depth,
+                endpoint: endpoint,
+                client: client,
+                approved: approved
+            )
         }
 
         if ActionGateway.isComputerTool(name), computers[botId]?.controlHolder == .user {
@@ -1463,7 +1884,7 @@ public final class AppStore {
         }
 
         if name == "mcp_call" || name == "mcp_list_tools" {
-            let server = resolveMcpServer(s("server"), bot: bot)
+            let server = resolveMcpServer(s("server"), toolName: s("tool", "name"), bot: bot)
             if let server {
                 let plugin = server.toolId
                 let toolName = name == "mcp_list_tools" ? nil : s("tool", "name")
@@ -1505,12 +1926,20 @@ public final class AppStore {
             }
         }
 
-        let mcpServer = (name == "mcp_call" || name == "mcp_list_tools") ? resolveMcpServer(s("server"), bot: bot) : nil
+        let mcpServer = (name == "mcp_call" || name == "mcp_list_tools")
+            ? resolveMcpServer(s("server"), toolName: s("tool", "name"), bot: bot)
+            : nil
         let advertised: Bool = {
             if name == "mcp_list_tools" { return true }
             guard name == "mcp_call", let server = mcpServer else { return false }
             let toolName = s("tool", "name")
             return mcpAdvertisedTools[server.id]?.contains(toolName) == true
+                || mcpPromotedTools.values.contains {
+                    $0.serverId == server.id
+                        && ($0.chatName == toolName
+                            || $0.executeTool == toolName
+                            || $0.injectName == toolName)
+                }
         }()
         let resolved = resolvePolicyElement(tool: name, argumentsJSON: argumentsJSON, botId: botId)
         let pageURL = computers[botId]?.lastPageURL ?? ""
@@ -1552,36 +1981,37 @@ public final class AppStore {
 
         switch name {
         case "write_file":
-            let path = s("path")
+            let path = resolveToolPath(s("path"))
             let content = s("content")
             guard !path.isEmpty else { return AgentToolCallResult(output: "path is required") }
-            let before = (try? botHome.read(botId: botId, path: path)) ?? ""
-            writeBotFile(botId: botId, path: path, content: content)
-            let diff = TextDiff.unified(before: before, after: content, path: path)
-            return AgentToolCallResult(
-                output: "Wrote \(path) (\(content.count) chars).\n\(diff)",
-                blocks: [.card(lines: [
-                    CardLine(k: "wrote", v: path),
-                    CardLine(k: "diff", v: String(diff.prefix(400))),
-                ])]
-            )
+            if let gated = hostGate(tool: "write_file.host", paths: path, argumentsJSON: argumentsJSON) {
+                return gated
+            }
+            do {
+                let before = (try? botHome.readFlexible(botId: botId, path: path)) ?? ""
+                try botHome.writeFlexible(botId: botId, path: path, content: content)
+                if !BotHomeStore.isHostPath(path) {
+                    upsertFile(path: path, content: content)
+                    refreshFilesMirror(botId: botId)
+                    ingestMemoryFileIfNeeded(botId: botId, path: path)
+                }
+                let diff = TextDiff.unified(before: before, after: content, path: path)
+                return AgentToolCallResult(
+                    output: "Wrote \(path) (\(content.count) chars).\n\(diff)",
+                    blocks: [.card(lines: [
+                        CardLine(k: "wrote", v: path),
+                        CardLine(k: "diff", v: String(diff.prefix(400))),
+                    ])]
+                )
+            } catch {
+                return AgentToolCallResult(output: "Write failed: \(error.localizedDescription)")
+            }
 
         case "read_file":
-            let path = s("path")
+            let path = resolveToolPath(s("path"))
             guard !path.isEmpty else { return AgentToolCallResult(output: "path is required") }
-            if BotHomeStore.isHostPath(path) {
-                if BotHomeStore.isDeniedHostPath(path) {
-                    return AgentToolCallResult(output: "Read failed: \(BotHomeError.hostDenied.localizedDescription)")
-                }
-                if let gated = gatedWrite(
-                    tool: "read_file.host",
-                    detail: path,
-                    argumentsJSON: argumentsJSON,
-                    bot: bot,
-                    approved: approved
-                ) {
-                    return gated
-                }
+            if let gated = hostGate(tool: "read_file.host", paths: path, argumentsJSON: argumentsJSON) {
+                return gated
             }
             do {
                 let content = try botHome.readFlexible(botId: botId, path: path)
@@ -1597,14 +2027,19 @@ public final class AppStore {
             }
 
         case "edit_file":
-            let path = s("path")
+            let path = resolveToolPath(s("path"))
             let content = s("content")
             let append = s("mode").lowercased() == "append"
             guard !path.isEmpty else { return AgentToolCallResult(output: "path is required") }
+            if let gated = hostGate(tool: "edit_file.host", paths: path, argumentsJSON: argumentsJSON) {
+                return gated
+            }
             do {
-                try botHome.edit(botId: botId, path: path, content: content, mode: append ? .append : .replace)
-                refreshFilesMirror(botId: botId)
-                ingestMemoryFileIfNeeded(botId: botId, path: path)
+                try botHome.editFlexible(botId: botId, path: path, content: content, mode: append ? .append : .replace)
+                if !BotHomeStore.isHostPath(path) {
+                    refreshFilesMirror(botId: botId)
+                    ingestMemoryFileIfNeeded(botId: botId, path: path)
+                }
                 return AgentToolCallResult(
                     output: "\(append ? "Appended" : "Edited") \(path).",
                     blocks: [.card(lines: [CardLine(k: append ? "appended" : "edited", v: path)])]
@@ -1614,14 +2049,19 @@ public final class AppStore {
             }
 
         case "move_file":
-            let from = s("from", "source")
-            let to = s("to", "destination")
+            let from = resolveToolPath(s("from", "source"))
+            let to = resolveToolPath(s("to", "destination"))
             guard !from.isEmpty, !to.isEmpty else {
                 return AgentToolCallResult(output: "from and to are required")
             }
+            if let gated = hostGate(tool: "move_file.host", paths: from, to, argumentsJSON: argumentsJSON) {
+                return gated
+            }
             do {
-                try botHome.move(botId: botId, from: from, to: to)
-                refreshFilesMirror(botId: botId)
+                try botHome.moveFlexible(botId: botId, from: from, to: to)
+                if !BotHomeStore.isHostPath(from), !BotHomeStore.isHostPath(to) {
+                    refreshFilesMirror(botId: botId)
+                }
                 return AgentToolCallResult(
                     output: "Moved \(from) → \(to).",
                     blocks: [.card(lines: [CardLine(k: "moved", v: "\(from) → \(to)")])]
@@ -1631,14 +2071,19 @@ public final class AppStore {
             }
 
         case "delete_file":
-            let path = s("path")
+            let path = resolveToolPath(s("path"))
             guard !path.isEmpty else { return AgentToolCallResult(output: "path is required") }
+            if let gated = hostGate(tool: "delete_file.host", paths: path, argumentsJSON: argumentsJSON) {
+                return gated
+            }
             do {
-                try botHome.delete(botId: botId, path: path)
-                refreshFilesMirror(botId: botId)
-                if URL(fileURLWithPath: path).lastPathComponent == MemoryFiles.botFileName {
-                    try? botHome.write(botId: botId, path: MemoryFiles.botFileName, content: MemoryLedger.botTemplate)
-                    ingestMemoryFileIfNeeded(botId: botId, path: MemoryFiles.botFileName)
+                try botHome.deleteFlexible(botId: botId, path: path)
+                if !BotHomeStore.isHostPath(path) {
+                    refreshFilesMirror(botId: botId)
+                    if URL(fileURLWithPath: path).lastPathComponent == MemoryFiles.botFileName {
+                        try? botHome.write(botId: botId, path: MemoryFiles.botFileName, content: MemoryLedger.botTemplate)
+                        ingestMemoryFileIfNeeded(botId: botId, path: MemoryFiles.botFileName)
+                    }
                 }
                 return AgentToolCallResult(
                     output: "Deleted \(path).",
@@ -1649,20 +2094,9 @@ public final class AppStore {
             }
 
         case "list_files":
-            let directory = s("directory", "path")
-            if BotHomeStore.isHostPath(directory) {
-                if BotHomeStore.isDeniedHostPath(directory) {
-                    return AgentToolCallResult(output: "List failed: \(BotHomeError.hostDenied.localizedDescription)")
-                }
-                if let gated = gatedWrite(
-                    tool: "list_files.host",
-                    detail: directory,
-                    argumentsJSON: argumentsJSON,
-                    bot: bot,
-                    approved: approved
-                ) {
-                    return gated
-                }
+            let directory = resolveToolPath(s("directory", "path"))
+            if let gated = hostGate(tool: "list_files.host", paths: directory, argumentsJSON: argumentsJSON) {
+                return gated
             }
             do {
                 let entries = try botHome.listFlexible(botId: botId, directory: directory)
@@ -1739,7 +2173,13 @@ public final class AppStore {
             }
             let allowed = bot.autoApprove || bot.alwaysAllowTools.contains("shell.exec")
             do {
-                let result = try await botHome.runShell(botId: botId, command: command, cwd: cwd, timeout: timeout)
+                let result = try await botHome.runShell(
+                    botId: botId,
+                    command: command,
+                    cwd: cwd,
+                    timeout: timeout,
+                    extraWriteRoots: extraShellWriteRoots(for: bot)
+                )
                 let status: ApprovalStatus = allowed ? .alwaysAllowed : .allowed
                 return AgentToolCallResult(
                     output: result.combined,
@@ -1814,7 +2254,7 @@ public final class AppStore {
         case "search_memory":
             let query = s("query", "q")
             guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
-            let hits = MemoryIndex.search(documents: memory, query: query, botId: botId)
+            let hits = MemoryHybridSearch.search(documents: memory, query: query, botId: botId)
             if hits.isEmpty {
                 return AgentToolCallResult(output: "No memory hits for \(query).")
             }
@@ -1907,6 +2347,95 @@ public final class AppStore {
                 blocks: [.card(lines: [CardLine(k: "declined", v: reason)])]
             )
 
+        case "canvas_list":
+            reloadCanvases()
+            if canvases.isEmpty {
+                return AgentToolCallResult(output: "No canvases yet. canvas_save or canvas_place_image to create one.")
+            }
+            let text = canvases.map { "• \($0.title) (\($0.id))" }.joined(separator: "\n")
+            return AgentToolCallResult(
+                output: text,
+                blocks: [.card(lines: canvases.prefix(8).map { CardLine(k: $0.title, v: $0.id) })]
+            )
+
+        case "canvas_open":
+            let id = s("id", "title", "name")
+            openCanvas(id: id.isEmpty ? nil : id, placingScreenshotFrom: botId)
+            let opened = activeCanvas()
+            let placed = opened.map { $0.images.isEmpty ? "No screenshot to place." : "Showing \($0.images.count) image(s)." } ?? ""
+            return AgentToolCallResult(
+                output: [opened.map { "Opened canvas \($0.title) (\($0.id))." }, placed]
+                    .compactMap { $0 }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " "),
+                blocks: [.card(lines: [
+                    CardLine(k: "canvas", v: opened?.title ?? "open"),
+                    CardLine(k: "id", v: opened?.id ?? ""),
+                    CardLine(k: "images", v: "\(opened?.images.count ?? 0)"),
+                ])]
+            )
+
+        case "canvas_save":
+            let id = s("id")
+            let title = s("title", "name")
+            var record = id.isEmpty ? nil : canvasBoard.load(id: id)
+            if record == nil, !title.isEmpty {
+                record = canvasBoard.load(id: title)
+            }
+            if var existing = record {
+                if !title.isEmpty { existing.title = title }
+                let saved = saveCanvas(existing)
+                return AgentToolCallResult(
+                    output: saved.map { "Saved canvas \($0.title) (\($0.id))." } ?? "Save failed.",
+                    blocks: [.card(lines: [CardLine(k: "canvas", v: saved?.title ?? title), CardLine(k: "id", v: saved?.id ?? "")])]
+                )
+            }
+            let created = createCanvas(title: title)
+            return AgentToolCallResult(
+                output: "Saved canvas \(created.title) (\(created.id)).",
+                blocks: [.card(lines: [CardLine(k: "canvas", v: created.title), CardLine(k: "id", v: created.id)])]
+            )
+
+        case "canvas_delete":
+            let id = s("id", "title", "name")
+            guard let match = canvasBoard.load(id: id) else {
+                return AgentToolCallResult(output: "No canvas named \(id).")
+            }
+            deleteCanvas(id: match.id)
+            return AgentToolCallResult(
+                output: "Deleted canvas \(match.title).",
+                blocks: [.card(lines: [CardLine(k: "deleted", v: match.title)])]
+            )
+
+        case "canvas_place_image":
+            let id = s("id")
+            let title = s("title", "name")
+            let path = s("path", "file")
+            guard let jpeg = canvasImageData(botId: botId, path: path) else {
+                return AgentToolCallResult(output: "No image to place. Take a computer_screenshot first, or pass path to a JPEG/PNG in the bot home.")
+            }
+            let name = title.isEmpty ? (id.isEmpty ? "Screenshot" : id) : title
+            do {
+                let saved = try canvasBoard.placeImage(
+                    canvasId: id.isEmpty ? nil : canvasBoard.load(id: id)?.id,
+                    title: name,
+                    jpeg: jpeg
+                )
+                reloadCanvases()
+                activeCanvasId = saved.id
+                canvasOpen = true
+                canvasRevision += 1
+                return AgentToolCallResult(
+                    output: "Placed image on canvas \(saved.title) (\(saved.id)).",
+                    blocks: [.card(lines: [
+                        CardLine(k: "canvas", v: saved.title),
+                        CardLine(k: "images", v: "\(saved.images.count)"),
+                    ])]
+                )
+            } catch {
+                return AgentToolCallResult(output: "Could not place image: \(error.localizedDescription)")
+            }
+
         case "read_skill":
             let id = SkillMarkdown.slug(s("id", "name", "skill"))
             guard !id.isEmpty else { return AgentToolCallResult(output: "id is required") }
@@ -1918,6 +2447,110 @@ public final class AppStore {
                 output: skill.body,
                 blocks: [.card(lines: [CardLine(k: "skill", v: skill.id)])]
             )
+
+        case "capabilities_discover":
+            let query = s("query", "q")
+            guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
+            let topK = Int(s("top_k", "limit")) ?? 8
+            let catalog = CapabilitySearch.entries(
+                skills: skills(for: bot),
+                builtins: AgentToolCatalog.builtin.filter { bot.isToolEnabled($0.id) },
+                mcpAdvertised: advertisedMcpTools(for: bot),
+                promotedMcp: promotedMcpTools(for: bot)
+            )
+            let hits = CapabilitySearch.search(query, in: catalog, topK: topK)
+            return AgentToolCallResult(
+                output: CapabilitySearch.formatDiscover(hits),
+                blocks: [.card(lines: hits.prefix(8).map {
+                    CardLine(k: $0.entry.kind.rawValue, v: $0.entry.id)
+                })]
+            )
+
+        case "capabilities_load":
+            let rawIds = s("ids", "id")
+            guard !rawIds.isEmpty else { return AgentToolCallResult(output: "ids is required") }
+            let ids = rawIds
+                .replacingOccurrences(of: "[", with: "")
+                .replacingOccurrences(of: "]", with: "")
+                .split(whereSeparator: { $0 == "," || $0 == " " || $0 == "\n" })
+                .map { SkillMarkdown.slug(String($0).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))) }
+                .filter { !$0.isEmpty }
+            var notes: [String] = []
+            var skillBodies: [(id: String, body: String)] = []
+            var promoted: [McpPromotedTool] = []
+            let botSkills = skills(for: bot)
+            for id in ids {
+                if let skill = botSkills.first(where: { $0.id == id || $0.name.lowercased() == id }) {
+                    skillBodies.append((skill.id, skill.body))
+                    notes.append("loaded skill \(skill.id)")
+                    continue
+                }
+                if let existing = mcpPromotedTools[id] {
+                    if McpToolGate.isToolEnabled(
+                        enabledIds: bot.enabledTools,
+                        serverId: existing.serverId,
+                        toolName: existing.chatName,
+                        advertised: mcpToolNames(for: existing.serverId)
+                    ) {
+                        promoted.append(existing)
+                        notes.append("activated MCP \(id)")
+                    } else {
+                        notes.append("MCP \(id) is turned off for this bot")
+                    }
+                    continue
+                }
+                // Match advertised MCP names and promote a thin stub.
+                var found = false
+                for (serverId, names) in mcpAdvertisedTools {
+                    if names.contains(where: { $0 == id || SkillMarkdown.slug($0) == id }) {
+                        guard McpToolGate.isToolEnabled(
+                            enabledIds: bot.enabledTools,
+                            serverId: serverId,
+                            toolName: id,
+                            advertised: names
+                        ) else {
+                            notes.append("MCP \(id) is turned off for this bot")
+                            found = true
+                            break
+                        }
+                        let tool = McpPromotedTool(
+                            chatName: id,
+                            serverId: serverId,
+                            executeTool: id,
+                            description: "MCP tool \(id)"
+                        )
+                        promoted.append(tool)
+                        notes.append("promoted MCP \(id) on \(serverId)")
+                        found = true
+                        break
+                    }
+                }
+                if !found {
+                    if AgentToolCatalog.builtin.contains(where: { $0.id == id }) {
+                        notes.append("builtin \(id) is already in the tool schema when enabled")
+                    } else {
+                        notes.append("unknown id \(id)")
+                    }
+                }
+            }
+            if !promoted.isEmpty {
+                mcpPromotedTools = McpCatalogPromote.merge(existing: mcpPromotedTools, adding: promoted)
+            }
+            return AgentToolCallResult(
+                output: notes.isEmpty ? "Nothing loaded." : notes.joined(separator: "\n"),
+                blocks: [.card(lines: notes.prefix(8).map { CardLine(k: "load", v: $0) })],
+                promotedMcpTools: promoted,
+                loadedSkillBodies: skillBodies
+            )
+
+        case "todo":
+            return await AgentSessionTools.handleTodo(markdown: s("markdown", "list"), threadKey: threadKey(for: botId))
+
+        case "complete":
+            return await AgentSessionTools.handleComplete(summary: s("summary", "text"), threadKey: threadKey(for: botId))
+
+        case "clarify":
+            return AgentSessionTools.handleClarify(question: s("question", "ask", "text"))
 
         case "import_skills":
             let path = s("path", "directory")
@@ -2068,7 +2701,9 @@ public final class AppStore {
                     enabledIds: bot.enabledTools,
                     mcpServers: mcpServers,
                     includeDelegation: false,
-                    skills: skills(for: bot)
+                    skills: skills(for: bot),
+                    promotedMcp: Array(mcpPromotedTools.values),
+                    mcpAdvertised: mcpAdvertisedTools
                 )
                 let nested = try await AgentLoop.run(
                     client: client,
@@ -2132,40 +2767,65 @@ public final class AppStore {
 
         case "mcp_list_tools":
             guard let server = resolveMcpServer(s("server"), bot: bot) else {
-                return AgentToolCallResult(output: "Unknown or disabled MCP server.")
+                return AgentToolCallResult(output: mcpServerResolveError(requested: s("server"), bot: bot))
             }
             do {
                 let listed = try await McpClient.listTools(server: server)
-                mcpAdvertisedTools[server.id] = listed.map(\.name)
-                save()
-                let text = McpClient.formatToolList(listed)
+                let harvested = applyMcpList(serverId: server.id, tools: listed)
+                let text = McpClient.formatToolList(listed, serverName: server.name)
+                var output = text
+                if !harvested.isEmpty {
+                    output += "\n\nPromoted \(min(harvested.count, McpCatalogPromote.maxPromoted)) catalog tools as first-class ChatTools this session."
+                }
                 return AgentToolCallResult(
-                    output: text,
+                    output: output,
                     blocks: [.card(lines: [
                         CardLine(k: "mcp", v: server.name),
                         CardLine(k: "tools", v: "\(listed.count)"),
-                    ])]
+                    ])],
+                    promotedMcpTools: harvested
                 )
             } catch {
+                mcpProbeStatus[server.id] = .failed(error.localizedDescription)
                 let command = ([server.command] + server.args).joined(separator: " ")
-                let output = "MCP list failed: \(error.localizedDescription) [\(command)]"
+                var output = "MCP list failed: \(error.localizedDescription) [\(command)]"
+                if let hint = McpGatewayCall.recoveryHint(for: output) {
+                    output += "\n\(hint)"
+                }
                 appendRunLog(botId: botId, kind: "mcp", text: output)
                 return AgentToolCallResult(output: output)
             }
 
         case "mcp_call":
-            guard let server = resolveMcpServer(s("server"), bot: bot) else {
-                return AgentToolCallResult(output: "Unknown or disabled MCP server.")
+            guard let server = resolveMcpServer(s("server"), toolName: s("tool", "name"), bot: bot) else {
+                return AgentToolCallResult(output: mcpServerResolveError(
+                    requested: s("server"),
+                    toolName: s("tool", "name"),
+                    bot: bot
+                ))
             }
             let toolName = s("tool", "name")
+            if let denied = mcpToolDisabledMessage(bot: bot, server: server, toolName: toolName, raw: args) {
+                return AgentToolCallResult(output: denied)
+            }
             let prompt = s("prompt", "query", "text")
             do {
                 if toolName.isEmpty {
+                    if prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        return AgentToolCallResult(
+                            output: "mcp_call needs tool=<name from mcp_list_tools>. Pass server=<one of the enabled MCP names>. Example: server=fast-filesystem tool=write_file."
+                        )
+                    }
                     let result = try await McpClient.invoke(
                         server: server,
                         prompt: prompt.isEmpty ? argumentsJSON : prompt
                     )
                     let prepared = McpPreparedCall(toolName: result.toolName, arguments: [:])
+                    let harvested = rememberHarvest(
+                        serverId: server.id,
+                        catalogTool: result.toolName,
+                        text: result.text
+                    )
                     return AgentToolCallResult(
                         output: McpGatewayCall.modelOutput(
                             prepared: prepared,
@@ -2178,7 +2838,8 @@ public final class AppStore {
                             gatewayTool: result.toolName,
                             isError: result.isError,
                             text: result.text
-                        ))]
+                        ))],
+                        promotedMcpTools: harvested
                     )
                 }
                 var prepared = McpGatewayCall.prepare(
@@ -2186,30 +2847,62 @@ public final class AppStore {
                     toolName: toolName,
                     raw: args
                 )
+                if McpGatewayCall.missingCatalogName(prepared) {
+                    return AgentToolCallResult(
+                        output: McpGatewayCall.missingCatalogNameMessage(),
+                        blocks: [.card(lines: [
+                            CardLine(k: "mcp", v: server.name),
+                            CardLine(k: "tool", v: "toolport_call_tool"),
+                            CardLine(k: "status", v: "tool error"),
+                            CardLine(k: "out", v: "empty catalog name"),
+                        ])]
+                    )
+                }
                 if prepared.arguments.isEmpty, !prompt.isEmpty {
                     prepared.arguments = ["prompt": .string(prompt)]
                 }
-                let result = try await McpClient.call(
+                var result = try await McpClient.call(
                     server: server,
                     toolName: prepared.toolName,
                     arguments: prepared.arguments
                 )
+                if McpGatewayCall.failed(isError: result.isError, text: result.text),
+                   McpGatewayCall.isTransientFailure(result.text) {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    result = try await McpClient.call(
+                        server: server,
+                        toolName: prepared.toolName,
+                        arguments: prepared.arguments
+                    )
+                }
+                let catalog = McpGatewayCall.catalogToolName(prepared)
+                let harvested = McpGatewayCall.failed(isError: result.isError, text: result.text)
+                    ? []
+                    : rememberHarvest(serverId: server.id, catalogTool: catalog, text: result.text)
+                var output = McpGatewayCall.modelOutput(
+                    prepared: prepared,
+                    isError: result.isError,
+                    text: result.text
+                )
+                if !harvested.isEmpty {
+                    output += "\nPromoted \(harvested.count) catalog tool(s) as first-class ChatTools — call them directly next."
+                }
                 return AgentToolCallResult(
-                    output: McpGatewayCall.modelOutput(
-                        prepared: prepared,
-                        isError: result.isError,
-                        text: result.text
-                    ),
+                    output: output,
                     blocks: [.card(lines: McpGatewayCall.cardLines(
                         serverName: server.name,
                         prepared: prepared,
                         isError: result.isError,
                         text: result.text
-                    ))]
+                    ))],
+                    promotedMcpTools: harvested
                 )
             } catch {
                 let command = ([server.command] + server.args).joined(separator: " ")
-                let output = "MCP call failed: \(error.localizedDescription) [\(command)]"
+                var output = "MCP call failed: \(error.localizedDescription) [\(command)]"
+                if let hint = McpGatewayCall.recoveryHint(for: output) {
+                    output += "\n\(hint)"
+                }
                 appendRunLog(botId: botId, kind: "mcp", text: output)
                 return AgentToolCallResult(
                     output: output,
@@ -2225,10 +2918,15 @@ public final class AppStore {
 
         case "computer_screenshot":
             if let blocked = computerBlockedIfHeadless(bot: bot) { return blocked }
-            let home = (try? botHome.homeURL(botId: botId)) ?? userPersistence.root
-            await computerRuntime?.attach(botId: botId, homeURL: home)
+            _ = await prepareComputerSurface(botId: botId, bot: bot)
             guard let snap = await computerRuntime?.snapshot(botId: botId) else {
                 return AgentToolCallResult(output: "No computer surface is attached. Enable Screen Recording (This Mac) or open the in-app browser.")
+            }
+            if ScreenshotQuality.isBlankJPEG(snap.jpeg) {
+                return AgentToolCallResult(
+                    output: "Screenshot capture returned a blank image. For This Mac: grant Screen Recording to GrizzyBot and open the computer overlay once. For in-app browser: open a URL with computer_open, then screenshot again.",
+                    blocks: [.card(lines: [CardLine(k: "screen", v: "blank")])]
+                )
             }
             let path = ".computer/screen.jpg"
             if let url = try? botHome.homeURL(botId: botId).appendingPathComponent(path) {
@@ -2248,6 +2946,9 @@ public final class AppStore {
                 computer.screenAvailable = true
                 computers[botId] = computer
             }
+            if canvasOpen {
+                _ = placeActiveScreenshot(botId: botId)
+            }
             return AgentToolCallResult(
                 output: output,
                 blocks: [.card(lines: [
@@ -2262,8 +2963,7 @@ public final class AppStore {
             if let blocked = computerBlockedIfHeadless(bot: bot) { return blocked }
             let url = s("url")
             guard !url.isEmpty else { return AgentToolCallResult(output: "url is required") }
-            let home = (try? botHome.homeURL(botId: botId)) ?? userPersistence.root
-            await computerRuntime?.attach(botId: botId, homeURL: home)
+            _ = await prepareComputerSurface(botId: botId, bot: bot)
             let action = await computerRuntime?.send(ComputerInput(kind: .open, text: url), botId: botId)
             if var computer = computers[botId] {
                 computer.state = .running
@@ -2332,9 +3032,34 @@ public final class AppStore {
             return AgentToolCallResult(output: action?.output ?? "Pressed \(key).")
 
         case "plugin_call":
-            let slug = s("slug")
+            let rawSlug = s("slug").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if rawSlug.isEmpty {
+                return AgentToolCallResult(output: "plugin_call needs a slug (e.g. gmail, google-calendar, or x).")
+            }
+            let slug = resolvePluginSlug(rawSlug)
+            if slug == "composio_connect" || slug == "composio" || slug == "composio_api" {
+                let hasKey = pluginsUseOAuth
+                return AgentToolCallResult(
+                    output: hasKey
+                        ? "Composio Connect is a Settings key (already saved), not a plugin. Open Plugins and Connect Gmail / Google Calendar, then call plugin_call with slug gmail or google-calendar."
+                        : "Composio Connect is a Settings → Connections → Keys field, not a plugin. Save a Composio Connect key there, then Connect Gmail from Plugins."
+                )
+            }
+            if !connections.contains(where: { $0.slug == slug && $0.connected }) {
+                await syncComposioConnection(slug: slug)
+            }
             guard connections.contains(where: { $0.slug == slug && $0.connected }) else {
-                return AgentToolCallResult(output: "Plugin \(slug) is not connected.")
+                let hint: String
+                if pluginsUseOAuth {
+                    let label = slug == "x" ? "X (Twitter)" : slug
+                    hint = " Open Plugins → \(label) → Connect (browser OAuth via Composio). For X, Composio also needs an Auth Config with your X Developer keys. Then try again."
+                } else {
+                    hint = " Save a Composio Connect key in Settings → Connections → Keys, then Connect \(slug) from Plugins."
+                }
+                return AgentToolCallResult(
+                    output: "Plugin \(rawSlug) is not connected.\(hint)",
+                    blocks: [.card(lines: [CardLine(k: "plugin_call", v: "Plugin \(rawSlug) is not connected.")])]
+                )
             }
             let action = s("action").lowercased()
             let isWrite = action.isEmpty || action == "write"
@@ -2348,40 +3073,266 @@ public final class AppStore {
                 return gated
             }
             do {
+                let account = s("account", "connected_account", "connected_account_id")
+                if !account.isEmpty {
+                    storeAccountPreferenceFromTool(slug: slug, account: account)
+                }
                 if isWrite {
-                    let remote = try await writePlugin(slug: slug, title: s("title"), body: s("body"))
+                    let remote = try await writePlugin(
+                        slug: slug,
+                        title: s("title"),
+                        body: s("body"),
+                        account: account.isEmpty ? nil : account
+                    )
                     return AgentToolCallResult(
                         output: "Plugin \(slug) wrote \(remote).",
-                        blocks: [.card(lines: [CardLine(k: slug, v: remote)])]
+                        blocks: [.card(lines: [
+                            CardLine(k: slug, v: ComposioClient.chatSummary(slug: slug, query: s("title"), result: remote, failed: false)),
+                        ])]
                     )
                 }
-                let query = s("query", "q", "body", "title")
-                let remote = try await readPlugin(slug: slug, query: query.isEmpty ? action : query)
+                let rawQuery = s("query", "q", "body", "title")
+                let query = ComposioClient.normalizedReadQuery(
+                    slug: slug,
+                    query: rawQuery.isEmpty ? action : rawQuery
+                )
+                let remote = try await readPlugin(
+                    slug: slug,
+                    query: query,
+                    account: account.isEmpty ? nil : account
+                )
+                let summary = ComposioClient.chatSummary(slug: slug, query: query, result: remote, failed: false)
                 return AgentToolCallResult(
                     output: remote,
                     blocks: [.card(lines: [
-                        CardLine(k: slug, v: action.isEmpty ? "search" : action),
-                        CardLine(k: "query", v: query),
+                        CardLine(k: slug, v: summary),
                     ])]
                 )
             } catch {
-                return AgentToolCallResult(output: "Plugin failed: \(error.localizedDescription)")
+                let detail = error.localizedDescription
+                let summary = ComposioClient.chatSummary(slug: slug, query: "", result: detail, failed: true)
+                return AgentToolCallResult(
+                    output: "Plugin failed: \(detail)",
+                    blocks: [.card(lines: [CardLine(k: slug, v: summary)])]
+                )
             }
 
         default:
-            return AgentToolCallResult(output: "Unknown tool: \(name)")
+            let enabled = enabledMcpServers(bot: bot)
+            let names = enabled.map(\.name).joined(separator: ", ")
+            if McpGatewayCall.isMetaTool(name), !enabled.contains(where: { McpGatewayCall.isGateway($0) }) {
+                return AgentToolCallResult(
+                    output: McpToolRouting.missingGatewayMessage(tool: name, enabled: enabled)
+                )
+            }
+            if names.isEmpty {
+                return AgentToolCallResult(output: "Unknown tool: \(name)")
+            }
+            return AgentToolCallResult(
+                output: "Unknown tool: \(name). Available MCP servers: \(names). Call first-class server__tool names from your list, or mcp_call with server=<name> and tool from mcp_list_tools."
+            )
         }
     }
 
-    private func resolveMcpServer(_ raw: String, bot: Bot) -> McpServer? {
-        let needle = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let match = mcpServers.first { server in
-            server.id.lowercased() == needle
-                || server.name.lowercased() == needle
-                || server.toolId.lowercased() == needle
+    private func enabledMcpServers(bot: Bot) -> [McpServer] {
+        mcpServers.filter { bot.isToolEnabled($0.toolId) }
+    }
+
+    private func advertisedMcpTools(for bot: Bot) -> [String: [String]] {
+        var out: [String: [String]] = [:]
+        for server in enabledMcpServers(bot: bot) {
+            let names = McpCatalogPromote.uniqueAdvertisedNames(mcpAdvertisedTools[server.id] ?? [])
+            let allowed = names.filter {
+                McpToolGate.isToolEnabled(
+                    enabledIds: bot.enabledTools,
+                    serverId: server.id,
+                    toolName: $0,
+                    advertised: names
+                )
+            }
+            if !allowed.isEmpty {
+                out[server.id] = allowed
+            }
         }
-        guard let match, bot.isToolEnabled(match.toolId) else { return nil }
-        return match
+        return out
+    }
+
+    private func promotedMcpTools(for bot: Bot) -> [McpPromotedTool] {
+        mcpPromotedTools.values.filter { promo in
+            let advertised = mcpToolNames(for: promo.serverId)
+            return McpToolGate.isToolEnabled(
+                enabledIds: bot.enabledTools,
+                serverId: promo.serverId,
+                toolName: promo.chatName,
+                advertised: advertised
+            )
+        }
+    }
+
+    private func mcpToolDisabledMessage(
+        bot: Bot,
+        server: McpServer,
+        toolName: String,
+        raw: [String: JSONValue]
+    ) -> String? {
+        let prepared = McpGatewayCall.prepare(server: server, toolName: toolName, raw: raw)
+        let catalog = McpGatewayCall.catalogToolName(prepared)
+        let advertised = mcpToolNames(for: server.id)
+        let names = Set([toolName, catalog].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        for name in names {
+            if !McpToolGate.isToolEnabled(
+                enabledIds: bot.enabledTools,
+                serverId: server.id,
+                toolName: name,
+                advertised: advertised
+            ) {
+                return "MCP tool \(name) is turned off for this bot on \(server.name). Enable it under Tools."
+            }
+        }
+        return nil
+    }
+
+    private func resolveMcpServer(_ raw: String, toolName: String = "", bot: Bot) -> McpServer? {
+        switch McpToolRouting.resolveServer(
+            requested: raw,
+            toolName: toolName,
+            enabled: enabledMcpServers(bot: bot),
+            advertised: advertisedMcpTools(for: bot)
+        ) {
+        case .resolved(let server):
+            return server
+        case .failed:
+            return nil
+        }
+    }
+
+    private func mcpServerResolveError(requested: String, toolName: String = "", bot: Bot) -> String {
+        switch McpToolRouting.resolveServer(
+            requested: requested,
+            toolName: toolName,
+            enabled: enabledMcpServers(bot: bot),
+            advertised: advertisedMcpTools(for: bot)
+        ) {
+        case .resolved:
+            return "Unknown or disabled MCP server '\(requested)'."
+        case .failed(let message):
+            return message
+        }
+    }
+
+    private func rememberPromoted(_ tools: [McpPromotedTool], serverId: String) {
+        guard !tools.isEmpty else { return }
+        mcpPromotedTools = McpCatalogPromote.merge(existing: mcpPromotedTools, adding: tools)
+        var advertised = McpCatalogPromote.uniqueAdvertisedNames(mcpAdvertisedTools[serverId] ?? [])
+        for tool in tools where !McpCatalogPromote.isDispatcher(tool.executeTool) {
+            if !advertised.contains(tool.executeTool) { advertised.append(tool.executeTool) }
+        }
+        mcpAdvertisedTools[serverId] = McpCatalogPromote.uniqueAdvertisedNames(advertised)
+    }
+
+    @discardableResult
+    private func applyMcpList(serverId: String, tools: [McpToolInfo]) -> [McpPromotedTool] {
+        let names = McpCatalogPromote.uniqueAdvertisedNames(tools.map(\.name))
+        mcpAdvertisedTools[serverId] = names
+        mcpListedTools[serverId] = tools
+        mcpProbeStatus[serverId] = .connected(toolCount: names.count)
+        let server = mcpServers.first(where: { $0.id == serverId })
+            ?? McpServer(id: serverId, name: serverId)
+        let harvested = McpCatalogPromote.fromListed(server: server, tools: tools)
+        rememberPromoted(harvested, serverId: serverId)
+        optInMcpChildTools(serverId: serverId, names: names)
+        save()
+        return harvested
+    }
+
+    private func optInMcpChildTools(serverId: String, names: [String]) {
+        for name in names {
+            optInNewTool(McpToolGate.childId(serverId: serverId, toolName: name))
+        }
+    }
+
+    @discardableResult
+    private func rememberHarvest(serverId: String, catalogTool: String, text: String) -> [McpPromotedTool] {
+        let harvested = McpCatalogPromote.harvest(
+            serverId: serverId,
+            catalogTool: catalogTool,
+            text: text
+        )
+        rememberPromoted(harvested, serverId: serverId)
+        return harvested
+    }
+
+    private func hydratePromotedFromAdvertised(bot: Bot) {
+        let stubs = McpCatalogPromote.fromAdvertised(
+            servers: enabledMcpServers(bot: bot),
+            advertised: advertisedMcpTools(for: bot)
+        )
+        mcpPromotedTools = McpCatalogPromote.merge(existing: mcpPromotedTools, adding: stubs)
+        for serverId in Set(stubs.map(\.serverId)) {
+            if let names = mcpAdvertisedTools[serverId] {
+                mcpAdvertisedTools[serverId] = McpCatalogPromote.uniqueAdvertisedNames(names)
+            }
+        }
+    }
+
+    /// Prefetch Toolport catalog matches from the user prompt so Gmail/MacUse tools are first-class on step 1.
+    private func warmMcpCatalog(bot: Bot, prompt: String) async {
+        let enabled = enabledMcpServers(bot: bot)
+        let queries = McpCatalogPromote.warmQueries(from: prompt)
+        if let gateway = enabled.first(where: { McpGatewayCall.isGateway($0) }) {
+            for item in queries {
+                var args: [String: JSONValue] = ["query": .string(item.query)]
+                if let filter = item.server {
+                    args["server"] = .string(filter)
+                }
+                let prepared = McpGatewayCall.prepare(
+                    server: gateway,
+                    toolName: "toolport_search_tools",
+                    raw: ["tool": .string("toolport_search_tools"), "arguments": .object(args)]
+                )
+                guard let result = try? await McpClient.call(
+                    server: gateway,
+                    toolName: prepared.toolName,
+                    arguments: prepared.arguments
+                ), !McpGatewayCall.failed(isError: result.isError, text: result.text)
+                else { continue }
+                rememberHarvest(serverId: gateway.id, catalogTool: "toolport_search_tools", text: result.text)
+            }
+        }
+
+        let lower = prompt.lowercased()
+        let wantsMail = lower.contains("gmail") || lower.contains("email") || lower.contains("inbox")
+            || lower.contains("macuse")
+        guard wantsMail else { return }
+        let server = enabled.first { $0.name.lowercased().contains("macuse") }
+            ?? enabled.first(where: { McpGatewayCall.isGateway($0) })
+        guard let server else { return }
+        let mailNames: [JSONValue] = [
+            .string("mail_list_accounts"),
+            .string("mail_list_mailboxes"),
+            .string("mail_search_messages"),
+            .string("mail_get_messages"),
+            .string("mail_get_message"),
+        ]
+        let defsPrepared = McpGatewayCall.prepare(
+            server: server,
+            toolName: "macuse__get_tool_definitions",
+            raw: [
+                "tool": .string("macuse__get_tool_definitions"),
+                "arguments": .object(["names": .array(mailNames)]),
+            ]
+        )
+        guard let defs = try? await McpClient.call(
+            server: server,
+            toolName: defsPrepared.toolName,
+            arguments: defsPrepared.arguments
+        ), !McpGatewayCall.failed(isError: defs.isError, text: defs.text)
+        else { return }
+        rememberHarvest(
+            serverId: server.id,
+            catalogTool: "macuse__get_tool_definitions",
+            text: defs.text
+        )
     }
 
     private func applyAction(
@@ -2642,6 +3593,7 @@ public final class AppStore {
         }
         save()
         runTasks.removeValue(forKey: runId)
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     private func finishCancelled(botId: String, threadKey: String? = nil, runId: String) {
@@ -2659,6 +3611,7 @@ public final class AppStore {
         runTasks.removeValue(forKey: runId)
         save()
         finishRoutineIfNeeded(botId: botId, threadKey: key, status: .cancelled, error: "cancelled")
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     private func finishRoutineIfNeeded(
@@ -2720,6 +3673,7 @@ public final class AppStore {
         threads[botId] = thread
         _ = answer
         save()
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     private func upsertMemory(botId: String, text: String) {
@@ -2869,6 +3823,12 @@ public final class AppStore {
         skills.filter { bot.enabledSkills.contains($0.id) }
     }
 
+    /// Skills enabled for a bot (composer `/` autocomplete).
+    public func enabledSkills(for botId: String) -> [AgentSkill] {
+        guard let bot = bots.first(where: { $0.id == botId }) else { return [] }
+        return skills(for: bot)
+    }
+
     public func reloadSkills() {
         skills = SkillLibrary.load(root: userPersistence.root)
     }
@@ -2940,7 +3900,7 @@ public final class AppStore {
 
     /// Mirrors rakazo `openComputer`: boot if needed, take control, open full-window overlay.
     public func openComputerOverlay() {
-        guard let botId = activeBotId else { return }
+        guard let botId = activeBotId, let bot = bots.first(where: { $0.id == botId }) else { return }
         let computer = computers[botId]
         let needsTakeover = computer?.controlHolder != .user
         let needsBoot = computer?.state != .running || computer?.screenAvailable != true
@@ -2952,10 +3912,133 @@ public final class AppStore {
         }
         computerOpen = true
         heartbeat(botId: botId)
+        Task { @MainActor in
+            _ = await prepareComputerSurface(botId: botId, bot: bot)
+            await computerRuntime?.prepareForDisplay(botId: botId)
+        }
     }
 
     public func closeComputerOverlay() {
         computerOpen = false
+    }
+
+    public func reloadCanvases() {
+        canvases = canvasBoard.list()
+    }
+
+    public func toggleCanvasPanel() {
+        if panel == .canvas {
+            panel = nil
+        } else {
+            reloadCanvases()
+            openPanel(.canvas)
+        }
+    }
+
+    public func openCanvas(id: String?, placingScreenshotFrom botId: String? = nil) {
+        reloadCanvases()
+        let screenshotBot = botId ?? activeBotId
+        let hasShot = screenshotBot.map { canvasImageData(botId: $0, path: "") != nil } ?? false
+        if let id, let match = canvasBoard.load(id: id) {
+            activeCanvasId = match.id
+        } else if hasShot {
+            if let empty = canvases.first(where: { $0.images.isEmpty }) {
+                activeCanvasId = empty.id
+            } else {
+                activeCanvasId = createCanvas(title: "Screenshot").id
+            }
+        } else if let first = canvases.first {
+            activeCanvasId = first.id
+        } else {
+            activeCanvasId = createCanvas(title: "Untitled").id
+        }
+        if hasShot, let screenshotBot, let board = activeCanvas(), board.images.isEmpty {
+            _ = placeActiveScreenshot(botId: screenshotBot)
+        }
+        canvasOpen = true
+        if panel != .canvas {
+            openPanel(.canvas)
+        }
+    }
+
+    public func closeCanvasOverlay() {
+        canvasOpen = false
+    }
+
+    @discardableResult
+    public func createCanvas(title: String) -> CanvasRecord {
+        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let record = CanvasRecord(title: name.isEmpty ? "Untitled" : name)
+        let saved = (try? canvasBoard.save(record)) ?? record
+        reloadCanvases()
+        activeCanvasId = saved.id
+        canvasRevision += 1
+        return saved
+    }
+
+    @discardableResult
+    public func saveCanvas(_ record: CanvasRecord) -> CanvasRecord? {
+        let saved = try? canvasBoard.save(record)
+        reloadCanvases()
+        if let saved {
+            activeCanvasId = saved.id
+        }
+        canvasRevision += 1
+        return saved
+    }
+
+    public func deleteCanvas(id: String) {
+        try? canvasBoard.delete(id: id)
+        if activeCanvasId == id {
+            activeCanvasId = canvases.first(where: { $0.id != id })?.id
+            if activeCanvasId == nil { canvasOpen = false }
+        }
+        reloadCanvases()
+        canvasRevision += 1
+    }
+
+    public func previewURL(forCanvas id: String) -> URL {
+        canvasBoard.previewURL(id: id)
+    }
+
+    public func canvasImageURL(id: String, fileName: String) -> URL {
+        canvasBoard.imageURL(id: id, fileName: fileName)
+    }
+
+    public func activeCanvas() -> CanvasRecord? {
+        activeCanvasId.flatMap { canvasBoard.load(id: $0) } ?? canvases.first
+    }
+
+    @discardableResult
+    public func placeActiveScreenshot(botId: String) -> CanvasRecord? {
+        guard let jpeg = canvasImageData(botId: botId, path: "") else { return nil }
+        let title = activeCanvas()?.title ?? "Screenshot"
+        let saved = try? canvasBoard.placeImage(canvasId: activeCanvasId, title: title, jpeg: jpeg)
+        reloadCanvases()
+        if let saved {
+            activeCanvasId = saved.id
+        }
+        canvasRevision += 1
+        return saved
+    }
+
+    private func canvasImageData(botId: String, path: String) -> Data? {
+        if !path.isEmpty {
+            let url: URL
+            if BotHomeStore.isHostPath(path) {
+                url = URL(fileURLWithPath: BotHomeStore.expandPath(path))
+            } else if let home = try? botHome.homeURL(botId: botId) {
+                url = home.appendingPathComponent(path)
+            } else {
+                return nil
+            }
+            return try? Data(contentsOf: url)
+        }
+        if let home = try? botHome.homeURL(botId: botId) {
+            let shot = home.appendingPathComponent(".computer/screen.jpg")
+            if let data = try? Data(contentsOf: shot), !data.isEmpty { return data }
+        }
+        return nil
     }
 
     private func autoBootIfNeeded(botId: String) {
@@ -3033,6 +4116,7 @@ public final class AppStore {
         computer.controlHolder = .bot
         computers[botId] = computer
         computerOpen = false
+        canvasOpen = false
         recordAudit(
             type: .computerControlReleased,
             botId: botId,
@@ -3304,6 +4388,9 @@ public final class AppStore {
         if liveComposio() != nil {
             await browseComposioCatalog(query: "")
             await refreshComposioStatus(slugs: connections.map(\.slug).prefix(40).map { $0 })
+            for item in connections where item.connected && item.viaComposio && GoogleOAuth.isGooglePlugin(item.slug) {
+                await refreshComposioAccountChoices(slug: item.slug)
+            }
         } else {
             composioCatalog = []
             composioCatalogError = nil
@@ -3400,7 +4487,20 @@ public final class AppStore {
         save()
     }
 
+    /// Pull one toolkit's live Composio status into local plugin state (used by plugin_call).
+    @discardableResult
+    public func syncComposioConnection(slug: String) async -> Bool {
+        guard liveComposio() != nil else { return false }
+        let resolved = resolvePluginSlug(slug)
+        if connections.first(where: { $0.slug == resolved }) == nil {
+            _ = addToolkit(slug: resolved)
+        }
+        await refreshComposioStatus(slugs: [resolved])
+        return connections.first(where: { $0.slug == resolved })?.connected == true
+    }
+
     public func connect(slug: String, token: String? = nil) {
+        let slug = resolvePluginSlug(slug)
         guard !connectionPending.contains(slug) else { return }
         let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if trimmed.isEmpty {
@@ -3410,6 +4510,11 @@ public final class AppStore {
                     connections[idx].accountLabel = slug
                 }
                 save()
+                return
+            }
+            // Prefer direct Google OAuth when Client ID/Secret are configured (bypasses Composio).
+            if GoogleOAuth.isGooglePlugin(slug), liveGoogleOAuth() != nil {
+                startGoogleOAuth(slugs: [slug])
                 return
             }
             if liveComposio() != nil {
@@ -3444,6 +4549,11 @@ public final class AppStore {
         pluginTasks[slug] = task
     }
 
+    /// One Google sign-in for Gmail + Calendar + Sheets + Docs + Drive.
+    public func connectGoogleSuite() {
+        startGoogleOAuth(slugs: GoogleOAuth.allGoogleSlugs)
+    }
+
     /// Open the paste-token sheet instead of (or after) browser OAuth.
     public func promptPluginToken(slug: String) {
         pluginTasks[slug]?.cancel()
@@ -3454,47 +4564,205 @@ public final class AppStore {
         pluginError = nil
     }
 
-    private func startComposioOAuth(slug: String) {
-        guard let composio = liveComposio() else { return }
-        connectionPending.insert(slug)
+    private static let googleTokenSentinel = "google-oauth"
+
+    private func startGoogleOAuth(slugs: [String]) {
+        guard let google = liveGoogleOAuth() else { return }
+        let clientId = (appConfig.googleClientId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientSecret = (appConfig.googleClientSecret ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard googleOAuthClient != nil || (!clientId.isEmpty && !clientSecret.isEmpty) else {
+            pluginError = GoogleOAuthError.missingCredentials.localizedDescription
+            return
+        }
+        let targetSlugs = slugs.filter { GoogleOAuth.isGooglePlugin($0) }
+        guard !targetSlugs.isEmpty else { return }
+        for slug in targetSlugs {
+            connectionPending.insert(slug)
+            pluginTasks[slug]?.cancel()
+        }
         pluginError = nil
-        oauthWaitSlug = slug
-        pluginTasks[slug]?.cancel()
+        oauthWaitSlug = targetSlugs.first
+        let waitKey = targetSlugs.joined(separator: ",")
         let task = Task { [weak self] in
             guard let self else { return }
             do {
-                let url = try await composio.authorizeURL(for: slug)
-                self.pluginAuthURL = url
-                var connected = false
-                for _ in 0..<12 {
-                    try? await Task.sleep(for: .seconds(max(0.05, 2.5 * self.delayScale)))
-                    if Task.isCancelled { break }
-                    if (try? await composio.isConnected(slug)) == true {
-                        connected = true
-                        break
+                var scopes = GoogleOAuth.scopes(for: targetSlugs)
+                if let existing = GoogleOAuth.decodeCredential(self.connectionSecrets[GoogleOAuth.credentialSecretKey]) {
+                    for scope in existing.scopes where !scopes.contains(scope) {
+                        scopes.append(scope)
                     }
                 }
-                if connected {
-                    if let idx = self.connections.firstIndex(where: { $0.slug == slug }) {
+                let cred = try await google.authorize(
+                    clientId: clientId.isEmpty ? "test-client" : clientId,
+                    clientSecret: clientSecret.isEmpty ? "test-secret" : clientSecret,
+                    scopes: scopes
+                )
+                self.applyGoogleCredential(cred, slugs: targetSlugs)
+                self.pluginError = nil
+            } catch {
+                self.pluginError = error.localizedDescription
+            }
+            for slug in targetSlugs {
+                self.connectionPending.remove(slug)
+                self.pluginTasks.removeValue(forKey: slug)
+            }
+            if self.oauthWaitSlug == targetSlugs.first { self.oauthWaitSlug = nil }
+            self.pluginAuthURL = nil
+            self.save()
+            _ = waitKey
+        }
+        for slug in targetSlugs {
+            pluginTasks[slug] = task
+        }
+    }
+
+    private func applyGoogleCredential(_ cred: GoogleOAuthCredential, slugs: [String]) {
+        if let encoded = GoogleOAuth.encodeCredential(cred) {
+            connectionSecrets[GoogleOAuth.credentialSecretKey] = encoded
+        }
+        let label = cred.email ?? "Google"
+        for slug in slugs {
+            if connections.first(where: { $0.slug == slug }) == nil {
+                _ = addToolkit(slug: slug)
+            }
+            if let idx = connections.firstIndex(where: { $0.slug == slug }) {
+                connections[idx].connected = true
+                connections[idx].viaComposio = false
+                connections[idx].accountLabel = label
+            }
+            connectionSecrets[slug] = Self.googleTokenSentinel
+        }
+    }
+
+    private func liveGoogleAccessToken(for slug: String) async throws -> String? {
+        guard GoogleOAuth.isGooglePlugin(slug) else { return nil }
+        guard connectionSecrets[slug] == Self.googleTokenSentinel else { return nil }
+        guard var cred = GoogleOAuth.decodeCredential(connectionSecrets[GoogleOAuth.credentialSecretKey]) else {
+            throw PluginError.rejected(
+                "Google sign-in is missing for \(slug). Open Plugins → Sign in with Google, then try again."
+            )
+        }
+        if cred.isExpired {
+            guard let google = liveGoogleOAuth(),
+                  let clientId = appConfig.googleClientId,
+                  let clientSecret = appConfig.googleClientSecret
+            else {
+                throw PluginError.rejected(
+                    "Google token expired and Client ID/Secret are missing. Re-save them in Settings → Google, then Sign in with Google."
+                )
+            }
+            do {
+                cred = try await google.refresh(cred, clientId: clientId, clientSecret: clientSecret)
+            } catch {
+                throw PluginError.rejected(
+                    "Google sign-in expired (\(error.localizedDescription)). Open Plugins → Sign in with Google again."
+                )
+            }
+            if let encoded = GoogleOAuth.encodeCredential(cred) {
+                connectionSecrets[GoogleOAuth.credentialSecretKey] = encoded
+                save()
+            }
+        }
+        return cred.access
+    }
+
+    private func startComposioOAuth(slug: String) {
+        guard let composio = liveComposio() else { return }
+        let resolved = resolvePluginSlug(slug)
+        connectionPending.insert(resolved)
+        pluginError = nil
+        oauthWaitSlug = resolved
+        pluginTasks[resolved]?.cancel()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                if (try? await composio.isConnected(resolved)) == true {
+                    if let idx = self.connections.firstIndex(where: { $0.slug == resolved }) {
                         self.connections[idx].connected = true
                         self.connections[idx].viaComposio = true
                         self.connections[idx].accountLabel = "Signed in"
                     }
-                    self.connectionSecrets[slug] = ComposioClient.composioTokenSentinel
+                    self.connectionSecrets[resolved] = ComposioClient.composioTokenSentinel
                     self.pluginError = nil
+                    self.pluginAuthURL = nil
                 } else {
-                    self.pluginError = "Waiting for sign-in. Finish in the browser, then click Connect again."
+                    let entity = self.session?.userId ?? self.activeBotId ?? "default"
+                    let url = try await composio.authorizeURL(for: resolved, userId: entity)
+                    let setup = ComposioClient.isAuthConfigSetupURL(url)
+                        || ComposioClient.requiresCustomAuthConfig(resolved)
+                    let hint: String? = {
+                        if ComposioClient.isAuthConfigSetupURL(url) {
+                            return ComposioClient.authSetupMessage(for: resolved, url: url)
+                        }
+                        if ComposioClient.requiresCustomAuthConfig(resolved) {
+                            // Show checklist while polling — X often fails with “weren’t able to give access”.
+                            return """
+                            Finish sign-in in the browser. If X says you weren’t able to give access, the Auth Config or callback URL is wrong — see https://composio.dev/auth/twitter (callback must be https://backend.composio.dev/api/v1/auth-apps/add).
+                            """
+                        }
+                        return nil
+                    }()
+                    self.presentPluginAuthURL(url, setupHint: hint)
+                    if setup && ComposioClient.isAuthConfigSetupURL(url) {
+                        // Dashboard setup link — user must finish Auth Config before OAuth works.
+                        self.connectionPending.remove(resolved)
+                        self.oauthWaitSlug = nil
+                        self.save()
+                        self.pluginTasks.removeValue(forKey: resolved)
+                        return
+                    }
+                    var connected = false
+                    for _ in 0..<24 {
+                        try? await Task.sleep(for: .seconds(max(0.05, 2.5 * self.delayScale)))
+                        if Task.isCancelled { break }
+                        if (try? await composio.isConnected(resolved)) == true {
+                            connected = true
+                            break
+                        }
+                    }
+                    if connected {
+                        if let idx = self.connections.firstIndex(where: { $0.slug == resolved }) {
+                            self.connections[idx].connected = true
+                            self.connections[idx].viaComposio = true
+                            self.connections[idx].accountLabel = "Signed in"
+                        }
+                        self.connectionSecrets[resolved] = ComposioClient.composioTokenSentinel
+                        self.pluginError = nil
+                        self.pluginAuthURL = nil
+                    } else {
+                        self.pluginError = ComposioClient.oauthFailedMessage(for: resolved)
+                        if let guide = ComposioClient.setupGuideURL(for: resolved) {
+                            self.presentPluginAuthURL(guide, setupHint: self.pluginError)
+                        }
+                    }
                 }
             } catch {
-                self.pluginError = error.localizedDescription
+                let message = error.localizedDescription
+                if message.localizedCaseInsensitiveContains("already connected") {
+                    if let idx = self.connections.firstIndex(where: { $0.slug == resolved }) {
+                        self.connections[idx].connected = true
+                        self.connections[idx].viaComposio = true
+                        self.connections[idx].accountLabel = "Signed in"
+                    }
+                    self.connectionSecrets[resolved] = ComposioClient.composioTokenSentinel
+                    self.pluginError = nil
+                    self.pluginAuthURL = nil
+                } else {
+                    self.pluginError = message
+                    if ComposioClient.requiresCustomAuthConfig(resolved),
+                       let guide = ComposioClient.setupGuideURL(for: resolved) {
+                        self.presentPluginAuthURL(guide, setupHint: message)
+                    } else if let found = ComposioClient.firstAuthURL(in: message) {
+                        self.presentPluginAuthURL(found, setupHint: message)
+                    }
+                }
             }
-            self.connectionPending.remove(slug)
+            self.connectionPending.remove(resolved)
             self.oauthWaitSlug = nil
-            self.pluginAuthURL = nil
             self.save()
-            self.pluginTasks.removeValue(forKey: slug)
+            self.pluginTasks.removeValue(forKey: resolved)
         }
-        pluginTasks[slug] = task
+        pluginTasks[resolved] = task
     }
 
     public func revoke(slug: String) {
@@ -3504,11 +4772,16 @@ public final class AppStore {
         let token = connectionSecrets[slug]
         let viaComposio = connections.first(where: { $0.slug == slug })?.viaComposio == true
             || token == ComposioClient.composioTokenSentinel
+        let viaGoogle = token == Self.googleTokenSentinel
+            || (GoogleOAuth.isGooglePlugin(slug)
+                && GoogleOAuth.decodeCredential(connectionSecrets[GoogleOAuth.credentialSecretKey]) != nil)
         let task = Task { [weak self] in
             guard let self else { return }
             if viaComposio, let composio = self.liveComposio() {
                 try? await composio.disconnect(slug)
-            } else if let token, token != ComposioClient.composioTokenSentinel {
+            } else if viaGoogle {
+                // Keep shared Google credential if another Google plugin still uses it.
+            } else if let token, token != ComposioClient.composioTokenSentinel, token != Self.googleTokenSentinel {
                 await self.pluginClient.revoke(slug: slug, token: token)
             }
             if let idx = self.connections.firstIndex(where: { $0.slug == slug }) {
@@ -3517,6 +4790,16 @@ public final class AppStore {
                 self.connections[idx].viaComposio = false
             }
             self.connectionSecrets[slug] = nil
+            let stillUsingGoogle = self.connections.contains {
+                $0.connected && GoogleOAuth.isGooglePlugin($0.slug)
+                    && self.connectionSecrets[$0.slug] == Self.googleTokenSentinel
+            }
+            if !stillUsingGoogle, let encoded = self.connectionSecrets[GoogleOAuth.credentialSecretKey],
+               let cred = GoogleOAuth.decodeCredential(encoded),
+               let google = self.liveGoogleOAuth() {
+                await google.revoke(token: cred.refresh.isEmpty ? cred.access : cred.refresh)
+                self.connectionSecrets[GoogleOAuth.credentialSecretKey] = nil
+            }
             self.connectionPending.remove(slug)
             self.save()
             self.pluginTasks.removeValue(forKey: slug)
@@ -3524,32 +4807,151 @@ public final class AppStore {
         pluginTasks[slug] = task
     }
 
-    private func writePlugin(slug: String, title: String, body: String) async throws -> String {
+    public static let pluginAccountAll = "*"
+    public static let pluginAccountKeySuffix = "#account"
+
+    public static func pluginAccountKey(for slug: String) -> String {
+        "\(slug)\(pluginAccountKeySuffix)"
+    }
+
+    /// `nil` = auto (first account), `*` = all accounts, otherwise a Composio account alias.
+    public func pluginAccountPreference(for slug: String) -> String? {
+        let raw = connectionSecrets[Self.pluginAccountKey(for: slug)]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let raw, !raw.isEmpty else { return nil }
+        return raw
+    }
+
+    public func setPluginAccountPreference(slug: String, account: String?) {
+        let key = Self.pluginAccountKey(for: slug)
+        let trimmed = account?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty {
+            connectionSecrets[key] = nil
+        } else {
+            connectionSecrets[key] = trimmed
+        }
+        if trimmed != Self.pluginAccountAll,
+           let idx = connections.firstIndex(where: { $0.slug == slug }),
+           connections[idx].viaComposio {
+            connections[idx].accountLabel = trimmed.isEmpty ? "Composio" : displayName(forPluginAccount: trimmed)
+        }
+        save()
+    }
+
+    private func storeAccountPreferenceFromTool(slug: String, account: String) {
+        let lower = account.lowercased()
+        if lower == "all" || lower == "*" || lower == "every" || lower == "both" {
+            setPluginAccountPreference(slug: slug, account: Self.pluginAccountAll)
+        } else {
+            setPluginAccountPreference(slug: slug, account: account)
+        }
+    }
+
+    public func displayName(forPluginAccount account: String) -> String {
+        if account == Self.pluginAccountAll { return "All accounts" }
+        return account
+            .replacingOccurrences(of: "gmail_", with: "")
+            .replacingOccurrences(of: "googlecalendar_", with: "")
+            .replacingOccurrences(of: "-", with: " ")
+    }
+
+    public func refreshComposioAccountChoices(slug: String) async {
+        guard let composio = liveComposio() else {
+            composioAccountChoices[slug] = []
+            return
+        }
+        composioAccountsLoadingSlug = slug
+        defer { if composioAccountsLoadingSlug == slug { composioAccountsLoadingSlug = nil } }
+        let found = (try? await composio.listAccounts(slug: slug)) ?? []
+        if !found.isEmpty {
+            composioAccountChoices[slug] = found
+        }
+        // Keep a previously chosen specific account if it disappeared.
+        if let pref = pluginAccountPreference(for: slug),
+           pref != Self.pluginAccountAll,
+           !found.isEmpty,
+           !found.contains(pref) {
+            setPluginAccountPreference(slug: slug, account: nil)
+        }
+    }
+
+    private func writePlugin(slug: String, title: String, body: String, account: String? = nil) async throws -> String {
         let item = connections.first(where: { $0.slug == slug })
         let token = connectionSecrets[slug]
             ?? (slug == "box" ? appConfig.boxToken : nil)
+        if let googleToken = try await liveGoogleAccessToken(for: slug) {
+            return try await pluginClient.write(slug: slug, token: googleToken, title: title, body: body)
+        }
         if item?.viaComposio == true || token == ComposioClient.composioTokenSentinel,
            let composio = liveComposio() {
-            return try await composio.execute(slug: slug, title: title, body: body)
+            let pref = account ?? pluginAccountPreference(for: slug)
+            if pref == Self.pluginAccountAll {
+                let accounts = try await ensureComposioAccounts(slug: slug, composio: composio)
+                guard !accounts.isEmpty else {
+                    return try await composio.execute(slug: slug, title: title, body: body, account: nil)
+                }
+                var parts: [String] = []
+                for name in accounts {
+                    let remote = try await composio.execute(slug: slug, title: title, body: body, account: name)
+                    parts.append("[\(displayName(forPluginAccount: name))]\n\(remote)")
+                }
+                return parts.joined(separator: "\n\n")
+            }
+            return try await composio.execute(slug: slug, title: title, body: body, account: pref)
         }
-        guard let token, token != ComposioClient.composioTokenSentinel else {
+        guard let token, token != ComposioClient.composioTokenSentinel, token != Self.googleTokenSentinel else {
             throw PluginError.rejected("Plugin \(slug) is not connected.")
         }
         return try await pluginClient.write(slug: slug, token: token, title: title, body: body)
     }
 
-    private func readPlugin(slug: String, query: String) async throws -> String {
+    private func readPlugin(slug: String, query: String, account: String? = nil) async throws -> String {
         let item = connections.first(where: { $0.slug == slug })
         let token = connectionSecrets[slug]
             ?? (slug == "box" ? appConfig.boxToken : nil)
+        if let googleToken = try await liveGoogleAccessToken(for: slug) {
+            return try await pluginClient.search(slug: slug, token: googleToken, query: query)
+        }
         if item?.viaComposio == true || token == ComposioClient.composioTokenSentinel,
            let composio = liveComposio() {
-            return try await composio.search(slug: slug, query: query)
+            let pref = account ?? pluginAccountPreference(for: slug)
+            if pref == Self.pluginAccountAll {
+                let accounts = try await ensureComposioAccounts(slug: slug, composio: composio)
+                guard !accounts.isEmpty else {
+                    return try await composio.search(slug: slug, query: query, account: nil)
+                }
+                var parts: [String] = []
+                for name in accounts {
+                    let remote = try await composio.search(slug: slug, query: query, account: name)
+                    parts.append("## \(displayName(forPluginAccount: name))\n\(remote)")
+                }
+                return parts.joined(separator: "\n\n")
+            }
+            do {
+                return try await composio.search(slug: slug, query: query, account: pref)
+            } catch {
+                // Cache account aliases from the error so the Plugins picker can populate.
+                if let names = ComposioClient.multipleAccountChoices(in: error.localizedDescription) {
+                    composioAccountChoices[slug] = names
+                } else if error.localizedDescription.localizedCaseInsensitiveContains("Multiple accounts") {
+                    await refreshComposioAccountChoices(slug: slug)
+                }
+                throw error
+            }
         }
-        guard let token, token != ComposioClient.composioTokenSentinel else {
+        guard let token, token != ComposioClient.composioTokenSentinel, token != Self.googleTokenSentinel else {
             throw PluginError.rejected("Plugin \(slug) is not connected.")
         }
         return try await pluginClient.search(slug: slug, token: token, query: query)
+    }
+
+    private func ensureComposioAccounts(slug: String, composio: any ComposioConnecting) async throws -> [String] {
+        if let cached = composioAccountChoices[slug], !cached.isEmpty { return cached }
+        let found = try await composio.listAccounts(slug: slug)
+        if !found.isEmpty {
+            composioAccountChoices[slug] = found
+        }
+        return found
     }
 
     private func recordAudit(
@@ -3816,6 +5218,10 @@ public final class AppStore {
         case "shell.exec": return "shell"
         case "read_file.host": return "read_file"
         case "list_files.host": return "list_files"
+        case "write_file.host": return "write_file"
+        case "edit_file.host": return "edit_file"
+        case "move_file.host": return "move_file"
+        case "delete_file.host": return "delete_file"
         default: return tool
         }
     }
@@ -3826,12 +5232,37 @@ public final class AppStore {
         return deployment.normalizedHost == .thisMac ? .thisMac : .inAppBrowser
     }
 
+    /// UI: This Mac is preview-only (screenshot poll); drive happens on the real desktop.
+    public func isThisMacComputer(botId: String) -> Bool {
+        guard let bot = bots.first(where: { $0.id == botId }) else { return false }
+        return resolvedComputerMode(for: bot) == .thisMac
+    }
+
     private func computerBlockedIfHeadless(bot: Bot) -> AgentToolCallResult? {
         guard headlessRoutineTick else { return nil }
         guard resolvedComputerMode(for: bot) == .thisMac else { return nil }
         return AgentToolCallResult(
             output: "This Mac computer is unavailable during a background routine tick. Screen Recording and Accessibility need GrizzyBot in the foreground. Open the app to run computer tools, or switch this bot to In-app browser."
         )
+    }
+
+    /// Applies computer mode to the runtime and attaches the bot home before screen I/O.
+    @discardableResult
+    private func prepareComputerSurface(botId: String, bot: Bot) async -> URL {
+        let home = (try? botHome.homeURL(botId: botId)) ?? userPersistence.root
+        let mode = resolvedComputerMode(for: bot)
+        await computerRuntime?.setSession(
+            botId: botId,
+            thisMac: mode == .thisMac,
+            persistent: mode != .off
+        )
+        await computerRuntime?.attach(botId: botId, homeURL: home)
+        if var computer = computers[botId], computer.state != .running {
+            computer.state = .running
+            computer.screenAvailable = true
+            computers[botId] = computer
+        }
+        return home
     }
 
     private func computerNote(for bot: Bot) -> String {
@@ -3852,7 +5283,18 @@ public final class AppStore {
         guard var thread = threads[threadKey], thread.run?.id == runId else { return }
         var blocks = result.blocks
         if blocks.isEmpty {
-            blocks = [.card(lines: [CardLine(k: name, v: String(result.output.prefix(160)))])]
+            let preview: String
+            if name == "plugin_call" {
+                preview = ComposioClient.chatSummary(
+                    slug: "plugin",
+                    query: "",
+                    result: result.output,
+                    failed: result.output.localizedCaseInsensitiveContains("failed")
+                )
+            } else {
+                preview = String(result.output.prefix(120))
+            }
+            blocks = [.card(lines: [CardLine(k: name, v: preview)])]
         }
         let msg = ThreadMessage(
             id: Ids.new(),
@@ -3946,6 +5388,32 @@ public final class AppStore {
             outputTokens: recent.reduce(0) { $0 + $1.outputTokens },
             runs: recent.count
         )
+    }
+
+    /// Billed tokens for one bot's chat: last first-call prompt, plus lifetime sent/received.
+    public func chatTokenStats(botId: String) -> ChatTokenStats {
+        let records = usage.filter { $0.botId == botId }
+        let last = records.max(by: { $0.createdAt < $1.createdAt })
+        return ChatTokenStats(
+            lastPromptTokens: last?.billedPromptTokens ?? 0,
+            sentTokens: records.reduce(0) { $0 + $1.inputTokens },
+            receivedTokens: records.reduce(0) { $0 + $1.outputTokens }
+        )
+    }
+
+    /// Zeros composer Prompt / Sent / Recv. Pass a bot id for that bot only; `nil` clears every bot.
+    /// Chat messages, memory, and files are left alone. Weekly usage uses the same ledger.
+    @discardableResult
+    public func resetChatTokens(botId: String? = nil) -> Int {
+        let before = usage.count
+        if let botId {
+            usage.removeAll { $0.botId == botId }
+        } else {
+            usage.removeAll()
+        }
+        let removed = before - usage.count
+        save()
+        return removed
     }
 
     public func exportManifest(botId: String, redacted: Bool = false) -> ExportManifest? {
@@ -4228,6 +5696,7 @@ public final class AppStore {
         skillsOpen = false
         appSettingsOpen = false
         computerOpen = false
+        canvasOpen = false
     }
 
     public func closeAppSettings() {
@@ -4243,6 +5712,201 @@ public final class AppStore {
         }
         applyBoxToken(config.boxToken, persist: false)
         save()
+        refreshLocalIntegrations()
+    }
+
+    /// Restart folder watchers + local OpenAI/MCP gateway from current config.
+    public func refreshLocalIntegrations() {
+        Task { await self.syncFolderWatchers() }
+        Task { await self.syncLocalGateway() }
+    }
+
+    public func reloadFolderWatchers() {
+        folderWatchers = (try? FolderWatcherPersistence.loadAll(root: userPersistence.root)) ?? []
+    }
+
+    public func saveFolderWatcher(_ watcher: FolderWatcherRecord) throws {
+        var record = watcher
+        record.watchPath = (record.watchPath as NSString).expandingTildeInPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !record.watchPath.isEmpty else {
+            throw FolderWatcherError.emptyPath
+        }
+        try FolderWatcherPersistence.save(record, root: userPersistence.root)
+        reloadFolderWatchers()
+        refreshLocalIntegrations()
+    }
+
+    public func deleteFolderWatcher(id: String) throws {
+        FolderWatcherSuppression.shared.release(id)
+        try FolderWatcherPersistence.delete(id: id, root: userPersistence.root)
+        reloadFolderWatchers()
+        refreshLocalIntegrations()
+    }
+
+    /// Sends the watcher prompt to its bot immediately (does not wait for FSEvents).
+    @discardableResult
+    public func runFolderWatcherNow(id: String) -> String {
+        guard let watcher = folderWatchers.first(where: { $0.id == id }) else {
+            return FolderWatcherError.notFound.localizedDescription
+        }
+        let result = fireFolderWatcher(watcher, changedPaths: [], manual: true)
+        var updated = watcher
+        if result.hasPrefix("No bot") {
+            updated.lastError = result
+        } else if result.hasPrefix("Triggered") {
+            updated.lastTriggeredAt = FolderWatcherRecord.isoNow()
+            updated.lastError = nil
+            if let botId = updated.botId ?? activeBotId ?? bots.first?.id {
+                selectBot(botId)
+            }
+        }
+        try? FolderWatcherPersistence.save(updated, root: userPersistence.root)
+        reloadFolderWatchers()
+        return result
+    }
+
+    public func discoverMcpBonjour(timeoutSeconds: TimeInterval = 5) async -> [MCPBonjourDiscovery.Entry] {
+        await MCPBonjourDiscovery.discover(timeoutSeconds: timeoutSeconds)
+    }
+
+    public func memoryDedupeClusters(botId: String) -> [MemoryFactCluster] {
+        let content = memory.first(where: { $0.botId == botId && $0.path == "MEMORY.md" })?.content ?? ""
+        return MemoryFactDedupe.clusters(from: MemoryLedger.parse(content).facts)
+    }
+
+    @discardableResult
+    public func mergeMemoryDuplicates(botId: String) -> [String] {
+        guard let idx = memory.firstIndex(where: { $0.botId == botId && $0.path == "MEMORY.md" }) else {
+            return []
+        }
+        let result = MemoryFactDedupe.mergeContent(memory[idx].content)
+        memory[idx].content = result.text
+        memory[idx].updatedAt = .now
+        save()
+        return result.removed
+    }
+
+    private func syncFolderWatchers() async {
+        let root = userPersistence.root
+        let runner = StoreFolderWatcherRunner { [weak self] watcher, paths, manual in
+            guard let self else { return "store released" }
+            return await MainActor.run {
+                self.fireFolderWatcher(watcher, changedPaths: paths, manual: manual)
+            }
+        }
+        await FolderWatcherService.shared.configure(root: root, runner: runner)
+        if appConfig.enableFolderWatchers {
+            await FolderWatcherService.shared.start()
+            await FolderWatcherService.shared.reloadNow()
+        } else {
+            await FolderWatcherService.shared.stop()
+        }
+    }
+
+    /// Test/UI seam: apply an automatic FSEvent-style fire (honors busy + cooldown skips).
+    @discardableResult
+    public func handleFolderWatcherEvent(id: String, changedPaths: [String]) -> String {
+        guard let watcher = folderWatchers.first(where: { $0.id == id }) else {
+            return FolderWatcherError.notFound.localizedDescription
+        }
+        return fireFolderWatcher(watcher, changedPaths: changedPaths, manual: false)
+    }
+
+    private func fireFolderWatcher(
+        _ watcher: FolderWatcherRecord,
+        changedPaths: [String],
+        manual: Bool
+    ) -> String {
+        let botId = watcher.botId ?? activeBotId ?? bots.first?.id
+        guard let botId else { return "No bot configured for watcher." }
+        if let skip = FolderWatcherFirePolicy.skipReason(
+            botBusy: isRunActive(botId: botId),
+            suppressed: FolderWatcherSuppression.shared.isSuppressed(watcher.id),
+            manual: manual
+        ) {
+            return skip
+        }
+        FolderWatcherSuppression.shared.suppress(watcher.id)
+        watcherRunByBotId[botId] = watcher.id
+        Task { await FolderWatcherService.shared.dropPending(watcherId: watcher.id) }
+        let prompt = FolderWatcherPromptBuilder.userMessage(
+            watcher: watcher,
+            changedPaths: changedPaths,
+            manual: manual
+        )
+        let watchPath = (watcher.watchPath as NSString).expandingTildeInPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        send(
+            botId: botId,
+            text: prompt,
+            workingFolderOverride: watchPath.isEmpty ? nil : watchPath
+        )
+        return "Triggered bot \(botId)"
+    }
+
+    private func watcherEchoCooldown(for watcherId: String) -> TimeInterval {
+        let responsiveness = folderWatchers.first(where: { $0.id == watcherId })?.responsiveness ?? "balanced"
+        return FolderWatcherGlobMatching.debounceSeconds(for: responsiveness)
+    }
+
+    private func releaseWorkingFolderOverrideIfNeeded(botId: String) {
+        let status = threads[threadKey(for: botId)]?.run?.status
+        switch status {
+        case .waitingInput, .waitingTakeover, .queued, .leased, .running:
+            return
+        default:
+            runWorkingFolderOverride.removeValue(forKey: botId)
+            releaseWatcherSuppressionIfNeeded(botId: botId)
+        }
+    }
+
+    private func releaseWatcherSuppressionIfNeeded(botId: String) {
+        guard let watcherId = watcherRunByBotId.removeValue(forKey: botId) else { return }
+        let cooldown = watcherEchoCooldown(for: watcherId)
+        Task {
+            try? await Task.sleep(for: .seconds(cooldown))
+            FolderWatcherSuppression.shared.release(watcherId)
+            await FolderWatcherService.shared.dropPending(watcherId: watcherId)
+        }
+    }
+
+    private func syncLocalGateway() async {
+        let settings = appConfig.localGateway
+        let botPairs = bots.map { (id: $0.id, name: $0.name) }
+        await LocalOpenAIGateway.shared.configure(
+            settings: settings,
+            bots: botPairs,
+            handler: { [weak self] botId, messages, _ in
+                guard let self else { throw PrivacyFilterBlockedError.criticalPII([.apiKey]) }
+                return try await MainActor.run {
+                    try self.handleLocalGatewayChat(botId: botId, messages: messages)
+                }
+            }
+        )
+        await LocalOpenAIGateway.shared.restart()
+    }
+
+    private func handleLocalGatewayChat(botId: String?, messages: [[String: String]]) throws -> String {
+        let target = botId ?? appConfig.localGateway.defaultBotId ?? activeBotId ?? bots.first?.id
+        guard let target else {
+            throw NSError(
+                domain: "GrizzyBot",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "No bot available"]
+            )
+        }
+        let prompt = messages.reversed().first(where: { $0["role"] == "user" })?["content"]
+            ?? messages.last?["content"]
+            ?? ""
+        let scrubbed = try PrivacyFilter.applyForSend(
+            prompt,
+            settings: appConfig.privacyFilter,
+            logDirectory: userPersistence.root,
+            logContext: "local_gateway"
+        )
+        send(botId: target, text: scrubbed)
+        return "Queued on bot \(target). Open GrizzyBot to follow the run."
     }
 
     private func applyBoxToken(_ token: String?, persist: Bool) {
@@ -4287,6 +5951,7 @@ public final class AppStore {
         mainView = .chat
         panel = nil
         computerOpen = false
+        canvasOpen = false
         if let idx = groups.firstIndex(where: { $0.id == groupId }) {
             groups[idx].unread = false
             save()
@@ -4299,6 +5964,7 @@ public final class AppStore {
         mainView = .chat
         panel = nil
         computerOpen = false
+        canvasOpen = false
         if let idx = bots.firstIndex(where: { $0.id == botId }) {
             bots[idx].unread = false
             save()
@@ -4344,27 +6010,170 @@ public final class AppStore {
     }
 
     public func setDefaultTool(_ toolId: String, enabled: Bool) {
-        var tools = appConfig.defaultEnabledTools
-        if enabled {
-            if !tools.contains(toolId) { tools.append(toolId) }
-        } else {
-            tools.removeAll { $0 == toolId }
+        setDefaultTools([toolId], enabled: enabled)
+    }
+
+    public func setDefaultTools(_ toolIds: [String], enabled: Bool) {
+        var config = appConfig
+        for toolId in toolIds {
+            if !config.seenToolIds.contains(toolId) {
+                config.seenToolIds.append(toolId)
+            }
+            if enabled {
+                if !config.defaultEnabledTools.contains(toolId) {
+                    config.defaultEnabledTools.append(toolId)
+                }
+            } else {
+                config.defaultEnabledTools.removeAll { $0 == toolId }
+            }
         }
-        appConfig.defaultEnabledTools = tools
+        appConfig = config
         save()
     }
 
     public func setAllDefaultTools(enabled: Bool) {
-        appConfig.defaultEnabledTools = enabled ? knownToolIds : []
+        var config = appConfig
+        let ids = knownToolIds
+        for id in ids where !config.seenToolIds.contains(id) {
+            config.seenToolIds.append(id)
+        }
+        config.defaultEnabledTools = enabled ? ids : []
+        appConfig = config
         save()
     }
 
     public var knownToolIds: [String] {
-        AgentToolCatalog.allIds(custom: customTools, mcpServers: mcpServers)
+        var ids = AgentToolCatalog.allIds(custom: customTools, mcpServers: mcpServers)
+        for server in mcpServers {
+            ids.append(contentsOf: McpToolGate.childIds(serverId: server.id, names: mcpToolNames(for: server.id)))
+        }
+        return ids
     }
 
     public var knownToolDefinitions: [AgentToolDefinition] {
         AgentToolCatalog.definitions(custom: customTools, mcpServers: mcpServers)
+    }
+
+    public func mcpStatus(for serverId: String) -> McpProbeStatus {
+        if let live = mcpProbeStatus[serverId] { return live }
+        if let names = mcpAdvertisedTools[serverId] {
+            return .connected(toolCount: names.count)
+        }
+        return .idle
+    }
+
+    public func mcpToolNames(for serverId: String) -> [String] {
+        var names = McpCatalogPromote.uniqueAdvertisedNames(mcpAdvertisedTools[serverId] ?? [])
+        var seen = Set(names)
+        let server = mcpServers.first(where: { $0.id == serverId })
+        for promo in mcpPromotedTools.values where promo.serverId == serverId {
+            if McpCatalogPromote.isDispatcher(promo.chatName) { continue }
+            if let server, promo.chatName == McpNativeNaming.chatName(server: server, tool: promo.executeTool),
+               seen.contains(promo.executeTool) {
+                continue
+            }
+            if seen.insert(promo.chatName).inserted {
+                names.append(promo.chatName)
+            }
+        }
+        return names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    public func mcpToolDescription(serverId: String, toolName: String) -> String {
+        if let info = mcpListedTools[serverId]?.first(where: { $0.name == toolName }),
+           !info.description.isEmpty {
+            return info.description
+        }
+        if let promo = mcpPromotedTools.values.first(where: {
+            $0.serverId == serverId && $0.chatName == toolName
+        }), !promo.description.isEmpty {
+            return promo.description
+        }
+        return "MCP tool"
+    }
+
+    public func isDefaultMcpToolEnabled(serverId: String, toolName: String) -> Bool {
+        McpToolGate.isToolEnabled(
+            enabledIds: appConfig.defaultEnabledTools,
+            serverId: serverId,
+            toolName: toolName,
+            advertised: mcpToolNames(for: serverId)
+        )
+    }
+
+    public func isBotMcpToolEnabled(botId: String, serverId: String, toolName: String) -> Bool {
+        guard let bot = bots.first(where: { $0.id == botId }) else { return false }
+        return McpToolGate.isToolEnabled(
+            enabledIds: bot.enabledTools,
+            serverId: serverId,
+            toolName: toolName,
+            advertised: mcpToolNames(for: serverId)
+        )
+    }
+
+    public func setDefaultMcpChildTool(serverId: String, toolName: String, enabled: Bool) {
+        var config = appConfig
+        let advertised = mcpToolNames(for: serverId)
+        McpToolGate.setChild(
+            enabledIds: &config.defaultEnabledTools,
+            serverId: serverId,
+            toolName: toolName,
+            enabled: enabled,
+            advertised: advertised
+        )
+        let parent = "mcp:\(serverId)"
+        for id in [parent] + McpToolGate.childIds(serverId: serverId, names: advertised) {
+            if !config.seenToolIds.contains(id) {
+                config.seenToolIds.append(id)
+            }
+        }
+        appConfig = config
+        save()
+    }
+
+    public func setBotMcpChildTool(botId: String, serverId: String, toolName: String, enabled: Bool) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
+        var tools = bots[idx].enabledTools
+        McpToolGate.setChild(
+            enabledIds: &tools,
+            serverId: serverId,
+            toolName: toolName,
+            enabled: enabled,
+            advertised: mcpToolNames(for: serverId)
+        )
+        bots[idx].enabledTools = tools
+        bots[idx].updatedAt = .now
+        save()
+    }
+
+    public func probeMcpServer(_ serverId: String) {
+        guard let server = mcpServers.first(where: { $0.id == serverId }) else { return }
+        if mcpProbeStatus[serverId] == .checking { return }
+        let generation = (mcpProbeGeneration[serverId] ?? 0) + 1
+        mcpProbeGeneration[serverId] = generation
+        mcpProbeStatus[serverId] = .checking
+        Task {
+            let outcome: Result<[McpToolInfo], Error>
+            do {
+                outcome = .success(try await McpClient.listTools(server: server))
+            } catch {
+                outcome = .failure(error)
+            }
+            guard mcpProbeGeneration[serverId] == generation else { return }
+            guard mcpServers.contains(where: { $0.id == serverId }) else { return }
+            switch outcome {
+            case .success(let listed):
+                _ = applyMcpList(serverId: serverId, tools: listed)
+            case .failure(let error):
+                mcpProbeStatus[serverId] = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    public func probeAllMcpServers() {
+        for server in mcpServers {
+            probeMcpServer(server.id)
+        }
     }
 
     @discardableResult
@@ -4379,11 +6188,12 @@ public final class AppStore {
     ) -> McpServer? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+        let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
         let server = McpServer(
             name: trimmed,
             transport: transport,
-            command: command.trimmingCharacters(in: .whitespacesAndNewlines),
-            args: args,
+            command: command,
+            args: FastFilesystemMcpArgs.normalize(command: command, args: args),
             env: env,
             url: url.trimmingCharacters(in: .whitespacesAndNewlines),
             headers: headers
@@ -4396,29 +6206,61 @@ public final class AppStore {
 
     public func updateMcpServer(_ server: McpServer) {
         guard let idx = mcpServers.firstIndex(where: { $0.id == server.id }) else { return }
-        mcpServers[idx] = server
+        var updated = server
+        updated.args = FastFilesystemMcpArgs.normalize(command: updated.command, args: updated.args)
+        mcpServers[idx] = updated
         save()
     }
 
     public func deleteMcpServer(_ serverId: String) {
-        let toolId = mcpServers.first(where: { $0.id == serverId })?.toolId ?? "mcp:\(serverId)"
         mcpServers.removeAll { $0.id == serverId }
-        appConfig.defaultEnabledTools.removeAll { $0 == toolId }
+        McpToolGate.stripServer(serverId, from: &appConfig.defaultEnabledTools)
         for i in bots.indices {
-            bots[i].enabledTools.removeAll { $0 == toolId }
+            McpToolGate.stripServer(serverId, from: &bots[i].enabledTools)
         }
+        mcpAdvertisedTools[serverId] = nil
+        mcpListedTools[serverId] = nil
+        mcpProbeStatus[serverId] = nil
+        mcpProbeGeneration[serverId] = nil
+        mcpPromotedTools = mcpPromotedTools.filter { $0.value.serverId != serverId }
         save()
     }
 
-    private func optInNewTool(_ toolId: String) {
-        if !appConfig.defaultEnabledTools.contains(toolId) {
-            appConfig.defaultEnabledTools.append(toolId)
+    @discardableResult
+    func optInNewTool(_ toolId: String) -> Bool {
+        if appConfig.seenToolIds.contains(toolId) { return false }
+        var config = appConfig
+        config.seenToolIds.append(toolId)
+        if !config.defaultEnabledTools.isEmpty, !config.defaultEnabledTools.contains(toolId) {
+            config.defaultEnabledTools.append(toolId)
         }
+        appConfig = config
         for i in bots.indices {
             if !bots[i].enabledTools.contains(toolId), !bots[i].noToolsEnabled {
                 bots[i].enabledTools.append(toolId)
             }
         }
+        return true
+    }
+
+    /// First launch after this field exists: record every known tool so disabled defaults stay off.
+    private func seedSeenToolIdsIfNeeded() {
+        guard appConfig.seenToolIds.isEmpty else { return }
+        var seen = Set(AgentToolCatalog.builtinIds)
+        seen.formUnion(CanvasBoardStore.toolIds)
+        seen.formUnion(appConfig.defaultEnabledTools)
+        seen.formUnion(customTools.map(\.id))
+        seen.formUnion(mcpServers.map(\.toolId))
+        for (serverId, names) in mcpAdvertisedTools {
+            seen.formUnion(McpToolGate.childIds(serverId: serverId, names: names))
+        }
+        for bot in bots {
+            seen.formUnion(bot.enabledTools)
+        }
+        var config = appConfig
+        config.seenToolIds = Array(seen)
+        appConfig = config
+        save()
     }
 
     @discardableResult
@@ -4717,6 +6559,7 @@ public final class AppStore {
                 bots[idx].status = "idle"
             }
             save()
+            releaseWorkingFolderOverrideIfNeeded(botId: botId)
             return
         }
         threads[key] = thread
@@ -4736,7 +6579,9 @@ public final class AppStore {
                     botId: botId,
                     depth: 0,
                     endpoint: dummy,
-                    client: self.chatCompleter ?? OpenAIChatClient.shared,
+                    client: self.chatCompleter
+                        ?? Self.defaultClient(for: self.bots.first(where: { $0.id == botId })?.modelProvider
+                            ?? self.modelProvider),
                     approved: true
                 )
                 self.send(
@@ -4764,6 +6609,7 @@ public final class AppStore {
             bots[idx].status = "idle"
         }
         save()
+        releaseWorkingFolderOverrideIfNeeded(botId: botId)
     }
 
     public func answerChoice(botId: String, messageId: String, option: ChoiceOption) {
@@ -4924,63 +6770,100 @@ public final class AppStore {
         try? await Task.sleep(for: .milliseconds(50))
     }
 
+    /// Wait for a condition, counting scheduling opportunities rather than
+    /// elapsed time.
+    ///
+    /// Wall clock is the wrong clock for these helpers. `AppStore` is
+    /// `@MainActor`, the test suites run in parallel against that one actor,
+    /// and under contention several seconds can pass before a continuation is
+    /// scheduled at all — while the work being awaited is milliseconds (tests
+    /// build stores with `delayScale: 0.01`). A wall-clock deadline therefore
+    /// failed tests that were not broken, and did so more often the more of
+    /// the suite ran alongside them.
+    ///
+    /// Counting polls scales with load instead: the producer gets the same
+    /// number of chances to run on an idle machine and a saturated one.
+    /// `timeout` expresses that budget as the time it would take when idle.
+    /// The absolute cap exists only so a genuine deadlock still ends the run
+    /// rather than hanging the suite.
+    private func poll(timeout: TimeInterval, until condition: () -> Bool) async -> Bool {
+        if condition() { return true }
+        let attempts = max(1, Int((timeout / Self.pollInterval).rounded()))
+        let hardDeadline = Date().addingTimeInterval(Self.pollHardCap)
+        for _ in 0 ..< attempts {
+            try? await Task.sleep(for: .milliseconds(20))
+            if condition() { return true }
+            if Date() > hardDeadline { break }
+        }
+        return condition()
+    }
+
+    private static let pollInterval: TimeInterval = 0.02
+    private static let pollHardCap: TimeInterval = 240
+
+    /// Await the task owning the thread's current run, following the chain
+    /// when one run starts a follow-up (approving a tool continues into a new
+    /// run).
+    ///
+    /// Every run is registered in `runTasks` in the same synchronous step that
+    /// publishes it on the thread, and `runAgent` clears its entry before
+    /// returning — so a run visible here always has its task, and awaiting
+    /// that task means the run's status is final. No polling window to lose.
+    private func drainRuns(for key: String) async {
+        var awaited = Set<String>()
+        while let run = threads[key]?.run, run.status.isActive {
+            guard let task = runTasks[run.id], awaited.insert(run.id).inserted else { break }
+            _ = await task.value
+        }
+    }
+
     public func waitForRunStatus(botId: String, status: RunStatus, timeout: TimeInterval = 15) async -> Bool {
         let key = threadKey(for: botId)
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if threads[key]?.run?.status == status { return true }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        return threads[key]?.run?.status == status
+        return await poll(timeout: timeout) { self.threads[key]?.run?.status == status }
     }
 
     public func waitForPendingTool(botId: String, timeout: TimeInterval = 15) async -> Bool {
         let key = threadKey(for: botId)
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if threads[key]?.pendingTool != nil { return true }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        return threads[key]?.pendingTool != nil
+        return await poll(timeout: timeout) { self.threads[key]?.pendingTool != nil }
     }
 
     public func waitForRunCompletion(botId: String, timeout: TimeInterval = 15) async -> Bool {
         let key = threadKey(for: botId)
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let run = threads[key]?.run {
-                if !run.status.isActive {
-                    return run.status == .completed
-                }
-            } else {
-                return true
-            }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
+        await drainRuns(for: key)
+        guard let run = threads[key]?.run else { return true }
+        if !run.status.isActive { return run.status == .completed }
+        // Still active with no task of its own to await — another path owns it.
+        _ = await poll(timeout: timeout) { self.threads[key]?.run?.status.isActive != true }
         return threads[key]?.run?.status == .completed
     }
 
     public func waitForComputerState(botId: String, state: ComputerState, timeout: TimeInterval = 10) async -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
+        if computers[botId]?.state == state { return true }
+        // `boot` publishes its task synchronously, so awaiting it is exact.
+        if let task = bootTasks[botId] {
+            _ = await task.value
             if computers[botId]?.state == state { return true }
-            try? await Task.sleep(for: .milliseconds(50))
         }
-        return computers[botId]?.state == state
+        // Other transitions — `takeControl`, or a run opening the computer
+        // surface mid-turn — are not a single awaitable task.
+        return await poll(timeout: timeout) { self.computers[botId]?.state == state }
     }
 
     public func waitForActiveRuns(timeout: TimeInterval = 120) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            let tasks = Array(runTasks.values)
-            if tasks.isEmpty {
-                let anyActive = threads.values.contains { $0.run?.status.isActive == true }
-                if !anyActive { return }
-            }
-            for task in tasks {
+        let attempts = max(1, Int((timeout / Self.pollInterval).rounded()))
+        let hardDeadline = Date().addingTimeInterval(Self.pollHardCap)
+        for _ in 0 ..< attempts {
+            // Awaiting the tracked tasks is the real wait: each returns only
+            // after `runAgent` has finalized its run and cleared its entry.
+            for task in Array(runTasks.values) {
                 _ = await task.result
             }
-            try? await Task.sleep(for: .milliseconds(50))
+            if runTasks.isEmpty,
+               !threads.values.contains(where: { $0.run?.status.isActive == true }) {
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(20))
+            if Date() > hardDeadline { return }
         }
     }
 
@@ -5002,6 +6885,9 @@ public final class AppStore {
         var config = appConfig
         config.applySecret(secret, input: input)
         saveAppConfig(config)
+        if secret == .composioConnect || secret == .composioApi {
+            Task { await refreshPluginCatalog() }
+        }
     }
 
     @discardableResult
@@ -5021,6 +6907,8 @@ public final class AppStore {
                     }
                     if imported.composioConnectKey != nil { existing.composioConnectKey = imported.composioConnectKey }
                     if imported.composioApiKey != nil { existing.composioApiKey = imported.composioApiKey }
+                    if imported.googleClientId != nil { existing.googleClientId = imported.googleClientId }
+                    if imported.googleClientSecret != nil { existing.googleClientSecret = imported.googleClientSecret }
                     if imported.boxToken != nil { existing.boxToken = imported.boxToken }
                     if imported.ttsKey != nil { existing.ttsKey = imported.ttsKey }
                     if imported.sentryDSN != nil { existing.sentryDSN = imported.sentryDSN }

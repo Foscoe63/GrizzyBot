@@ -9,6 +9,8 @@ public struct WorkspaceSecrets: Codable, Sendable, Equatable {
     public var connectionSecrets: [String: String]
     public var composioConnectKey: String?
     public var composioApiKey: String?
+    public var googleClientId: String?
+    public var googleClientSecret: String?
     public var boxToken: String?
     public var ttsKey: String?
     public var sentryDSN: String?
@@ -21,6 +23,8 @@ public struct WorkspaceSecrets: Codable, Sendable, Equatable {
         connectionSecrets: [String: String] = [:],
         composioConnectKey: String? = nil,
         composioApiKey: String? = nil,
+        googleClientId: String? = nil,
+        googleClientSecret: String? = nil,
         boxToken: String? = nil,
         ttsKey: String? = nil,
         sentryDSN: String? = nil,
@@ -32,6 +36,8 @@ public struct WorkspaceSecrets: Codable, Sendable, Equatable {
         self.connectionSecrets = connectionSecrets
         self.composioConnectKey = composioConnectKey
         self.composioApiKey = composioApiKey
+        self.googleClientId = googleClientId
+        self.googleClientSecret = googleClientSecret
         self.boxToken = boxToken
         self.ttsKey = ttsKey
         self.sentryDSN = sentryDSN
@@ -46,6 +52,8 @@ public struct WorkspaceSecrets: Codable, Sendable, Equatable {
             connectionSecrets: workspace.connectionSecrets,
             composioConnectKey: workspace.appConfig.composioConnectKey,
             composioApiKey: workspace.appConfig.composioApiKey,
+            googleClientId: workspace.appConfig.googleClientId,
+            googleClientSecret: workspace.appConfig.googleClientSecret,
             boxToken: workspace.appConfig.boxToken,
             ttsKey: workspace.appConfig.ttsKey,
             sentryDSN: workspace.appConfig.sentryDSN,
@@ -60,6 +68,8 @@ public struct WorkspaceSecrets: Codable, Sendable, Equatable {
         next.connectionSecrets = connectionSecrets
         next.appConfig.composioConnectKey = composioConnectKey
         next.appConfig.composioApiKey = composioApiKey
+        next.appConfig.googleClientId = googleClientId
+        next.appConfig.googleClientSecret = googleClientSecret
         next.appConfig.boxToken = boxToken
         next.appConfig.ttsKey = ttsKey
         next.appConfig.sentryDSN = sentryDSN
@@ -74,6 +84,8 @@ public struct WorkspaceSecrets: Codable, Sendable, Equatable {
         next.connectionSecrets = [:]
         next.appConfig.composioConnectKey = nil
         next.appConfig.composioApiKey = nil
+        next.appConfig.googleClientId = nil
+        next.appConfig.googleClientSecret = nil
         next.appConfig.boxToken = nil
         next.appConfig.ttsKey = nil
         next.appConfig.sentryDSN = nil
@@ -88,6 +100,8 @@ public struct WorkspaceSecrets: Codable, Sendable, Equatable {
             && connectionSecrets.isEmpty
             && (composioConnectKey ?? "").isEmpty
             && (composioApiKey ?? "").isEmpty
+            && (googleClientId ?? "").isEmpty
+            && (googleClientSecret ?? "").isEmpty
             && (boxToken ?? "").isEmpty
             && (ttsKey ?? "").isEmpty
             && (sentryDSN ?? "").isEmpty
@@ -162,6 +176,8 @@ public enum SecretStore {
             }
             if inline.composioConnectKey != nil { existing.composioConnectKey = inline.composioConnectKey }
             if inline.composioApiKey != nil { existing.composioApiKey = inline.composioApiKey }
+            if inline.googleClientId != nil { existing.googleClientId = inline.googleClientId }
+            if inline.googleClientSecret != nil { existing.googleClientSecret = inline.googleClientSecret }
             if inline.boxToken != nil { existing.boxToken = inline.boxToken }
             if inline.ttsKey != nil { existing.ttsKey = inline.ttsKey }
             if inline.sentryDSN != nil { existing.sentryDSN = inline.sentryDSN }

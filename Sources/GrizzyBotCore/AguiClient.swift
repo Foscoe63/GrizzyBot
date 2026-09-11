@@ -262,8 +262,24 @@ public enum AguiRuntime {
         var pause: AgentPause?
         var inputTokens = 0
         var outputTokens = 0
+        var promptTokens = 0
         var state = input.state
         let cap = max(1, maxSteps)
+
+        func loopResult(text: String, steps: Int, failed: Bool = false, failureReason: String? = nil) -> AgentLoopResult {
+            AgentLoopResult(
+                text: text,
+                blocks: blocks,
+                pause: pause,
+                promptTokens: promptTokens,
+                inputTokens: inputTokens,
+                outputTokens: outputTokens,
+                steps: steps,
+                messages: Array(messages.prefix(200)),
+                failed: failed,
+                failureReason: failureReason
+            )
+        }
 
         for step in 1...cap {
             if Task.isCancelled { throw CancellationError() }
@@ -279,21 +295,16 @@ public enum AguiRuntime {
             }
             inputTokens += response.inputTokens
             outputTokens += response.outputTokens
+            if step == 1 {
+                promptTokens = response.inputTokens
+            }
             state = response.state
             lastText = StreamText.visible(response.text)
             if !response.hasToolCalls {
                 if !lastText.isEmpty {
                     messages.append(.assistant(lastText))
                 }
-                return AgentLoopResult(
-                    text: lastText,
-                    blocks: blocks,
-                    pause: pause,
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
-                    steps: step,
-                    messages: Array(messages.prefix(200))
-                )
+                return loopResult(text: lastText, steps: step)
             }
             messages.append(
                 ChatMessage(
@@ -309,27 +320,14 @@ public enum AguiRuntime {
                 if let next = result.pause {
                     pause = next
                     messages.append(.tool(id: call.id, content: result.output))
-                    return AgentLoopResult(
-                        text: lastText,
-                        blocks: blocks,
-                        pause: pause,
-                        inputTokens: inputTokens,
-                        outputTokens: outputTokens,
-                        steps: step,
-                        messages: Array(messages.prefix(200))
-                    )
+                    return loopResult(text: lastText, steps: step)
                 }
                 messages.append(.tool(id: call.id, content: result.output))
             }
         }
-        return AgentLoopResult(
+        return loopResult(
             text: lastText.isEmpty ? "Reached the AG-UI step limit." : lastText,
-            blocks: blocks,
-            pause: pause,
-            inputTokens: inputTokens,
-            outputTokens: outputTokens,
             steps: cap,
-            messages: Array(messages.prefix(200)),
             failed: true,
             failureReason: "step budget"
         )

@@ -1,9 +1,25 @@
+import AppKit
 import GrizzyBotCore
 import SwiftUI
 
 struct ShellView: View {
     @Environment(AppStore.self) private var store
     @State private var heartbeatTask: Task<Void, Never>?
+    @AppStorage("grizzy.rightPanelWidth") private var persistedPanelWidth: Double = 400
+    @State private var livePanelWidth: CGFloat = 400
+    @State private var panelDragOrigin: CGFloat?
+    @State private var isPanelResizing = false
+
+    private static let panelMin: CGFloat = 360
+    private static let panelMax: CGFloat = 560
+    private static let panelDefault: CGFloat = 400
+    /// Hit target + content inset so labels never sit under the divider.
+    private static let resizeHandleWidth: CGFloat = 8
+
+    private func clampPanelWidth(_ raw: CGFloat) -> CGFloat {
+        guard raw.isFinite else { return Self.panelDefault }
+        return min(Self.panelMax, max(Self.panelMin, raw))
+    }
 
     var body: some View {
         ZStack {
@@ -18,22 +34,13 @@ struct ShellView: View {
                         ChatView()
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minWidth: 260, maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(0)
                 .background(Theme.bgMain)
 
-                RightPanelView()
-                    .frame(width: store.panel == nil ? 0 : 384)
-                    .frame(maxHeight: .infinity)
-                    .background(Theme.bgRightPanel)
-                    .overlay(alignment: .leading) {
-                        if store.panel != nil {
-                            Rectangle()
-                                .fill(Theme.borderMainHdr)
-                                .frame(width: 1)
-                        }
-                    }
-                    .clipped()
-                    .animation(.easeInOut(duration: 0.2), value: store.panel)
+                if store.panel != nil {
+                    rightPanelChrome
+                }
             }
 
             if store.showHostPrompt {
@@ -64,12 +71,20 @@ struct ShellView: View {
                 ComputerFullWindowOverlay()
                     .zIndex(40)
             }
+            if store.canvasOpen {
+                CanvasEditorOverlay()
+                    .zIndex(41)
+            }
         }
         .background(Theme.bgApp)
         .focusable()
         .onKeyPress(.escape) {
             if store.computerOpen {
                 store.closeComputerOverlay()
+                return .handled
+            }
+            if store.canvasOpen {
+                store.closeCanvasOverlay()
                 return .handled
             }
             if store.appSettingsOpen {
@@ -123,17 +138,92 @@ struct ShellView: View {
         .onChange(of: store.activeBotId) { _, _ in
             store.closeComputerOverlay()
         }
-        .onChange(of: store.panel) { _, _ in
+        .onChange(of: store.panel) { _, panel in
+            if panel != nil {
+                syncLivePanelWidthFromStorage()
+            }
             restartHeartbeat()
         }
         .onChange(of: store.computerOpen) { _, _ in
+            // Overlay can interrupt a drag; AppKit handle stays mounted — only clear drag state.
+            endPanelResize(commit: false)
             restartHeartbeat()
         }
-        .onAppear { restartHeartbeat() }
+        .onAppear {
+            syncLivePanelWidthFromStorage()
+            restartHeartbeat()
+        }
         .onDisappear {
             heartbeatTask?.cancel()
             heartbeatTask = nil
         }
+    }
+
+    private func syncLivePanelWidthFromStorage() {
+        let next = clampPanelWidth(CGFloat(persistedPanelWidth))
+        livePanelWidth = next
+        if abs(persistedPanelWidth - Double(next)) > 0.5 || !CGFloat(persistedPanelWidth).isFinite {
+            persistedPanelWidth = Double(next)
+        }
+    }
+
+    private func beginPanelResize() {
+        panelDragOrigin = livePanelWidth
+        isPanelResizing = true
+    }
+
+    private func updatePanelResize(translationX: CGFloat) {
+        guard let origin = panelDragOrigin else { return }
+        // Dragging the left edge left (negative X) widens the right panel.
+        let next = clampPanelWidth(origin - translationX)
+        if abs(next - livePanelWidth) >= 4 {
+            livePanelWidth = next
+        }
+    }
+
+    private func endPanelResize(commit: Bool) {
+        if commit {
+            livePanelWidth = clampPanelWidth(livePanelWidth)
+            persistedPanelWidth = Double(livePanelWidth)
+        } else if let origin = panelDragOrigin {
+            livePanelWidth = clampPanelWidth(origin)
+        }
+        panelDragOrigin = nil
+        isPanelResizing = false
+    }
+
+    /// Stable chrome: content is inset from an AppKit handle that survives Take control → Release.
+    private var rightPanelChrome: some View {
+        ZStack(alignment: .leading) {
+            RightPanelView()
+                .padding(.leading, Self.resizeHandleWidth)
+                .frame(width: livePanelWidth, alignment: .leading)
+                .frame(maxHeight: .infinity)
+                .background(Theme.bgRightPanel)
+                .clipped()
+                .environment(\.rightPanelResizing, isPanelResizing)
+
+            HStack(spacing: 0) {
+                ZStack {
+                    Rectangle()
+                        .fill(Theme.borderMainHdr)
+                        .frame(width: 1)
+                    PanelResizeHandleNS(
+                        onBegan: beginPanelResize,
+                        onChanged: updatePanelResize,
+                        onEnded: { endPanelResize(commit: true) }
+                    )
+                }
+                .frame(width: Self.resizeHandleWidth)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .help("Drag to resize")
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(width: livePanelWidth)
+        .frame(minWidth: livePanelWidth, idealWidth: livePanelWidth, maxWidth: livePanelWidth)
+        .layoutPriority(2)
     }
 
     /// rakazo pings `computer.heartbeat` every 60s while panel or overlay is open and running.
@@ -241,11 +331,13 @@ private struct ComputerFullWindowOverlay: View {
                     Text("✕")
                         .font(.system(size: 16))
                         .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 18)
-            .padding(.vertical, 14)
+            .padding(.top, 36)
+            .padding(.bottom, 14)
             .background(Theme.bgApp)
             .overlay(alignment: .bottom) {
                 Rectangle().fill(Theme.borderSidebar).frame(height: 1)
@@ -253,15 +345,25 @@ private struct ComputerFullWindowOverlay: View {
 
             ZStack {
                 Theme.bgScreen
-                if let bot, computer?.state == .running || computer?.kind == .desktop {
-                    ComputerDesktopView(
-                        botId: bot.id,
-                        userHasControl: computer?.controlHolder == .user
-                    )
-                    .allowsHitTesting(computer?.controlHolder == .user)
-                    if computer?.controlHolder != .user {
-                        Color.black.opacity(0.12)
-                            .allowsHitTesting(true)
+                if let bot {
+                    if store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+                        ThisMacComputerSurface(
+                            botId: bot.id,
+                            botName: bot.name,
+                            userHasControl: computer?.controlHolder == .user
+                        )
+                    } else if computer?.state == .running {
+                        ComputerDesktopView(
+                            botId: bot.id,
+                            userHasControl: computer?.controlHolder == .user
+                        )
+                        .allowsHitTesting(computer?.controlHolder == .user)
+                        if computer?.controlHolder != .user {
+                            Color.black.opacity(0.12)
+                                .allowsHitTesting(true)
+                        }
+                    } else {
+                        bodyContent
                     }
                 } else {
                     bodyContent
@@ -271,18 +373,15 @@ private struct ComputerFullWindowOverlay: View {
         }
         .background(Theme.bgApp)
         .ignoresSafeArea()
+        .onAppear {
+            guard let botId = bot?.id else { return }
+            Task { await AppComputerRuntime.shared.prepareForDisplay(botId: botId) }
+        }
     }
 
     @ViewBuilder
     private var bodyContent: some View {
-        if let computer, computer.kind == .desktop {
-            Text("This bot runs on this computer. There is no separate Linux desktop. Ask it to use the shell; working directories under your home folder are allowed.")
-                .font(.system(size: 13.5))
-                .foregroundStyle(Theme.textMuted)
-                .multilineTextAlignment(.center)
-                .padding(40)
-                .frame(maxWidth: 520)
-        } else if computer?.state == .suspended {
+        if computer?.state == .suspended {
             Text("Computer is asleep")
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.textMuted)
@@ -294,6 +393,110 @@ private struct ComputerFullWindowOverlay: View {
             Text("Computer is stopped")
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.textMuted)
+        }
+    }
+}
+
+/// AppKit splitter — SwiftUI DragGesture dies after the computer overlay closes; mouse tracking does not.
+private struct PanelResizeHandleNS: NSViewRepresentable {
+    var onBegan: () -> Void
+    var onChanged: (CGFloat) -> Void
+    var onEnded: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onBegan: onBegan, onChanged: onChanged, onEnded: onEnded)
+    }
+
+    func makeNSView(context: Context) -> PanelResizeHandleView {
+        let view = PanelResizeHandleView()
+        view.coordinator = context.coordinator
+        return view
+    }
+
+    func updateNSView(_ nsView: PanelResizeHandleView, context: Context) {
+        context.coordinator.onBegan = onBegan
+        context.coordinator.onChanged = onChanged
+        context.coordinator.onEnded = onEnded
+        nsView.coordinator = context.coordinator
+    }
+
+    final class Coordinator {
+        var onBegan: () -> Void
+        var onChanged: (CGFloat) -> Void
+        var onEnded: () -> Void
+        var anchorX: CGFloat = 0
+
+        init(onBegan: @escaping () -> Void, onChanged: @escaping (CGFloat) -> Void, onEnded: @escaping () -> Void) {
+            self.onBegan = onBegan
+            self.onChanged = onChanged
+            self.onEnded = onEnded
+        }
+    }
+}
+
+private final class PanelResizeHandleView: NSView {
+    var coordinator: PanelResizeHandleNS.Coordinator?
+
+    override var isFlipped: Bool { true }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        coordinator?.anchorX = event.locationInWindow.x
+        coordinator?.onBegan()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let coordinator else { return }
+        let translation = event.locationInWindow.x - coordinator.anchorX
+        coordinator.onChanged(translation)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let coordinator else { return }
+        let translation = event.locationInWindow.x - coordinator.anchorX
+        coordinator.onChanged(translation)
+        coordinator.onEnded()
+    }
+}
+
+/// Full-window This Mac view: live screenshot poll + takeover copy. Not clickable.
+private struct ThisMacComputerSurface: View {
+    let botId: String
+    let botName: String
+    let userHasControl: Bool
+
+    var body: some View {
+        ZStack {
+            ThisMacScreenPreview(botId: botId, pollSeconds: 3, fill: false)
+                .background(Color.black.opacity(0.35))
+                .allowsHitTesting(false)
+
+            VStack(spacing: 14) {
+                Spacer()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(userHasControl ? "You have control of this Mac" : "\(botName) can drive this Mac")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.textBright)
+                    Text(
+                        userHasControl
+                            ? "This window is a live preview only — it is not a remote desktop. Use your real screen for login, captcha, or 2FA. When you’re done, tap Release so the bot can use computer tools again."
+                            : "Preview updates every few seconds. The bot drives via screenshot/click tools on your real Mac. Take control when you need to type a password yourself."
+                    )
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(18)
+                .frame(maxWidth: 520, alignment: .leading)
+                .background(Theme.bgApp.opacity(0.92))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.bottom, 28)
+            }
         }
     }
 }
