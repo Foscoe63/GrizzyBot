@@ -93,6 +93,7 @@
 		7653A0FB5E882BC9CB7E2F79 /* OverlaySnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2CC9EE8BD0597819A0089C /* OverlaySnapshotTests.swift */; };
 		7A0B1C08071FF7138CCFB226 /* OverlayUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39799E47CE1EEBF60A81AFDA /* OverlayUITests.swift */; };
 		7A448D87E59B4A48F4BD4DD8 /* skills-overlay.sha256 in Resources */ = {isa = PBXBuildFile; fileRef = B03D0937258B215ADF13C866 /* skills-overlay.sha256 */; };
+		7A47A824E892D5E4EEFE347B /* GrizzyBotCore.h in Headers */ = {isa = PBXBuildFile; fileRef = 4DEFC3AC1708501881B04ADD /* GrizzyBotCore.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		7AEA2DA649A4294BD4E6FE19 /* AccountMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B69D5BEBF0571E0FC270DF94 /* AccountMigration.swift */; };
 		7B06747F29BFD784602A65CD /* BotHomeWebSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034ABF68635D68B313AA7DEA /* BotHomeWebSearchTests.swift */; };
 		7CF60431448BE1F4392DC278 /* AppSettingsOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46DAE4FA2D21D33E50DC75AC /* AppSettingsOverlayView.swift */; };
@@ -101,6 +102,7 @@
 		83679BCB66DF620E2156104F /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A8C39A00FDBD11E12B8B3518 /* Sentry */; };
 		83E2E7CFE433835A866E0943 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E36873F55BBBA4961D4F4A4 /* OnboardingView.swift */; };
 		846AF1F6C515AECFB760417D /* ModelConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F1B5A4A25272D8DE8BEFC36 /* ModelConnectView.swift */; };
+		86AE2CDE67C125F053AF183A /* GrizzyBotMLX.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A85334AF1F9675C5C0A168E /* GrizzyBotMLX.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		8793B6760E4EE579E96E330E /* SentryScrubber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EF076311B1E85DE972687A2 /* SentryScrubber.swift */; };
 		895F38093E4BB53FC1A991A0 /* SlashCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857ECAEC8EC2637B412B065C /* SlashCommandTests.swift */; };
 		8ABB3A13219B3D5D73205E6D /* McpClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EAA172FAC1AB99A08E6AC55 /* McpClient.swift */; };
@@ -334,8 +336,10 @@
 		45BE272E55B500698B59E648 /* MLXModelDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXModelDownloader.swift; sourceTree = "<group>"; };
 		46DAE4FA2D21D33E50DC75AC /* AppSettingsOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsOverlayView.swift; sourceTree = "<group>"; };
 		46EF092B52E8901BD0301058 /* UITestLaunch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestLaunch.swift; sourceTree = "<group>"; };
+		4A85334AF1F9675C5C0A168E /* GrizzyBotMLX.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GrizzyBotMLX.h; sourceTree = "<group>"; };
 		4C056F8276A70A11729EAE82 /* McpCatalogPromote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpCatalogPromote.swift; sourceTree = "<group>"; };
 		4D3D9E11310BF773509A2486 /* MLXRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXRuntime.swift; sourceTree = "<group>"; };
+		4DEFC3AC1708501881B04ADD /* GrizzyBotCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GrizzyBotCore.h; sourceTree = "<group>"; };
 		4E68757C80AA3F6C31769048 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		4EF076311B1E85DE972687A2 /* SentryScrubber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentryScrubber.swift; sourceTree = "<group>"; };
 		4F132427FF5F0E4A90DB18F7 /* GrizzyBotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GrizzyBotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -551,6 +555,7 @@
 		1E646FD96E26CC3A8C8F931F /* GrizzyBotMLX */ = {
 			isa = PBXGroup;
 			children = (
+				4A85334AF1F9675C5C0A168E /* GrizzyBotMLX.h */,
 				FA5D6EE7C823EEDF23F4C9F6 /* GrizzyBotMLXBootstrap.swift */,
 				3B837C583BDF40F274396CBB /* MLXLocalGenerator.swift */,
 				4414E35195BA9615A6634C77 /* MLXMetallibBootstrap.swift */,
@@ -714,6 +719,7 @@
 				723E31172A5A6099197A91AF /* FolderWatchers.swift */,
 				26B288C5158B6D6FEC3E71E1 /* GoogleOAuth.swift */,
 				BC9E403F9F39A06B18F1000B /* GovernanceModels.swift */,
+				4DEFC3AC1708501881B04ADD /* GrizzyBotCore.h */,
 				D87DBE8B0F52E051C297FA2B /* JSONValue.swift */,
 				0D5E4F9D55C5ADB319D3097E /* KnowledgePlane.swift */,
 				E0BAC0485B69EE9D834F1421 /* LLMClient.swift */,
@@ -762,11 +768,31 @@
 		};
 /* End PBXGroup section */
 
+/* Begin PBXHeadersBuildPhase section */
+		23709409C15B14C133332239 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A47A824E892D5E4EEFE347B /* GrizzyBotCore.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8977CF5744F4045DA301354F /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				86AE2CDE67C125F053AF183A /* GrizzyBotMLX.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
 /* Begin PBXNativeTarget section */
 		21CD727AF02EEE29AF57908C /* GrizzyBotCore */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A94D47C7C9585A9961B21212 /* Build configuration list for PBXNativeTarget "GrizzyBotCore" */;
 			buildPhases = (
+				23709409C15B14C133332239 /* Headers */,
 				8890F4C6603084B48C5996B6 /* Sources */,
 			);
 			buildRules = (
@@ -867,6 +893,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1554AE5C7A09FAE287C13B37 /* Build configuration list for PBXNativeTarget "GrizzyBotMLX" */;
 			buildPhases = (
+				8977CF5744F4045DA301354F /* Headers */,
 				7B91138AE5F1A6EF165CCD5A /* Sources */,
 				4D2067DD607ED5B82F7AEAF1 /* Frameworks */,
 			);

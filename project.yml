@@ -61,6 +61,11 @@ targets:
     platform: macOS
     sources:
       - path: Sources/GrizzyBotCore
+        excludes:
+          - GrizzyBotCore.h
+      - path: Sources/GrizzyBotCore/GrizzyBotCore.h
+        buildPhase: headers
+        headerVisibility: public
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.grizzybot.core
@@ -112,6 +117,11 @@ targets:
     platform: macOS
     sources:
       - path: Sources/GrizzyBotMLX
+        excludes:
+          - GrizzyBotMLX.h
+      - path: Sources/GrizzyBotMLX/GrizzyBotMLX.h
+        buildPhase: headers
+        headerVisibility: public
     dependencies:
       - target: GrizzyBotCore
       - package: MLXSwiftLM

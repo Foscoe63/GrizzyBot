@@ -46,7 +46,7 @@ Requires **macOS 15+** and **Xcode 16+ / Swift 6**. Version **1.1**.
 Local or named accounts. Separate files, chats, and secrets per user. Passwords are PBKDF2. Keys live in Keychain.
 
 **Bots**
-Templates for coworker, research, writing, coding, and computer use. Per-bot model, tools, skills, and home folder. Rooms, spawn, and short-lived subagents.
+Templates for coworker, researcher, writer, coder, and operator. Per-bot model, tools, skills, home folder, and optional Chief of Staff. Rooms, spawn, and short-lived subagents.
 
 **Chat**
 Markdown, tool cards, live step progress. Per-bot model picker and token stats on the composer. Slash skills (`/research …`). Search, edit, regenerate, branch, undo. Files and images, dictation, spoken replies.
@@ -61,7 +61,7 @@ This Mac preview or in-app browser. Resizable computer side panel (monitor icon)
 CEL policy, MCP grant matrix, knowledge ACLs, published components, owner/operator roles, searchable audit with a boot boundary.
 
 **Connect**
-OpenRouter, OpenAI, Anthropic, local Ollama/LM Studio, Composio plugins, direct Google OAuth (Gmail / Calendar / Sheets / Docs / Drive), MCP / Toolport (stdio / HTTP / SSE), and AG-UI coworkers.
+OpenRouter, OpenAI, Anthropic, local Ollama/LM Studio, **Local MLX** (in-app Apple Silicon), Composio plugins, direct Google OAuth (Gmail / Calendar / Sheets / Docs / Drive), MCP / Toolport (stdio / HTTP / SSE), and AG-UI coworkers.
 
 </td>
 </tr>
@@ -102,7 +102,7 @@ Create from a template or from scratch.
 | Coder | Read, edit, and run code in the bot home |
 | Operator | Drive the in-app browser or this Mac |
 
-Each bot has a name, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), a private **home** folder, and an optional **working folder**. Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation.
+Each bot has a **name**, **title**, description, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), a private **home** folder, and an optional **working folder**. Toggles cover auto-approve, speak replies, notifications, and **Chief of Staff** (one coordinator on the roster). Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation.
 
 **Home vs working folder.** Home is the sandbox (`users/<userId>/homes/<botId>/`): `MEMORY.md`, `PLAN.md`, and shell `~`. The profile **Working folder** is the project tree on this Mac. When it is set, relative `read_file` / `write_file` / `edit_file` / `move_file` / `delete_file` / `list_files` read and write that folder (empty `list_files` lists it). Absolute/`~` paths outside it still pause for approval. Shell does **not** move there. MCP does **not** inherit it — pass absolute paths (or add `--allow` on `fast-filesystem-mcp`).
 
@@ -114,6 +114,12 @@ Each bot has a name, instructions, enabled skills and tools, optional per-bot mo
 - Search chats (⌘F), edit a send, regenerate, branch, undo send (⌘⇧Z).
 - Attach files into the bot home (`inbox/`). Drop or paste an image (or put a filesystem path in the box) and vision models receive JPEG.
 - Dictation, speak replies (ElevenLabs or macOS TTS), and a finish notification when a run completes.
+
+### Sessions and tasks
+
+Chat header **Session** menu: save a workspace snapshot, export/import chat JSON, export a Markdown transcript, undo send, clear or delete the thread.
+
+**Main** / task picker: keep parallel task threads on the same bot (`Main thread`, existing tasks, **New task…**). Branching a message still forks history; tasks are named workstreams.
 
 ### Composer
 
@@ -295,9 +301,9 @@ GrizzyBot does not pay for usage. You bring a key, a subscription, or a local se
 |---|---|
 | **Cloud (API key)** | OpenRouter (default), OpenAI, Anthropic, Google, Mistral, Groq, DeepSeek, xAI |
 | **Subscriptions** | ChatGPT Plus/Pro (OpenAI Codex), GitHub Copilot, SuperGrok / X Premium — device-code sign-in |
-| **Local / LAN** | Ollama, LM Studio, vMLX, oMLX (discovery + live model list), plus any OpenAI-compatible base URL |
+| **Local / on-device** | **Local MLX** (Apple Silicon only — runs inside GrizzyBot: scan Hugging Face cache / LM Studio folders, add folders, or download from Hugging Face; no API base URL); Ollama, LM Studio, vMLX, oMLX (discovery + live model list); any OpenAI-compatible base URL |
 
-Each provider keeps its own profile. A bot can use the workspace default or a catalog model. Vision images are sent only to models that can take them (text-only IDs such as DeepSeek chat or Groq Llama 3 are not stuffed with screenshots).
+Each provider keeps its own profile. A bot can use the workspace default or a catalog model. Vision images are sent only to models that can take them (text-only IDs such as DeepSeek chat or Groq Llama 3 are not stuffed with screenshots). Local MLX shows as **Runs in app** in the model picker; on Intel Macs it stays disabled with an explanation.
 
 ---
 
@@ -354,10 +360,11 @@ Reliability built into `mcp_list_tools` / `mcp_call`:
 
 ## App chrome
 
-- Sidebar of bots, rooms, routines, plugins, skills, weekly usage.
-- Chat header: session menu, search (⌘F), **monitor** (Computer panel), canvas, edit.
+- Sidebar of bots, rooms, routines, plugins, skills, weekly usage (Chief of Staff highlighted on the roster).
+- Chat header: session menu, task picker, search (⌘F), **monitor** (Computer panel), canvas, edit.
 - Right panel (resizable): computer preview + Take control / Release, routines, bot files, settings, shared canvas editor, memory.
-- Settings: General, Connections (including Google Client ID/Secret), Computer, Voice, **Tools** (MCP first), Themes, Diagnostics, Privacy, Watchers, **Governance**, **Knowledge**, **Components**.
+- Settings: General, Connections (including Google Client ID/Secret + redirect URI Copy), Computer, Voice, **Tools** (MCP first), Themes, Privacy, Watchers, Diagnostics, **Governance**, **Knowledge**, **Components**.
+- Model Connect: cloud keys, subscriptions, local/LAN OpenAI-compatible servers, and **Local MLX** (Rescan on-disk bundles, optional Hugging Face download).
 - Themes: Grizzy (default), system, light, dark, and the built-in gallery.
 - Menu bar extra; optional menu-bar-only (no window until you open it).
 - Launch at login (signed Release; Debug/ad-hoc shows an honest status and does not call `SMAppService`).
@@ -390,15 +397,18 @@ flowchart LR
   Policy --> Tools["Tools · MCP · Computer"]
   Core --> Store["Per-user workspace"]
   Core --> Gov["Machine governance<br/>policy · grants · audit"]
+  Core --> MLX["Local MLX<br/>in-process"]
   Helper["Routine agent"] -.-> UI
 ```
 
 | Target | Role |
 |---|---|
-| `GrizzyBotCore` | Domain, agent loop, token accounting, Keychain, persistence, MCP routing, Composio, Google OAuth (loopback `http://127.0.0.1:8765`), policy, audit |
-| `GrizzyBot` | SwiftUI app, computer-use, TTS, Sentry |
+| `GrizzyBotCore` | Domain, agent loop, token accounting, Keychain, persistence, MCP routing, Composio, Google OAuth (loopback `http://127.0.0.1:8765`), Local MLX provider plumbing, policy, audit |
+| `GrizzyBotMLX` | In-process Local MLX runtime (Apple Silicon); registered at app launch via `GrizzyBotMLXBootstrap` |
+| `GrizzyBot` | SwiftUI app, computer-use, TTS, Sentry, Local MLX UI |
 | `GrizzyBotRoutineAgent` | LaunchAgent helper for background routine ticks |
 | `GrizzyBotCoreTests` | Unit tests (Swift Testing) |
+| `GrizzyBotMLXTests` | Local MLX / runtime tests |
 | `GrizzyBotAppTests` | Overlay golden PNGs (host launches a lightweight test path) |
 | `GrizzyBotUITests` | XCUITest overlays (`-uitest-open-*`) |
 
