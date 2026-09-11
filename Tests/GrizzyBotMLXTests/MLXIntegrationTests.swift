@@ -13,6 +13,20 @@ import Testing
 ///
 @Suite("MLX integration", .serialized)
 struct MLXIntegrationTests {
+    /// Put MLX's Metal shaders where the test binary can find them, and take
+    /// them away again. Under `swift test` the binary sits in
+    /// `<name>.xctest/Contents/MacOS`, which is both the only directory MLX
+    /// searches first and the one place `codesign` refuses to accept a
+    /// non-executable — leaving the file behind makes the *next* build of this
+    /// test bundle fail to sign.
+    private func withMetallib<T>(_ body: () async throws -> T) async rethrows -> T {
+        let staged = MLXMetallibBootstrap.stageBesideExecutable()
+        defer {
+            if let staged { try? FileManager.default.removeItem(at: staged) }
+        }
+        return try await body()
+    }
+
     /// Small enough to download quickly, real enough to exercise the tokenizer,
     /// chat template, and Metal kernels.
     static let repoId = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
@@ -25,7 +39,7 @@ struct MLXIntegrationTests {
     @Test("downloads, discovers and runs a real MLX model")
     func endToEnd() async throws {
         guard Self.enabled else { return }
-
+        try await withMetallib {
         GrizzyBotMLXBootstrap.install()
         #expect(MLXRuntime.isAvailable)
 
@@ -63,11 +77,13 @@ struct MLXIntegrationTests {
         #expect(response.inputTokens > 0)
 
         await MLXLocalGenerator.shared.unload()
+        }
     }
 
     @Test("streams deltas while generating")
     func streams() async throws {
         guard Self.enabled else { return }
+        try await withMetallib {
         GrizzyBotMLXBootstrap.install()
 
         guard let bundle = MLXModelLocator.bundleURL(forId: Self.repoId) else {
@@ -94,6 +110,7 @@ struct MLXIntegrationTests {
         #expect(!response.text.isEmpty)
 
         await MLXLocalGenerator.shared.unload()
+        }
     }
 }
 

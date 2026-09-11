@@ -49,9 +49,15 @@ settings:
 
 targets:
   GrizzyBotCore:
-    # Static so the app doesn't embed a separate framework. Ad-hoc + Hardened
-    # Runtime rejects differently-signed @rpath frameworks at launch (Team ID).
-    type: library.static
+    # A framework, not a static library. GrizzyBotMLX has to be a framework —
+    # a static library target cannot resolve the transitive SwiftPM C modules
+    # MLX pulls in — and a framework linking a static Core would bake a second
+    # copy of it into the app, so `MLXRuntime`'s registry would exist twice and
+    # the generator the app registers would not be the one the chat client
+    # reads. Both are embedded and re-signed with the app, which is what the
+    # hardened runtime requires (it rejects differently-signed @rpath
+    # frameworks at launch).
+    type: framework
     platform: macOS
     sources:
       - path: Sources/GrizzyBotCore
@@ -83,6 +89,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.grizzybot.routine-agent
         PRODUCT_NAME: GrizzyBotRoutineAgent
+        # Copied next to the app binary in Contents/MacOS, so it reaches the
+        # GrizzyBotCore framework the app embeds rather than carrying its own.
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
         # Copied into GrizzyBot.app via Copy Files — must not install as a separate archive product.
         SKIP_INSTALL: YES
         SWIFT_STRICT_CONCURRENCY: complete
@@ -93,7 +104,11 @@ targets:
   # so the core library and its tests carry no MLX or tokenizer dependency;
   # the app installs the generator at launch via MLXRuntime.register.
   GrizzyBotMLX:
-    type: library.static
+    # A framework, not a static library: a static library target cannot resolve
+    # the transitive SwiftPM C modules MLX pulls in (Cmlx, _NumericsShims,
+    # yyjson) — the Swift compile fails with "missing required module". It is
+    # embedded and re-signed with the app so the hardened runtime accepts it.
+    type: framework
     platform: macOS
     sources:
       - path: Sources/GrizzyBotMLX
@@ -134,7 +149,11 @@ targets:
             subpath: Contents/Library/LaunchAgents
     dependencies:
       - target: GrizzyBotCore
+        embed: true
+        codeSign: true
       - target: GrizzyBotMLX
+        embed: true
+        codeSign: true
       - target: GrizzyBotRoutineAgent
         embed: true
         link: false

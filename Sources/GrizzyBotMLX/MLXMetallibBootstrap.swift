@@ -13,43 +13,74 @@ import Darwin
 /// and the resource bundle sits beside the executable without being loaded —
 /// so every model load fails with "Failed to load the default metallib".
 ///
-/// `Scripts/make-app.sh` handles the shipping app by copying both the bundle
-/// and `Contents/MacOS/mlx.metallib` at build time. This is the fallback for
-/// binaries SwiftPM produces directly. It never writes inside an `.app`:
-/// mutating a signed bundle at runtime would invalidate its signature.
-enum MLXMetallibBootstrap {
+/// `Scripts/make-app.sh` and Xcode both handle a packaged app by placing
+/// `mlx-swift_Cmlx.bundle` in `Contents/Resources`. This is the fallback for
+/// loose binaries SwiftPM produces.
+///
+/// It never writes inside a bundle. Only an executable can live in a bundle's
+/// `Contents/MacOS`, so a stray `.metallib` there makes the next `codesign`
+/// of that bundle fail outright — observed breaking `swift test` after an
+/// integration run had staged one into the `.xctest`. A test that needs the
+/// shaders stages them explicitly with ``stageBesideExecutable()`` and removes
+/// them again.
+public enum MLXMetallibBootstrap {
     private static let logger = Logger(subsystem: "com.grizzybot.app", category: "MLXMetallib")
 
+    /// Any bundle wrapper. A file added inside one of these after it was
+    /// signed breaks the next signing of that bundle.
+    private static let bundleExtensions = [".app", ".xctest", ".framework", ".bundle", ".appex"]
+
     /// Copy the metallib beside the running executable if it is not already
-    /// reachable. Cheap and idempotent.
+    /// reachable and the binary does not live inside a bundle. Cheap,
+    /// idempotent, and a no-op for anything packaged.
     static func ensureColocated() {
+        guard let directory = binaryDirectory(), !isInsideBundle(directory) else { return }
+        _ = stage(into: directory)
+    }
+
+    /// Put the metallib beside the running executable even inside a bundle,
+    /// and return what was created so the caller can remove it again.
+    ///
+    /// Only for an opt-in test that needs to actually run a model under
+    /// `swift test`: the binary there lives in `<name>.xctest/Contents/MacOS`,
+    /// which is the one place MLX looks and the one place codesign refuses to
+    /// find a non-executable. **Always** delete the returned URL afterwards,
+    /// or the next build of that test bundle fails to sign.
+    public static func stageBesideExecutable() -> URL? {
+        guard let directory = binaryDirectory() else { return nil }
+        return stage(into: directory)
+    }
+
+    /// Returns the file it created, or nil when one was already reachable or
+    /// no source could be found.
+    private static func stage(into directory: URL) -> URL? {
         let fm = FileManager.default
-        guard let executableDirectory = binaryDirectory() else { return }
-
-        // Already there — the app bundle case, and the second call onward.
         for name in ["mlx.metallib", "default.metallib"]
-        where fm.fileExists(atPath: executableDirectory.appendingPathComponent(name).path) {
-            return
+        where fm.fileExists(atPath: directory.appendingPathComponent(name).path) {
+            return nil
         }
 
-        // Never mutate a signed app bundle.
-        guard !executableDirectory.pathComponents.contains(where: { $0.hasSuffix(".app") }) else {
-            return
-        }
-
-        guard let source = locateSource(near: executableDirectory) else {
+        guard let source = locateSource(near: directory) else {
             logger.notice("No default.metallib found; Local MLX model loads will fail in this binary.")
-            return
+            return nil
         }
 
-        let destination = executableDirectory.appendingPathComponent("mlx.metallib")
+        let destination = directory.appendingPathComponent("mlx.metallib")
         do {
             try fm.copyItem(at: source, to: destination)
             logger.info("Colocated MLX metallib at \(destination.path, privacy: .public)")
+            return destination
         } catch {
             logger.error(
                 "Could not colocate the MLX metallib: \(error.localizedDescription, privacy: .public)"
             )
+            return nil
+        }
+    }
+
+    private static func isInsideBundle(_ directory: URL) -> Bool {
+        directory.pathComponents.contains { component in
+            bundleExtensions.contains { component.hasSuffix($0) }
         }
     }
 
