@@ -6770,63 +6770,100 @@ public final class AppStore {
         try? await Task.sleep(for: .milliseconds(50))
     }
 
+    /// Wait for a condition, counting scheduling opportunities rather than
+    /// elapsed time.
+    ///
+    /// Wall clock is the wrong clock for these helpers. `AppStore` is
+    /// `@MainActor`, the test suites run in parallel against that one actor,
+    /// and under contention several seconds can pass before a continuation is
+    /// scheduled at all — while the work being awaited is milliseconds (tests
+    /// build stores with `delayScale: 0.01`). A wall-clock deadline therefore
+    /// failed tests that were not broken, and did so more often the more of
+    /// the suite ran alongside them.
+    ///
+    /// Counting polls scales with load instead: the producer gets the same
+    /// number of chances to run on an idle machine and a saturated one.
+    /// `timeout` expresses that budget as the time it would take when idle.
+    /// The absolute cap exists only so a genuine deadlock still ends the run
+    /// rather than hanging the suite.
+    private func poll(timeout: TimeInterval, until condition: () -> Bool) async -> Bool {
+        if condition() { return true }
+        let attempts = max(1, Int((timeout / Self.pollInterval).rounded()))
+        let hardDeadline = Date().addingTimeInterval(Self.pollHardCap)
+        for _ in 0 ..< attempts {
+            try? await Task.sleep(for: .milliseconds(20))
+            if condition() { return true }
+            if Date() > hardDeadline { break }
+        }
+        return condition()
+    }
+
+    private static let pollInterval: TimeInterval = 0.02
+    private static let pollHardCap: TimeInterval = 240
+
+    /// Await the task owning the thread's current run, following the chain
+    /// when one run starts a follow-up (approving a tool continues into a new
+    /// run).
+    ///
+    /// Every run is registered in `runTasks` in the same synchronous step that
+    /// publishes it on the thread, and `runAgent` clears its entry before
+    /// returning — so a run visible here always has its task, and awaiting
+    /// that task means the run's status is final. No polling window to lose.
+    private func drainRuns(for key: String) async {
+        var awaited = Set<String>()
+        while let run = threads[key]?.run, run.status.isActive {
+            guard let task = runTasks[run.id], awaited.insert(run.id).inserted else { break }
+            _ = await task.value
+        }
+    }
+
     public func waitForRunStatus(botId: String, status: RunStatus, timeout: TimeInterval = 15) async -> Bool {
         let key = threadKey(for: botId)
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if threads[key]?.run?.status == status { return true }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        return threads[key]?.run?.status == status
+        return await poll(timeout: timeout) { self.threads[key]?.run?.status == status }
     }
 
     public func waitForPendingTool(botId: String, timeout: TimeInterval = 15) async -> Bool {
         let key = threadKey(for: botId)
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if threads[key]?.pendingTool != nil { return true }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        return threads[key]?.pendingTool != nil
+        return await poll(timeout: timeout) { self.threads[key]?.pendingTool != nil }
     }
 
     public func waitForRunCompletion(botId: String, timeout: TimeInterval = 15) async -> Bool {
         let key = threadKey(for: botId)
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let run = threads[key]?.run {
-                if !run.status.isActive {
-                    return run.status == .completed
-                }
-            } else {
-                return true
-            }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
+        await drainRuns(for: key)
+        guard let run = threads[key]?.run else { return true }
+        if !run.status.isActive { return run.status == .completed }
+        // Still active with no task of its own to await — another path owns it.
+        _ = await poll(timeout: timeout) { self.threads[key]?.run?.status.isActive != true }
         return threads[key]?.run?.status == .completed
     }
 
     public func waitForComputerState(botId: String, state: ComputerState, timeout: TimeInterval = 10) async -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
+        if computers[botId]?.state == state { return true }
+        // `boot` publishes its task synchronously, so awaiting it is exact.
+        if let task = bootTasks[botId] {
+            _ = await task.value
             if computers[botId]?.state == state { return true }
-            try? await Task.sleep(for: .milliseconds(50))
         }
-        return computers[botId]?.state == state
+        // Other transitions — `takeControl`, or a run opening the computer
+        // surface mid-turn — are not a single awaitable task.
+        return await poll(timeout: timeout) { self.computers[botId]?.state == state }
     }
 
     public func waitForActiveRuns(timeout: TimeInterval = 120) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            let tasks = Array(runTasks.values)
-            if tasks.isEmpty {
-                let anyActive = threads.values.contains { $0.run?.status.isActive == true }
-                if !anyActive { return }
-            }
-            for task in tasks {
+        let attempts = max(1, Int((timeout / Self.pollInterval).rounded()))
+        let hardDeadline = Date().addingTimeInterval(Self.pollHardCap)
+        for _ in 0 ..< attempts {
+            // Awaiting the tracked tasks is the real wait: each returns only
+            // after `runAgent` has finalized its run and cleared its entry.
+            for task in Array(runTasks.values) {
                 _ = await task.result
             }
-            try? await Task.sleep(for: .milliseconds(50))
+            if runTasks.isEmpty,
+               !threads.values.contains(where: { $0.run?.status.isActive == true }) {
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(20))
+            if Date() > hardDeadline { return }
         }
     }
 
