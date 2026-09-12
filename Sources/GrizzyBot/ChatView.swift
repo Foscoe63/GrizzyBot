@@ -743,10 +743,7 @@ struct ChatView: View {
             Task {
                 var urls: [URL] = []
                 for provider in providers {
-                    if let url = try? await provider.loadItem(forTypeIdentifier: "public.file-url") as? URL {
-                        urls.append(url)
-                    } else if let data = try? await provider.loadItem(forTypeIdentifier: "public.file-url") as? Data,
-                              let url = URL(dataRepresentation: data, relativeTo: nil) {
+                    if let url = await Self.droppedURL(from: provider) {
                         urls.append(url)
                     }
                 }
@@ -755,6 +752,26 @@ struct ChatView: View {
                 }
             }
             return true
+        }
+    }
+
+    /// Unwraps the dropped item inside the completion handler so only a `URL`
+    /// — which is Sendable — crosses the isolation boundary. Awaiting
+    /// `loadItem` directly hands back `any NSSecureCoding`, which strict
+    /// concurrency refuses to send, and the refusal only shows up on some
+    /// toolchains.
+    private static func droppedURL(from provider: NSItemProvider) async -> URL? {
+        await withCheckedContinuation { continuation in
+            provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, _ in
+                if let url = item as? URL {
+                    continuation.resume(returning: url)
+                } else if let data = item as? Data,
+                          let url = URL(dataRepresentation: data, relativeTo: nil) {
+                    continuation.resume(returning: url)
+                } else {
+                    continuation.resume(returning: nil)
+                }
+            }
         }
     }
 
