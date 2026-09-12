@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: macos-26
+    # The whole job takes ~12 minutes. Fail fast rather than sit on a hung
+    # test until someone notices and cancels it by hand.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -39,22 +42,24 @@ jobs:
             -destination 'platform=macOS' -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             -skipMacroValidation -skipPackagePluginValidation build
-      # Unit tests for the app target: overlay snapshots (pixel comparison with
-      # a tolerance — see OverlaySnapshotTests) and the artifact web frame.
+      # Only the app-target tests run here: the overlay snapshots (pixel
+      # comparison with a tolerance — see OverlaySnapshotTests) and the artifact
+      # web frame. GrizzyBotCoreTests already ran under `swift test` above, and
+      # re-running it through xcodebuild both wasted ~8 minutes and hung: the
+      # Security suite writes a secret, and SecItemAdd blocks forever against a
+      # locked runner keychain where `swift test` does not.
       #
-      # GrizzyBotUITests is skipped: all four of its tests fail to find their
-      # overlay ("Missing settings-overlay"), and have done since before they
-      # ever ran here — the whole job used to stop at a compile error earlier in
-      # the file, so this step never executed. That is a real bug worth fixing,
-      # but it is unrelated to what these tests guard, and leaving it in means
-      # CI can never go green. Drop the -skip-testing flag once it is fixed.
+      # GrizzyBotUITests stays out for a different reason — all four of its
+      # tests fail to find their overlay ("Missing settings-overlay"), and have
+      # since before they ever ran here. A real bug, unrelated to what these
+      # tests guard.
       - name: App unit tests and overlay snapshots
         run: |
           xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot \
             -destination 'platform=macOS' -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             -skipMacroValidation -skipPackagePluginValidation \
-            -skip-testing:GrizzyBotUITests test
+            -only-testing:GrizzyBotAppTests test
 
       # A failing snapshot writes the render it produced; upload it so the
       # difference can be seen rather than guessed at from a percentage.
