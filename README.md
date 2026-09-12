@@ -587,9 +587,9 @@ xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot \
 
 > `swift` on PATH may be an open-source toolchain that cannot build this app. Prefer `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift build` / `… xcrun swift test`.
 
-`GrizzyBotAppTests` covers the overlay goldens and the artifact web frame (React actually compiles and mounts, Mermaid draws, SVG renders, an unsupported import surfaces a visible error). CI runs it and **skips `GrizzyBotUITests`**, whose four overlay tests are currently failing for an unrelated reason — drop the flag once that is fixed.
+`GrizzyBotAppTests` covers the overlay goldens and the artifact web frame (React actually compiles and mounts, Mermaid draws, SVG renders, an unsupported import surfaces a visible error). CI runs the frame, highlighter, and comparator tests, and skips two suites: `GrizzyBotUITests`, whose four tests fail to find their overlay for an unrelated reason, and `OverlaySnapshotTests` — **pixel snapshots only work on the machine that recorded them**. Measured on a GitHub runner, one overlay rendered 13.9% different from its golden, which is the same magnitude as six commits of real UI change; no tolerance can tell those apart. Run the snapshots locally before committing UI work.
 
-**Overlay goldens** are compared pixel by pixel with a tolerance, not by hash: a byte-exact PNG can only ever match on the machine that recorded it. Renders are downsampled 4×4 before comparing, so anti-aliasing averages out while a moved or missing element still registers. A failure writes the actual render to `.snapshot-failures/` and prints the percentage it saw.
+**Overlay goldens** are compared pixel by pixel with a tolerance, not by hash: a byte-exact PNG can only ever match on the machine that recorded it. Even with a tolerance they stay a local check — see above. Renders are downsampled 4×4 before comparing, so anti-aliasing averages out while a moved or missing element still registers. A failure writes the actual render to `.snapshot-failures/` and prints the percentage it saw.
 
 To re-record after an intended UI change (shell `UPDATE_SNAPSHOTS` does not reach the xcodebuild test host, so use the marker file):
 

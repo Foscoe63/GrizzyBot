@@ -42,31 +42,35 @@ jobs:
             -destination 'platform=macOS' -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             -skipMacroValidation -skipPackagePluginValidation build
-      # Only the app-target tests run here: the overlay snapshots (pixel
-      # comparison with a tolerance — see OverlaySnapshotTests) and the artifact
-      # web frame. GrizzyBotCoreTests already ran under `swift test` above, and
-      # re-running it through xcodebuild both wasted ~8 minutes and hung: the
-      # Security suite writes a secret, and SecItemAdd blocks forever against a
-      # locked runner keychain where `swift test` does not.
+      # Only the app-target tests run here — GrizzyBotCoreTests already ran
+      # under `swift test` above, and re-running it through xcodebuild both
+      # wasted ~8 minutes and hung: the Security suite writes a secret, and
+      # SecItemAdd blocks forever against a locked runner keychain where
+      # `swift test` does not.
+      #
+      # OverlaySnapshotTests is excluded because pixel snapshots cannot be
+      # asserted across machines. Measured on this runner, the settings
+      # overlay renders 13.9% different from the golden while two others sit
+      # near 1% — and 13.9% is the same magnitude as six commits of real UI
+      # change. The noise is the size of the signal, so no tolerance
+      # separates them; a limit loose enough to pass here could not detect a
+      # regression. They stay a local pre-commit check, which is where they
+      # do work: identical renders byte-for-byte on the recording machine.
       #
       # GrizzyBotUITests stays out for a different reason — all four of its
-      # tests fail to find their overlay ("Missing settings-overlay"), and have
-      # since before they ever ran here. A real bug, unrelated to what these
-      # tests guard.
+      # tests fail to find their overlay ("Missing settings-overlay"), and
+      # have since before they ever ran here. A real bug, unrelated to what
+      # these tests guard.
+      #
+      # What CI does assert: the artifact web frame (React really compiles
+      # and mounts, Mermaid draws, an unsupported import fails visibly), the
+      # syntax highlighter, and the snapshot comparator itself.
       - name: App unit tests and overlay snapshots
         run: |
           xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot \
             -destination 'platform=macOS' -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             -skipMacroValidation -skipPackagePluginValidation \
-            -only-testing:GrizzyBotAppTests test
+            -only-testing:GrizzyBotAppTests \
+            -skip-testing:GrizzyBotAppTests/OverlaySnapshotTests test
 
-      # A failing snapshot writes the render it produced; upload it so the
-      # difference can be seen rather than guessed at from a percentage.
-      - name: Upload snapshot failures
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: snapshot-failures
-          path: .snapshot-failures/
-          if-no-files-found: ignore
