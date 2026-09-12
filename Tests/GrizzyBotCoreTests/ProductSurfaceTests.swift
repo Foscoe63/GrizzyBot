@@ -290,20 +290,20 @@ struct StoreProductSurfaceTests {
         #expect(store.bots.first?.modelId == ModelCatalog.defaultModelId)
 
         store.send(botId: bot.id, text: "hello there")
-        try? await Task.sleep(for: .milliseconds(400))
+        _ = await store.waitForRunCompletion(botId: bot.id)
         #expect(store.messages(for: bot.id).contains(where: { $0.role == .user }))
         let restored = store.undoSend(botId: bot.id)
         #expect(restored == "hello there")
         #expect(store.messages(for: bot.id).isEmpty)
 
         store.send(botId: bot.id, text: "first")
-        try? await Task.sleep(for: .milliseconds(400))
+        _ = await store.waitForRunCompletion(botId: bot.id)
         store.send(botId: bot.id, text: "second")
-        try? await Task.sleep(for: .milliseconds(400))
+        _ = await store.waitForRunCompletion(botId: bot.id)
         let userIds = store.messages(for: bot.id).filter { $0.role == .user }.map(\.id)
         #expect(userIds.count == 2)
         store.editUserMessage(botId: bot.id, messageId: userIds[0], text: "first-edited")
-        try? await Task.sleep(for: .milliseconds(400))
+        _ = await store.waitForRunCompletion(botId: bot.id)
         #expect(store.messages(for: bot.id).filter { $0.role == .user }.count == 1)
         #expect(store.messages(for: bot.id).first?.firstText == "first-edited")
 
@@ -313,7 +313,7 @@ struct StoreProductSurfaceTests {
         #expect(store.bots.first?.tasks.isEmpty == false)
 
         store.regenerateLast(botId: bot.id)
-        try? await Task.sleep(for: .milliseconds(400))
+        _ = await store.waitForRunCompletion(botId: bot.id)
         #expect(store.messages(for: bot.id).contains(where: { $0.role == .bot }))
 
         var config = store.appConfig

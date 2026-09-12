@@ -133,6 +133,19 @@ public struct PluginClient: PluginConnecting {
             return (json["ts"] as? String) ?? "slack"
         case "notion":
             return "notion: stored locally (page create needs a parent id)"
+        case "google-calendar", "googlecalendar":
+            let draft = try CalendarEventDraft.parse(title: title, body: body)
+            let json = try await postJSON(
+                "https://www.googleapis.com/calendar/v3/calendars/\(urlEncode(draft.calendarId))/events",
+                token: token,
+                body: draft.googleBody()
+            )
+            guard let id = json["id"] as? String else {
+                throw PluginError.rejected("Google returned no event id, so the event was not created.")
+            }
+            // Return the link, not a bare "ok" — the caller quotes this back as
+            // proof, and a real Google id is the only honest proof there is.
+            return (json["htmlLink"] as? String) ?? id
         case "linear":
             let json = try await postJSON(
                 "https://api.linear.app/graphql",
@@ -149,7 +162,12 @@ public struct PluginClient: PluginConnecting {
                 _ = try await postJSON(token, token: nil, body: ["title": title, "body": body])
                 return token
             }
-            return "local"
+            // Never report success for a slug with no write API: a fabricated
+            // "wrote local" sends the caller hunting for a sync bug that does
+            // not exist. Mirror search's default and say nothing was sent.
+            throw PluginError.rejected(
+                "\(slug) has no write API in GrizzyBot — nothing was sent. Connect Composio for \(slug) writes."
+            )
         }
     }
 

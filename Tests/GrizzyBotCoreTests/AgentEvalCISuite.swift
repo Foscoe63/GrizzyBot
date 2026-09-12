@@ -29,21 +29,42 @@ struct AgentEvalSpec: Sendable {
     }
 }
 
+/// Locked, because `AgentLoop` runs parallel-safe tools in a task group and
+/// calls this from several tasks at once. The `@unchecked Sendable` here is a
+/// promise, not a waiver: without the lock the concurrent `append`s race, and
+/// a lost entry showed up as a rare CI-02 failure — the one test whose single
+/// response holds two parallel-safe tools.
 final class ToolCallRecorder: @unchecked Sendable {
-    private(set) var tools: [String] = []
-    private(set) var toolArguments: [String] = []
+    private let lock = NSLock()
+    private var storedTools: [String] = []
+    private var storedArguments: [String] = []
+
+    var tools: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedTools
+    }
+
+    var toolArguments: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedArguments
+    }
 
     func record(name: String, arguments: String) -> AgentToolCallResult {
-        tools.append(name)
-        toolArguments.append(arguments)
+        lock.lock()
+        storedTools.append(name)
+        storedArguments.append(arguments)
+        lock.unlock()
         return AgentToolCallResult(output: "ok:\(name)")
     }
 
     func assertExpected(_ expected: [String], exactOrder: Bool, file: SourceLocation = #_sourceLocation) {
+        let recorded = tools
         if exactOrder {
-            #expect(tools == expected, "Expected tools \(expected), got \(tools)", sourceLocation: file)
+            #expect(recorded == expected, "Expected tools \(expected), got \(recorded)", sourceLocation: file)
         } else {
-            #expect(Set(tools) == Set(expected), "Expected tool set \(expected), got \(tools)", sourceLocation: file)
+            #expect(Set(recorded) == Set(expected), "Expected tool set \(expected), got \(recorded)", sourceLocation: file)
         }
     }
 }

@@ -202,14 +202,21 @@ public enum AgentCompletionGate {
 }
 
 public enum ContextCompactor {
+    /// Written as statements rather than one chained `reduce`: the single
+    /// expression mixed optionals with a nested reduce and blew the type
+    /// checker's budget on the CI toolchain, failing the whole build.
     public static func encodedSize(_ messages: [ChatMessage]) -> Int {
-        messages.reduce(0) { total, message in
-            total
-                + message.role.count
-                + (message.content?.count ?? 0)
-                + message.toolCalls.reduce(0) { $0 + $1.name.count + $1.arguments.count }
-                + (message.imageJPEGBase64?.count ?? 0)
+        var total = 0
+        for message in messages {
+            total += message.role.count
+            total += message.content?.count ?? 0
+            for call in message.toolCalls {
+                total += call.name.count
+                total += call.arguments.count
+            }
+            total += message.imageJPEGBase64?.count ?? 0
         }
+        return total
     }
 
     /// Keep system + newest turns; shrink tool payloads and stuffed user pastes.
@@ -426,6 +433,7 @@ public enum AgentLoop {
             \(mcpLine)
             If a tool result reports validation, no route, or connection refused, follow the recovery hint in that result — fix args, re-search once, or fall back to write_file/web — do not repeat the identical failing call.
             Canvas is shared on this Mac: canvas_list, canvas_open, canvas_save, canvas_delete, canvas_place_image. write_file cannot write a canvas. After computer_screenshot, call canvas_open (it places the last screenshot) or canvas_place_image.
+            Artifacts are shared on this Mac: artifact_create, artifact_update, artifact_rewrite, artifact_list, artifact_read, artifact_delete. Create one for substantial standalone content the user will keep, re-read, or run — a document, a program, a diagram, a small app — and answer in the reply for anything conversational or short. Put the whole thing in the artifact rather than repeating it in the reply. To change one you already made, call artifact_update with a unique old_str; re-read it first with artifact_read if you did not write it this turn. Each artifact is also mirrored into the working folder as a file, so do not also write_file the same content.
             If the user asked you to write a prompt or instructions for an agent, write that prompt. Do not run the job unless they asked you to execute it.
             Shell ~ is the bot home, not the Mac home.
             Never claim an Obsidian write unless the tool result names obsidian_put_file (or that server's write tool) and status is ok.
@@ -516,7 +524,7 @@ public enum AgentLoop {
     public static let parallelSafeTools: Set<String> = [
         "web_search", "web_fetch", "read_file", "list_files", "search_memory",
         "computer_screenshot", "mcp_list_tools", "read_skill", "search_knowledge",
-        "canvas_list",
+        "canvas_list", "artifact_list", "artifact_read",
     ]
 
     public static func run(

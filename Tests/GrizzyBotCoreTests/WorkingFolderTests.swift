@@ -76,6 +76,14 @@ struct WorkingFolderStoreTests {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let store = AppStore(dataDirectory: dir, delayScale: 0.01)
         store.pluginClient = AlwaysAllowPlugins()
+        // Real FSEvents stay off in tests. `saveFolderWatcher` reconfigures the
+        // process-wide `FolderWatcherService.shared` and, when enabled, starts
+        // watching real directories — so parallel tests repoint one another's
+        // service and fire events into throwaway stores. Watcher behaviour is
+        // driven through the explicit seams (`runFolderWatcherNow`,
+        // `handleFolderWatcherEvent`) instead, which call the same code path
+        // without the shared singleton.
+        store.appConfig.enableFolderWatchers = false
         return (store, dir)
     }
 
@@ -249,7 +257,11 @@ struct WorkingFolderStoreTests {
         )
         let client = listFilesClient()
         store.chatCompleter = client
-        _ = store.runFolderWatcherNow(id: store.folderWatchers.first { $0.botId == bot.id }!.id)
+        let triggered = store.runFolderWatcherNow(id: store.folderWatchers.first { $0.botId == bot.id }!.id)
+        // Assert the watcher actually fired. Discarding this turned a skip
+        // ("bot is already running") into a missing-file failure with no clue
+        // attached.
+        #expect(triggered.hasPrefix("Triggered"), "watcher did not fire: \(triggered)")
         #expect(await store.waitForRunCompletion(botId: bot.id))
         let system = client.requests.first?.messages.first { $0.role == "system" }?.content ?? ""
         #expect(!system.contains("Matched skills for this turn"))

@@ -152,6 +152,12 @@ targets:
         excludes:
           - Info.plist
           - Resources
+      # Vendored browser runtimes for the artifact frame. Copied as a folder
+      # reference so the ArtifactRuntime directory name survives into the
+      # bundle — ArtifactSchemeHandler looks the files up by subdirectory.
+      - path: Sources/GrizzyBot/Resources/ArtifactRuntime
+        type: folder
+        buildPhase: resources
       - path: Sources/GrizzyBotRoutineAgent/com.grizzybot.routine-agent.plist
         buildPhase:
           copyFiles:

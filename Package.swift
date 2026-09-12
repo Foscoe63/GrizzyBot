@@ -46,9 +46,18 @@ let package = Package(
                 .product(name: "Sentry", package: "sentry-cocoa"),
             ],
             path: "Sources/GrizzyBot",
-            exclude: ["Info.plist", "Resources", "GrizzyBot.entitlements", "GrizzyBot.Release.entitlements"],
+            exclude: [
+                "Info.plist",
+                "Resources/AppIcon.icns",
+                "GrizzyBot.entitlements",
+                "GrizzyBot.Release.entitlements",
+            ],
             resources: [
                 .process("Assets.xcassets"),
+                // Vendored browser runtimes for the artifact frame. Copied, not
+                // processed, so the directory name survives into the bundle —
+                // ArtifactSchemeHandler looks them up by subdirectory.
+                .copy("Resources/ArtifactRuntime"),
             ]
         ),
         .testTarget(

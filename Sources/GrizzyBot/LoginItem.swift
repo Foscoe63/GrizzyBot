@@ -9,11 +9,19 @@ enum LoginItemResult: Equatable {
 }
 
 enum LoginItemController {
+    /// Set by snapshot tests. The real status comes from `SMAppService`, which
+    /// answers for *this exact bundle* — so it differs between a developer's
+    /// registered app, a UI-test launch of a copy in DerivedData, and a CI
+    /// runner that has never registered anything. Any view showing it is
+    /// otherwise impossible to snapshot reliably.
+    nonisolated(unsafe) static var statusMessageOverride: String?
+
     static var isEnabled: Bool {
         SMAppService.mainApp.status == .enabled
     }
 
     static var statusMessage: String {
+        if let statusMessageOverride { return statusMessageOverride }
         #if DEBUG
         if SMAppService.mainApp.status != .enabled {
             return "Launch at login requires a signed Release build. Debug builds cannot register a login item."

@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import GrizzyBotCore
 import SwiftUI
 import Testing
@@ -48,7 +47,14 @@ struct OverlaySnapshotTests {
         )
     }
 
+    /// Pins the one piece of real system state these overlays read, so the
+    /// snapshot describes the app rather than the machine it ran on.
+    private func pinEnvironment() {
+        LoginItemController.statusMessageOverride = "GrizzyBot opens at login."
+    }
+
     private func makeStore() -> AppStore {
+        pinEnvironment()
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("gb-snap-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -80,12 +86,27 @@ struct OverlaySnapshotTests {
         return png
     }
 
+    /// Tolerances, in one place because they are the whole contract:
+    ///
+    /// - `downsample` averages 4×4 blocks before comparing. Anti-aliasing
+    ///   differences between machines live in single edge pixels and average
+    ///   out; a moved or missing element does not. Measured against six
+    ///   commits of real UI change, the signal survives (0.5% → 0.5%,
+    ///   10.8% → 13.7%) while the noise floor stays at 0.
+    /// - `channelTolerance` ignores sub-shade colour drift.
+    /// - `maxDifferingFraction` is set with ~2× margin under the smallest
+    ///   genuine change ever measured here (0.49%). If CI turns out noisier,
+    ///   this is the one number to raise — the failure message prints the
+    ///   value it actually saw.
+    private static let downsample = 4
+    private static let channelTolerance = 12
+    private static let maxDifferingFraction = 0.0025
+
     private func assertGolden(_ png: Data, name: String) throws {
         let goldensRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .appendingPathComponent("Goldens", isDirectory: true)
         let goldenURL = goldensRoot.appendingPathComponent("\(name).png")
-        let hashURL = goldensRoot.appendingPathComponent("\(name).sha256")
         let refresh = ProcessInfo.processInfo.environment["UPDATE_SNAPSHOTS"] == "1"
             || ProcessInfo.processInfo.arguments.contains("-update-snapshots")
             || FileManager.default.fileExists(atPath: goldensRoot.appendingPathComponent(".refresh").path)
@@ -93,26 +114,58 @@ struct OverlaySnapshotTests {
         if refresh || !FileManager.default.fileExists(atPath: goldenURL.path) {
             try FileManager.default.createDirectory(at: goldensRoot, withIntermediateDirectories: true)
             try png.write(to: goldenURL)
-            let digest = SHA256.hash(data: png).map { String(format: "%02x", $0) }.joined()
-            try digest.write(to: hashURL, atomically: true, encoding: .utf8)
             return
         }
 
         let golden = try Data(contentsOf: goldenURL)
-        let actualHash = SHA256.hash(data: png)
-        let goldenHash = SHA256.hash(data: golden)
-        if actualHash == goldenHash { return }
-
-        if FileManager.default.fileExists(atPath: hashURL.path),
-           let expected = try? String(contentsOf: hashURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
-           !expected.isEmpty
-        {
-            let actualHex = actualHash.map { String(format: "%02x", $0) }.joined()
-            Issue.record("Snapshot \(name) hash mismatch (expected \(expected.prefix(12))… got \(actualHex.prefix(12))…). Set UPDATE_SNAPSHOTS=1 to refresh.")
+        let result: SnapshotDiff.Result
+        do {
+            result = try SnapshotDiff.compare(
+                render: png,
+                golden: golden,
+                name: name,
+                channelTolerance: Self.channelTolerance,
+                downsample: Self.downsample
+            )
+        } catch {
+            writeActual(png, name: name)
+            Issue.record("\(error)")
             return
         }
 
-        Issue.record("Snapshot \(name) differs from golden PNG. Set UPDATE_SNAPSHOTS=1 to refresh.")
+        guard result.differingFraction > Self.maxDifferingFraction else { return }
+
+        // Leave the render on disk next to the golden: a percentage tells you
+        // that something moved, not what, and CI has no other way to show you.
+        let actualURL = writeActual(png, name: name)
+        Issue.record(
+            """
+            Snapshot \(name) differs from its golden by \
+            \(String(format: "%.3f", result.differingFraction * 100))% of pixels \
+            (limit \(String(format: "%.3f", Self.maxDifferingFraction * 100))%, \
+            largest channel delta \(result.maxChannelDelta)).
+            Wrote the render to \(actualURL.path) — compare it against the golden.
+            If the change is intended, re-record with UPDATE_SNAPSHOTS=1 (swift test) \
+            or by creating Goldens/.refresh (xcodebuild, which does not forward the env var).
+            """
+        )
+    }
+
+    /// Deliberately not written into `Goldens/`: that folder is a resources
+    /// path in project.yml, so a stray file there becomes a build input and
+    /// the next `xcodegen generate` bakes in a reference that breaks the build
+    /// the moment the file is cleaned up.
+    @discardableResult
+    private func writeActual(_ png: Data, name: String) -> URL {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // GrizzyBotAppTests
+            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // repo root
+            .appendingPathComponent(".snapshot-failures", isDirectory: true)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let url = root.appendingPathComponent("\(name).actual.png")
+        try? png.write(to: url)
+        return url
     }
 }
 

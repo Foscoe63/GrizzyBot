@@ -53,6 +53,10 @@ public enum ActionGateway {
             return .read
         case "canvas_save", "canvas_delete", "canvas_place_image":
             return .writeFile
+        case "artifact_list", "artifact_read":
+            return .read
+        case "artifact_create", "artifact_update", "artifact_rewrite", "artifact_delete":
+            return .writeFile
         case "report_decline", "request_takeover":
             return .read
         default:

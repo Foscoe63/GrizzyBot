@@ -38,6 +38,8 @@ struct RightPanelView: View {
                             routinePanel
                         case .canvas:
                             CanvasPanelView()
+                        case .artifact:
+                            ArtifactPanelView()
                         }
                     }
                     .padding(.horizontal, 16)
