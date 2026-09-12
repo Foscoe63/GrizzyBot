@@ -24,9 +24,11 @@
 </p>
 
 <p align="center">
+  <a href="#-whats-new">What's new</a> ·
   <a href="#-what-you-get">Product</a> ·
   <a href="#-chat">Chat</a> ·
   <a href="#-tools">Tools</a> ·
+  <a href="#-artifacts">Artifacts</a> ·
   <a href="#-plugins-mcp--destinations">Plugins</a> ·
   <a href="#-computer">Computer</a> ·
   <a href="#-governance">Governance</a> ·
@@ -40,6 +42,24 @@
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
 > **Requires** macOS 15+ · Xcode 16+ / Swift 6 · Version **1.1**
+
+---
+
+## 🆕 What's new
+
+### Added
+
+- **Artifacts.** Bots create documents, code, diagrams, SVG, HTML, and React apps that you keep, version, edit, and re-open — shared across every bot and mirrored to disk. Routines can create them unattended. See [Artifacts](#-artifacts).
+- **Artifact panel** at ⇧⌘A or the chat-header icon: browse, step through versions, preview or read source, copy, export, delete, and create one by hand.
+- **Syntax-highlighted editor** with line numbers for artifacts, covering Swift, JS/JSX/TS, Python, shell, CSS, JSON, HTML/SVG/XML, Markdown, and Mermaid. Saving appends a version, so restoring an old one is just editing it.
+
+### Fixed
+
+- **Google Calendar writes never reached Google.** `plugin_call` had no write path for `google-calendar`, so every event fell through to a fallback that returned a fabricated `wrote local` success without making a single API call. Reads worked the whole time, which made it look like a sync or scope problem. Calendar events are now genuinely created and return a Google event link.
+- **Silent fake success for every other write-less plugin.** That same fallback reported success for Gmail, Drive, Docs, Jira, Asana and the rest. It now fails loudly and says nothing was sent.
+- **The CI build had been broken since August** — every run failed at the first step on a compiler type-check timeout in `ContextCompactor.encodedSize`, so no test in the repo had actually run in CI. Rewritten as plain statements.
+- **Overlay snapshot tests** compared an exact PNG hash, which cannot pass on any machine but the one that recorded it. Now a pixel comparison with a tolerance, plus the failing render saved for inspection. Stale goldens re-recorded.
+- **Three flaky tests, each a real bug:** a data race in the parallel-tool test recorder (`@unchecked Sendable` with unsynchronised `append`), wall-clock `Task.sleep` waits left in `ProductSurfaceTests`, and parallel tests sharing the process-wide `FolderWatcherService` while it watched real directories. The suite now runs clean across repeated full runs.
 
 ---
 
@@ -57,6 +77,9 @@ Templates for coworker, researcher, writer, coder, and operator. Per-bot model, 
 
 ### 💬 Chat
 Markdown, tool cards, live step progress. Per-bot model picker and token stats. Slash skills (`/research …`). Search, edit, regenerate, branch, undo. Files, images, dictation, spoken replies.
+
+### 🧩 Artifacts
+Documents, code, diagrams, and small React apps a bot builds and you keep. Versioned, shared across bots, mirrored to disk, editable in a syntax-highlighted editor. Rendered in a frame with **no network**.
 
 </td>
 <td width="33%" valign="top">
@@ -182,6 +205,7 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 📚 | **Knowledge** | `search_knowledge` — granted folder and plugin corpora (Drive, OneDrive, Box). |
 | 🖥️ | **Computer** | `computer_open`, `computer_screenshot`, `computer_click`, `computer_scroll`, `computer_type`, `computer_key`, `request_takeover`. |
 | 🖼️ | **Canvas** | `canvas_list`, `canvas_open`, `canvas_save`, `canvas_delete`, `canvas_place_image` — shared boards on this Mac (not the bot home). `canvas_open` after a screenshot places the last capture. |
+| 🧩 | **Artifacts** | `artifact_create`, `artifact_update`, `artifact_rewrite`, `artifact_list`, `artifact_read`, `artifact_delete` — shared on this Mac, versioned, and mirrored into the working folder as files. See [Artifacts](#-artifacts). |
 | 👥 | **Team** | `spawn_bot`, `delete_bot`, `run_subagent`. |
 | 🃏 | **UI** | `present_component` (form, gallery, activity, refusals, or a published card), `report_decline`. |
 | ♾️ | **Loop** | `capabilities_discover`, `capabilities_load`, `todo`, `complete`, `clarify`. |
@@ -189,6 +213,31 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 🔌 | **Plugins & skills** | `plugin_call`, `destination_write`, `read_skill`, `import_skills`, plus any custom tools you add. |
 
 If a builtin file or web tool is off, the loop routes to a **connected MCP server that actually has that tool** (for example fast-filesystem or a search server). It does **not** send those calls to Toolport unless Toolport is enabled and listed.
+
+---
+
+## 🧩 Artifacts
+
+Substantial standalone output — a document, a program, a diagram, a small app — belongs in an artifact rather than scrolling past in chat. Artifacts are **shared across every bot on this Mac**, survive restarts, and are **mirrored into the working folder as real files**, so a routine leaves behind both something to look at and something on disk.
+
+| | Kind | Renders as |
+|:--:|---|---|
+| ¶ | `markdown` | Native markdown |
+| `{ }` | `code` | Syntax-highlighted source — `language` picks the grammar |
+| ◍ | `html` | The page itself, in a sandboxed frame |
+| ◆ | `svg` | Inline vector |
+| ⌗ | `mermaid` | Rendered diagram |
+| ⚛ | `react` | JSX compiled in the frame and mounted, with Tailwind available |
+
+The `type` argument also accepts Claude Desktop's media types (`application/vnd.ant.react`, `text/markdown`, `image/svg+xml`, …) alongside the plain names.
+
+**Editing.** `artifact_update` replaces one exact passage and is **refused unless `old_str` matches exactly once** — an ambiguous edit is never guessed at. `artifact_rewrite` replaces everything. Either way a new version is appended; history is never rewritten.
+
+**Panel.** ⇧⌘A, or the document icon in the chat header. Browse every artifact, step back through versions, toggle preview/source, copy, **Save as…**, or delete. **New artifact** creates one by hand. **Edit** opens a syntax-highlighted editor with line numbers, and saving appends a version — so stepping back to an older version and saving is also how you restore it. If a bot or routine wrote to the same artifact while the editor was open, the save says so rather than quietly winning; nothing is lost, because versions only ever append.
+
+**Sandbox.** The frame has no network. React 18, ReactDOM, Babel, Mermaid and Tailwind are bundled into the app and served over a private URL scheme — `connect-src 'none'`, no script-message bridge back into the app, a non-persistent data store, and a navigation delegate that cancels every off-scheme load (links open in your real browser instead). A React artifact may import `react` and `react-dom`; anything else fails visibly in the frame, naming the import, rather than rendering a blank panel.
+
+**Routines.** Routines run through the same tool dispatch, so a scheduled bot can create and update artifacts unattended. A headless tick still writes and mirrors the artifact — it just does not pull a panel open with nobody watching.
 
 ---
 
@@ -349,6 +398,8 @@ Composio Connect OAuth, your own Google Client ID/Secret (Gmail / Calendar / She
 
 Settings → Connections → Google: paste Client ID + Secret, **Copy** the redirect URI `http://127.0.0.1:8765` (no trailing slash), and add that exact value under the OAuth client’s **Authorized redirect URIs**. Save credentials, then Plugins → **Sign in with Google** (one sign-in unlocks Gmail, Calendar, Sheets, Docs, and Drive). When those credentials are set, Plugins prefer direct Google OAuth over Composio for Google apps. Empty Gmail searches default to `in:inbox`. With several linked inboxes, use the Plugins **Account** menu (auto / one alias / **All accounts**) or pass `account` / `account=all` on `plugin_call`. API failures distinguish expired sign-in, missing scopes, rate limits, and **API not enabled** in the Cloud project (enable the API from the linked Console URL — you usually do not need to reconnect).
 
+**Calendar writes** create real events. `plugin_call` with `slug=google-calendar`, `action=write` takes the event name as `title` and the details as JSON in `body` — `{"day":5,"repeat":"monthly"}` for an all-day recurring bill, or `{"start":"2026-10-05T09:00:00","end":"2026-10-05T10:00:00"}` for a timed one. It also accepts Google's own `{"start":{"date":…}}` shape, `key: value` lines, an explicit `recurrence` RRULE, `location`, `description`, `time_zone`, and `calendar_id`. A successful write returns the **Google event link** — if you do not see one, nothing was created. An event with no usable start is refused rather than guessed at, and a malformed recurrence rule is reported instead of silently creating a one-off.
+
 ### 🐦 X / Twitter
 
 Composio no longer ships managed X OAuth — Connect will fail with “weren’t able to give access” until you bring your own app:
@@ -436,6 +487,7 @@ Fallback when nothing is promoted yet: search once → `mcp_call` with the exact
 | 🧹 | Diagnostics and Sentry events scrub keys, tokens, and home paths. |
 | 🛡️ | Shell write seatbelt stays inside the bot home unless approved. |
 | 🌐 | In-app browser: http/https/about only; desktop HTML escapes filenames. |
+| 🧩 | Artifact frames run with the network closed (`connect-src 'none'`), no script bridge into the app, and every off-scheme navigation cancelled. Their runtimes are bundled, not fetched. |
 | 🖥️ | Computer-use is local only (WKWebView or Accessibility). No remote desktop VM. |
 | ⚖️ | Action policy and MCP grants run **before** the tool acts. Audit records both permits and refusals. |
 
@@ -470,6 +522,8 @@ flowchart LR
 
 `GrizzyBotApp.swift` is `@main`. Persistence is per-user under Application Support. Machine-level `governance.json` and `audit.json` sit at the global root. The Xcode project is generated from `project.yml`.
 
+`Sources/GrizzyBot/Resources/ArtifactRuntime` holds the vendored browser builds an artifact frame runs on (React 18.3.1, ReactDOM, Babel standalone, Mermaid 11, Tailwind 3) — bundled so the frame works with the network closed. They must reach `GrizzyBot.app/Contents/Resources/ArtifactRuntime`: the Xcode folder reference does that directly, and `make-app.sh` copies them explicitly, because SwiftPM otherwise leaves resources in its own side bundle. Adding a resource means updating `Package.swift`, `project.yml`, **and** `make-app.sh`.
+
 ---
 
 ## 🛠️ Build
@@ -492,10 +546,17 @@ chmod +x Scripts/make-app.sh Scripts/notarize.sh
 ```bash
 swift test
 xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot \
-  -destination 'platform=macOS,arch=arm64' test
+  -destination 'platform=macOS,arch=arm64' \
+  -skip-testing:GrizzyBotUITests test
 ```
 
-Overlay golden refresh (shell `UPDATE_SNAPSHOTS` does not reach the test host). Touch a marker file, then run app tests:
+> `swift` on PATH may be an open-source toolchain that cannot build this app. Prefer `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift build` / `… xcrun swift test`.
+
+`GrizzyBotAppTests` covers the overlay goldens and the artifact web frame (React actually compiles and mounts, Mermaid draws, SVG renders, an unsupported import surfaces a visible error). CI runs it and **skips `GrizzyBotUITests`**, whose four overlay tests are currently failing for an unrelated reason — drop the flag once that is fixed.
+
+**Overlay goldens** are compared pixel by pixel with a tolerance, not by hash: a byte-exact PNG can only ever match on the machine that recorded it. Renders are downsampled 4×4 before comparing, so anti-aliasing averages out while a moved or missing element still registers. A failure writes the actual render to `.snapshot-failures/` and prints the percentage it saw.
+
+To re-record after an intended UI change (shell `UPDATE_SNAPSHOTS` does not reach the xcodebuild test host, so use the marker file):
 
 ```bash
 touch Tests/GrizzyBotAppTests/Goldens/.refresh
