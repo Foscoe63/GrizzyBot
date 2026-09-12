@@ -24,9 +24,11 @@
 </p>
 
 <p align="center">
+  <a href="#-whats-new">What's new</a> ·
   <a href="#-what-you-get">Product</a> ·
   <a href="#-chat">Chat</a> ·
   <a href="#-tools">Tools</a> ·
+  <a href="#-artifacts">Artifacts</a> ·
   <a href="#-plugins-mcp--destinations">Plugins</a> ·
   <a href="#-computer">Computer</a> ·
   <a href="#-governance">Governance</a> ·
@@ -39,7 +41,27 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · Xcode 16+ / Swift 6 · Version **1.1**
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **1.1** (project format `xcode16_3` via XcodeGen)
+
+---
+
+## 🆕 What's new
+
+### Added
+
+- **Artifacts.** Bots create documents, code, diagrams, SVG, HTML, and React apps that you keep, version, edit, and re-open — shared across every bot and mirrored to disk. Routines can create them unattended. See [Artifacts](#-artifacts).
+- **Artifact panel** at ⇧⌘A or the chat-header icon: browse, step through versions, preview or read source, copy, export, delete, and create one by hand.
+- **Syntax-highlighted editor** with line numbers for artifacts, covering Swift, JS/JSX/TS, Python, shell, CSS, JSON, HTML/SVG/XML, Markdown, and Mermaid. Saving appends a version, so restoring an old one is just editing it.
+- **Local MLX.** On Apple Silicon, run MLX models **in-process** inside GrizzyBot (no API base URL): Rescan disk (Hugging Face cache / LM Studio / custom folders), optional Hugging Face search & download, pick **Runs in app** in Model Connect. See [Models](#-models).
+- **Direct Google OAuth** with fixed loopback `http://127.0.0.1:8765`, step-by-step Cloud Console guide in Settings → Connections, and real **Google Calendar** event writes (returns a Google event link).
+
+### Fixed
+
+- **Google Calendar writes never reached Google.** `plugin_call` had no write path for `google-calendar`, so every event fell through to a fallback that returned a fabricated `wrote local` success without making a single API call. Reads worked the whole time, which made it look like a sync or scope problem. Calendar events are now genuinely created and return a Google event link.
+- **Silent fake success for every other write-less plugin.** That same fallback reported success for Gmail, Drive, Docs, Jira, Asana and the rest. It now fails loudly and says nothing was sent.
+- **The CI build had been broken since August** — every run failed at the first step on a compiler type-check timeout in `ContextCompactor.encodedSize`, so no test in the repo had actually run in CI. Rewritten as plain statements.
+- **Overlay snapshot tests** compared an exact PNG hash, which cannot pass on any machine but the one that recorded it. Now a pixel comparison with a tolerance, plus the failing render saved for inspection. Stale goldens re-recorded.
+- **Three flaky tests, each a real bug:** a data race in the parallel-tool test recorder (`@unchecked Sendable` with unsynchronised `append`), wall-clock `Task.sleep` waits left in `ProductSurfaceTests`, and parallel tests sharing the process-wide `FolderWatcherService` while it watched real directories. The suite now runs clean across repeated full runs.
 
 ---
 
@@ -53,10 +75,13 @@
 Local or named accounts. Separate files, chats, and secrets per user. Passwords are PBKDF2. Keys live in **Keychain**.
 
 ### 🤖 Bots
-Templates for coworker, researcher, writer, coder, and operator. Per-bot model, tools, skills, home folder, and optional **Chief of Staff**. Rooms, spawn, and short-lived subagents.
+Templates for coworker, researcher, writer, coder, and operator. Per-bot model, tools, skills, home folder, and optional **Chief of Staff** (roster mark). Rooms, spawn, and short-lived subagents.
 
 ### 💬 Chat
 Markdown, tool cards, live step progress. Per-bot model picker and token stats. Slash skills (`/research …`). Search, edit, regenerate, branch, undo. Files, images, dictation, spoken replies.
+
+### 🧩 Artifacts
+Documents, code, diagrams, and small React apps a bot builds and you keep. Versioned, shared across bots, mirrored to disk, editable in a syntax-highlighted editor. Rendered in a frame with **no network**.
 
 </td>
 <td width="33%" valign="top">
@@ -80,7 +105,7 @@ Cron prompts while the app is open, plus signed Release background ticks via Lau
 Per-bot `MEMORY.md` plus account `SHARED.md`. Pins always load; secrets are refused.
 
 ### 🎨 Chrome
-Themes, menu bar, launch at login, snapshots, redacted export, optional iCloud backup.
+Themes, menu bar, launch at login, Session snapshots / iCloud backup, redacted export, artifacts panel.
 
 </td>
 </tr>
@@ -98,11 +123,14 @@ Themes, menu bar, launch at login, snapshots, redacted export, optional iCloud b
 ~/Library/Application Support/GrizzyBot/
   users.json / session.json / governance.json / audit.json
   canvases/             shared boards (screenshots, strokes) for every bot on this Mac
+  artifacts/            shared artifacts (every bot on this Mac)
+  MLXModels/            Local MLX weights downloaded in-app from Hugging Face
   users/<userId>/
     workspace.json      main config: bots, MCP servers, tools, model, routines
     SHARED.md           memory every bot on this account can read
     homes/<botId>/      that bot’s private sandbox (MEMORY.md, PLAN.md, shell cwd)
     skills/             imported SKILL.md folders
+    destinations/       destination_write log
 ```
 
 The file you usually want is **`users/<userId>/workspace.json`**. API keys and OAuth tokens are **not** in that JSON — they live in Keychain (`com.grizzybot.app.secrets`). MCP command/args (including `fast-filesystem-mcp --allow` paths) are in `workspace.json` under `mcpServers`.
@@ -121,14 +149,14 @@ Create from a template or from scratch.
 | 💻 | **Coder** | Read, edit, and run code in the bot home |
 | 🕹️ | **Operator** | Drive the in-app browser or this Mac |
 
-Each bot has a **name**, **title**, description, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), a private **home** folder, and an optional **working folder**. Toggles cover auto-approve, speak replies, notifications, and **Chief of Staff** (one coordinator on the roster). Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation.
+Each bot has a **name**, **title**, description, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), a private **home** folder, and an optional **working folder**. Toggles cover auto-approve, speak replies, notifications, and **Chief of Staff** (roster badge / highlight; that bot cannot be hidden or deleted — it does **not** change the agent loop or auto-delegate work). Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation.
 
 <details>
 <summary><strong>📁 Home vs working folder</strong></summary>
 
 <br>
 
-Home is the sandbox (`users/<userId>/homes/<botId>/`): `MEMORY.md`, `PLAN.md`, and shell `~`. The profile **Working folder** is the project tree on this Mac. When it is set, relative `read_file` / `write_file` / `edit_file` / `move_file` / `delete_file` / `list_files` read and write that folder (empty `list_files` lists it). Absolute/`~` paths outside it still pause for approval. Shell does **not** move there. MCP does **not** inherit it — pass absolute paths (or add `--allow` on `fast-filesystem-mcp`).
+Home is the sandbox (`users/<userId>/homes/<botId>/`): `MEMORY.md`, `PLAN.md`, and shell `~`. The profile **Working folder** is the project tree on this Mac. When it is set, relative `read_file` / `write_file` / `edit_file` / `move_file` / `delete_file` / `list_files` read and write that folder (empty `list_files` lists it). Absolute/`~` paths outside it still pause for approval. **Shell cwd stays the bot home**, but when a working folder is set the sandbox also allows writes there (so shell can `mv` / `rm` / `mkdir` in the project tree without changing cwd). MCP does **not** inherit the working folder — pass absolute paths (or add `--allow` on `fast-filesystem-mcp`).
 
 </details>
 
@@ -143,7 +171,7 @@ Home is the sandbox (`users/<userId>/homes/<botId>/`): `MEMORY.md`, `PLAN.md`, a
 
 ### 📂 Sessions and tasks
 
-Chat header **Session** menu: save a workspace snapshot, export/import chat JSON, export a Markdown transcript, undo send, clear or delete the thread.
+Chat header **Session** menu (this thread only): export/import chat JSON, export a Markdown transcript, undo send, clear or delete the thread. Workspace-wide snapshots and iCloud backup live under Settings → General → **Session**.
 
 **Main** / task picker: keep parallel task threads on the same bot (`Main thread`, existing tasks, **New task…**). Branching a message still forks history; tasks are named workstreams.
 
@@ -176,12 +204,13 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | | Group | Tools |
 |:--:|---|---|
 | 📄 | **Files** | `write_file`, `read_file`, `edit_file`, `move_file`, `delete_file`, `list_files` — relative paths use the bot **working folder** when set, otherwise the bot home. Empty `list_files` lists that same root. Absolute/`~` paths outside the working folder pause for approval. `MEMORY.md` / `PLAN.md` (no slash) stay in home. |
-| 🐚 | **Shell** | `shell` runs `zsh -lc` in the bot home (not the working folder). Needs approval unless the bot is set to auto-approve. Timeout 5–300s (default 120). |
+| 🐚 | **Shell** | `shell` runs `zsh -lc` with cwd in the bot home. When a working folder is set, writes there are also allowed. Needs approval unless the bot is set to auto-approve. Timeout 5–300s (default 120). |
 | 🌐 | **Web** | `web_search` (search + fetch). Optional Brave Search key; otherwise DuckDuckGo + Wikipedia. |
 | 🧠 | **Memory** | `remember`, `search_memory`, `forget`. |
 | 📚 | **Knowledge** | `search_knowledge` — granted folder and plugin corpora (Drive, OneDrive, Box). |
 | 🖥️ | **Computer** | `computer_open`, `computer_screenshot`, `computer_click`, `computer_scroll`, `computer_type`, `computer_key`, `request_takeover`. |
 | 🖼️ | **Canvas** | `canvas_list`, `canvas_open`, `canvas_save`, `canvas_delete`, `canvas_place_image` — shared boards on this Mac (not the bot home). `canvas_open` after a screenshot places the last capture. |
+| 🧩 | **Artifacts** | `artifact_create`, `artifact_update`, `artifact_rewrite`, `artifact_list`, `artifact_read`, `artifact_delete` — shared on this Mac, versioned, and mirrored into the working folder as files. See [Artifacts](#-artifacts). |
 | 👥 | **Team** | `spawn_bot`, `delete_bot`, `run_subagent`. |
 | 🃏 | **UI** | `present_component` (form, gallery, activity, refusals, or a published card), `report_decline`. |
 | ♾️ | **Loop** | `capabilities_discover`, `capabilities_load`, `todo`, `complete`, `clarify`. |
@@ -189,6 +218,31 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 🔌 | **Plugins & skills** | `plugin_call`, `destination_write`, `read_skill`, `import_skills`, plus any custom tools you add. |
 
 If a builtin file or web tool is off, the loop routes to a **connected MCP server that actually has that tool** (for example fast-filesystem or a search server). It does **not** send those calls to Toolport unless Toolport is enabled and listed.
+
+---
+
+## 🧩 Artifacts
+
+Substantial standalone output — a document, a program, a diagram, a small app — belongs in an artifact rather than scrolling past in chat. Artifacts are **shared across every bot on this Mac**, survive restarts, and are **mirrored into the working folder as real files**, so a routine leaves behind both something to look at and something on disk.
+
+| | Kind | Renders as |
+|:--:|---|---|
+| ¶ | `markdown` | Native markdown |
+| `{ }` | `code` | Syntax-highlighted source — `language` picks the grammar |
+| ◍ | `html` | The page itself, in a sandboxed frame |
+| ◆ | `svg` | Inline vector |
+| ⌗ | `mermaid` | Rendered diagram |
+| ⚛ | `react` | JSX compiled in the frame and mounted, with Tailwind available |
+
+The `type` argument also accepts Claude Desktop's media types (`application/vnd.ant.react`, `text/markdown`, `image/svg+xml`, …) alongside the plain names.
+
+**Editing.** `artifact_update` replaces one exact passage and is **refused unless `old_str` matches exactly once** — an ambiguous edit is never guessed at. `artifact_rewrite` replaces everything. Either way a new version is appended; history is never rewritten.
+
+**Panel.** ⇧⌘A, or the document icon in the chat header. Browse every artifact, step back through versions, toggle preview/source, copy, **Save as…**, or delete. **New artifact** creates one by hand. **Edit** opens a syntax-highlighted editor with line numbers, and saving appends a version — so stepping back to an older version and saving is also how you restore it. If a bot or routine wrote to the same artifact while the editor was open, the save says so rather than quietly winning; nothing is lost, because versions only ever append.
+
+**Sandbox.** The frame has no network. React 18, ReactDOM, Babel, Mermaid and Tailwind are bundled into the app and served over a private URL scheme — `connect-src 'none'`, no script-message bridge back into the app, a non-persistent data store, and a navigation delegate that cancels every off-scheme load (links open in your real browser instead). A React artifact may import `react` and `react-dom`; anything else fails visibly in the frame, naming the import, rather than rendering a blank panel.
+
+**Routines.** Routines run through the same tool dispatch, so a scheduled bot can create and update artifacts unattended. A headless tick still writes and mirrors the artifact — it just does not pull a panel open with nobody watching.
 
 ---
 
@@ -288,7 +342,7 @@ Import a folder of `SKILL.md` files (for example `~/.agents/skills`) with `impor
 
 Lean inject (Settings → Privacy): heuristic mode skips stuffing Facts on greetings; Settings can merge near-duplicate Facts.
 
-Edit memory in the bot panel or Settings → Shared memory.
+Edit memory in the bot panel or Settings → **General** → Shared memory.
 
 ---
 
@@ -329,9 +383,22 @@ GrizzyBot does not pay for usage. You bring a key, a subscription, or a local se
 |:--:|---|---|
 | ☁️ | **Cloud (API key)** | OpenRouter (default), OpenAI, Anthropic, Google, Mistral, Groq, DeepSeek, xAI |
 | 🎟️ | **Subscriptions** | ChatGPT Plus/Pro (OpenAI Codex), GitHub Copilot, SuperGrok / X Premium — device-code sign-in |
-| 💻 | **Local / on-device** | **Local MLX** (Apple Silicon only — runs inside GrizzyBot: scan Hugging Face cache / LM Studio folders, add folders, or download from Hugging Face; no API base URL); Ollama, LM Studio, vMLX, oMLX (discovery + live model list); any OpenAI-compatible base URL |
+| 💻 | **Local / on-device** | **Local MLX** (Apple Silicon only — runs inside GrizzyBot; no API base URL); Ollama, LM Studio, vMLX, oMLX (discovery + live model list); any OpenAI-compatible base URL |
 
 Each provider keeps its own profile. A bot can use the workspace default or a catalog model. Vision images are sent only to models that can take them (text-only IDs such as DeepSeek chat or Groq Llama 3 are not stuffed with screenshots). Local MLX shows as **Runs in app** in the model picker; on Intel Macs it stays disabled with an explanation.
+
+<details>
+<summary><strong>⚡ Local MLX (Model Connect)</strong></summary>
+
+<br>
+
+- **Rescan** Hugging Face cache, LM Studio folders, and any folders you add.
+- Toggles for scanning the HF cache and LM Studio; **Add Folder…** for custom roots.
+- Optional Hugging Face token (`hf_…`) for gated models; search Hub and download into `~/Library/Application Support/GrizzyBot/MLXModels/` (shared on this Mac).
+- Download progress / cancel; delete only applies to models GrizzyBot downloaded.
+- Weights never leave the machine; there is no cloud inference charge for Local MLX.
+
+</details>
 
 ---
 
@@ -347,7 +414,9 @@ Composio Connect OAuth, your own Google Client ID/Secret (Gmail / Calendar / She
 
 ### 📧 Google / Gmail
 
-Settings → Connections → Google: paste Client ID + Secret, **Copy** the redirect URI `http://127.0.0.1:8765` (no trailing slash), and add that exact value under the OAuth client’s **Authorized redirect URIs**. Save credentials, then Plugins → **Sign in with Google** (one sign-in unlocks Gmail, Calendar, Sheets, Docs, and Drive). When those credentials are set, Plugins prefer direct Google OAuth over Composio for Google apps. Empty Gmail searches default to `in:inbox`. With several linked inboxes, use the Plugins **Account** menu (auto / one alias / **All accounts**) or pass `account` / `account=all` on `plugin_call`. API failures distinguish expired sign-in, missing scopes, rate limits, and **API not enabled** in the Cloud project (enable the API from the linked Console URL — you usually do not need to reconnect).
+Settings → Connections → Google includes a **step-by-step Cloud Console guide** (enable APIs, OAuth consent screen / Test users, Desktop or Web client). Paste Client ID + Secret, **Copy** the redirect URI `http://127.0.0.1:8765` (no trailing slash), and add that exact value under the OAuth client’s **Authorized redirect URIs**. Save credentials, then Plugins → **Sign in with Google** (one sign-in unlocks Gmail, Calendar, Sheets, Docs, and Drive). When those credentials are set, Plugins prefer direct Google OAuth over Composio for Google apps. Empty Gmail searches default to `in:inbox`. With several linked inboxes, use the Plugins **Account** menu (auto / one alias / **All accounts**) or pass `account` / `account=all` on `plugin_call`. API failures distinguish expired sign-in, missing scopes, rate limits, and **API not enabled** in the Cloud project (enable the API from the linked Console URL — you usually do not need to reconnect).
+
+**Calendar writes** create real events. `plugin_call` with `slug=google-calendar`, `action=write` takes the event name as `title` and the details as JSON in `body` — `{"day":5,"repeat":"monthly"}` for an all-day recurring bill, or `{"start":"2026-10-05T09:00:00","end":"2026-10-05T10:00:00"}` for a timed one. It also accepts Google's own `{"start":{"date":…}}` shape, `key: value` lines, an explicit `recurrence` RRULE, `location`, `description`, `time_zone`, and `calendar_id`. A successful write returns the **Google event link** — if you do not see one, nothing was created. An event with no usable start is refused rather than guessed at, and a malformed recurrence rule is reported instead of silently creating a one-off.
 
 ### 🐦 X / Twitter
 
@@ -415,16 +484,16 @@ Fallback when nothing is promoted yet: search once → `mcp_call` with the exact
 | | Area | Detail |
 |:--:|---|---|
 | 📋 | **Sidebar** | Bots, rooms, routines, plugins, skills, weekly usage (Chief of Staff highlighted on the roster) |
-| 🔝 | **Chat header** | Session menu, task picker, search (⌘F), **monitor** (Computer panel), canvas, edit |
-| 📐 | **Right panel** | Resizable computer preview + Take control / Release, routines, bot files, settings, shared canvas editor, memory |
-| ⚙️ | **Settings** | General, Connections (Google Client ID/Secret + redirect URI Copy), Computer, Voice, **Tools** (MCP first), Themes, Privacy, Watchers, Diagnostics, **Governance**, **Knowledge**, **Components** |
-| 🧬 | **Model Connect** | Cloud keys, subscriptions, local/LAN OpenAI-compatible servers, and **Local MLX** (Rescan on-disk bundles, optional Hugging Face download) |
+| 🔝 | **Chat header** | Session menu (chat export/import/transcript), task picker, search (⌘F), **monitor** (Computer panel), **artifacts** (⇧⌘A), canvas, edit |
+| 📐 | **Right panel** | Resizable computer preview + Take control / Release, routines, bot files, settings, shared canvas editor, memory; share-safe **redacted** chat export |
+| ⚙️ | **Settings** | General (profile, shared memory, token counters, **Session** snapshots / export / iCloud backup+restore / wipe), Connections (Google Client ID/Secret + redirect URI Copy + setup guide), Computer, Voice, **Tools** (MCP first), Themes, Privacy, Watchers, Diagnostics, **Governance**, **Knowledge**, **Components** |
+| 🧬 | **Model Connect** | Cloud keys, subscriptions, local/LAN OpenAI-compatible servers, and **Local MLX** (Rescan, HF/LM Studio folders, optional Hub download) |
 | 🎨 | **Themes** | Grizzy (default), system, light, dark, and the built-in gallery |
 | 📍 | **Menu bar** | Extra; optional menu-bar-only (no window until you open it) |
 | 🚀 | **Launch at login** | Signed Release; Debug/ad-hoc shows an honest status and does not call `SMAppService` |
 | 🎙️ | **Voice** | Dictation + TTS (ElevenLabs key or macOS voices) |
 | 🔑 | **Optional keys** | Brave Search; Sentry DSN |
-| 💾 | **Data** | Snapshots, redacted export, iCloud backup (`iCloud.com.grizzybot.app` when team-signed), wipe workspace |
+| 💾 | **Session / backup** | Settings → General → Session: named snapshots (restore/delete), Export workspace…, Backup to iCloud (team container, else iCloud Drive “GrizzyBot Backups”, else Documents), Restore backup…, wipe workspace. Chat **Session** menu is chat-only. |
 
 ---
 
@@ -434,8 +503,9 @@ Fallback when nothing is promoted yet: search once → `mcp_call` with the exact
 |:--:|---|
 | 🔑 | API keys, Composio, Google OAuth (Client ID/Secret + tokens), Box, TTS, Sentry, and connection tokens → **Keychain**. Workspace JSON, exports, backups, and snapshots are stripped. |
 | 🧹 | Diagnostics and Sentry events scrub keys, tokens, and home paths. |
-| 🛡️ | Shell write seatbelt stays inside the bot home unless approved. |
+| 🛡️ | Shell write seatbelt stays inside the bot home (and the working folder when set) unless approved. |
 | 🌐 | In-app browser: http/https/about only; desktop HTML escapes filenames. |
+| 🧩 | Artifact frames run with the network closed (`connect-src 'none'`), no script bridge into the app, and every off-scheme navigation cancelled. Their runtimes are bundled, not fetched. |
 | 🖥️ | Computer-use is local only (WKWebView or Accessibility). No remote desktop VM. |
 | ⚖️ | Action policy and MCP grants run **before** the tool acts. Audit records both permits and refusals. |
 
@@ -463,19 +533,23 @@ flowchart LR
 | `GrizzyBotMLX` | In-process Local MLX runtime (Apple Silicon); registered at app launch via `GrizzyBotMLXBootstrap` |
 | `GrizzyBot` | SwiftUI app, computer-use, TTS, Sentry, Local MLX UI |
 | `GrizzyBotRoutineAgent` | LaunchAgent helper for background routine ticks |
-| `GrizzyBotCoreTests` | Unit tests (Swift Testing) |
-| `GrizzyBotMLXTests` | Local MLX / runtime tests |
-| `GrizzyBotAppTests` | Overlay golden PNGs (host launches a lightweight test path) |
-| `GrizzyBotUITests` | XCUITest overlays (`-uitest-open-*`) |
+| `GrizzyBotCoreTests` | Unit tests (Swift Testing) — in the Xcode scheme |
+| `GrizzyBotMLXTests` | Opt-in SPM suite for Local MLX (`GRIZZYBOT_MLX_INTEGRATION=1 swift test`); **not** in the Xcode scheme |
+| `GrizzyBotAppTests` | Overlay goldens + artifact web frame (host launches a lightweight test path) |
+| `GrizzyBotUITests` | XCUITest overlays (`-uitest-open-*`); currently skipped in CI |
 
 `GrizzyBotApp.swift` is `@main`. Persistence is per-user under Application Support. Machine-level `governance.json` and `audit.json` sit at the global root. The Xcode project is generated from `project.yml`.
+
+`Sources/GrizzyBot/Resources/ArtifactRuntime` holds the vendored browser builds an artifact frame runs on (React 18.3.1, ReactDOM, Babel standalone, Mermaid 11, Tailwind 3) — bundled so the frame works with the network closed. They must reach `GrizzyBot.app/Contents/Resources/ArtifactRuntime`: the Xcode folder reference does that directly, and `make-app.sh` copies them explicitly, because SwiftPM otherwise leaves resources in its own side bundle. Adding a resource means updating `Package.swift`, `project.yml`, **and** `make-app.sh`.
 
 ---
 
 ## 🛠️ Build
 
+SPM dependencies: **Sentry**, **mlx-swift-lm** (Local MLX), **swift-transformers** (tokenizers). Local MLX needs Apple Silicon at runtime.
+
 ```bash
-swift build
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift build
 xcodegen generate   # after editing project.yml
 open GrizzyBot.xcodeproj
 ```
@@ -492,10 +566,17 @@ chmod +x Scripts/make-app.sh Scripts/notarize.sh
 ```bash
 swift test
 xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot \
-  -destination 'platform=macOS,arch=arm64' test
+  -destination 'platform=macOS,arch=arm64' \
+  -skip-testing:GrizzyBotUITests test
 ```
 
-Overlay golden refresh (shell `UPDATE_SNAPSHOTS` does not reach the test host). Touch a marker file, then run app tests:
+> `swift` on PATH may be an open-source toolchain that cannot build this app. Prefer `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift build` / `… xcrun swift test`.
+
+`GrizzyBotAppTests` covers the overlay goldens and the artifact web frame (React actually compiles and mounts, Mermaid draws, SVG renders, an unsupported import surfaces a visible error). CI runs it and **skips `GrizzyBotUITests`**, whose four overlay tests are currently failing for an unrelated reason — drop the flag once that is fixed.
+
+**Overlay goldens** are compared pixel by pixel with a tolerance, not by hash: a byte-exact PNG can only ever match on the machine that recorded it. Renders are downsampled 4×4 before comparing, so anti-aliasing averages out while a moved or missing element still registers. A failure writes the actual render to `.snapshot-failures/` and prints the percentage it saw.
+
+To re-record after an intended UI change (shell `UPDATE_SNAPSHOTS` does not reach the xcodebuild test host, so use the marker file):
 
 ```bash
 touch Tests/GrizzyBotAppTests/Goldens/.refresh

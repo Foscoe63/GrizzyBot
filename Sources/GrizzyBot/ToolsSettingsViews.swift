@@ -7,7 +7,7 @@ enum McpToolScope {
 }
 
 enum AgentToolGroup: String, CaseIterable, Identifiable {
-    case files, web, memory, computer, canvas, bots, skills, loop, custom
+    case files, web, memory, computer, canvas, artifacts, bots, skills, loop, custom
 
     var id: String { rawValue }
 
@@ -18,6 +18,7 @@ enum AgentToolGroup: String, CaseIterable, Identifiable {
         case .memory: return "Memory"
         case .computer: return "Computer"
         case .canvas: return "Canvas"
+        case .artifacts: return "Artifacts"
         case .bots: return "Bots & plugins"
         case .skills: return "Skills"
         case .loop: return "Agent loop"
@@ -40,6 +41,11 @@ enum AgentToolGroup: String, CaseIterable, Identifiable {
             ]
         case .canvas:
             ["canvas_list", "canvas_open", "canvas_save", "canvas_delete", "canvas_place_image"]
+        case .artifacts:
+            [
+                "artifact_create", "artifact_update", "artifact_rewrite",
+                "artifact_list", "artifact_read", "artifact_delete",
+            ]
         case .bots:
             [
                 "spawn_bot", "delete_bot", "run_subagent", "destination_write",

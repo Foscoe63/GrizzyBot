@@ -223,6 +223,9 @@ struct MessageView: View {
 
         case .component(let payload):
             componentCard(payload)
+
+        case .artifact(let id, let title, let kind, let summary, let deleted):
+            ArtifactChatCard(id: id, title: title, kind: kind, summary: summary, deleted: deleted)
         }
     }
 
@@ -254,6 +257,7 @@ struct MessageView: View {
             case .choice(let q, _, _): return q
             case .approval(let tool, let detail, _): return "\(tool)\n\(detail)"
             case .component(let payload): return payload.title
+            case .artifact(_, let title, _, let summary, _): return "\(title) — \(summary)"
             case .card(let lines):
                 let body = lines.map { "\($0.k): \($0.v)" }.joined(separator: "\n")
                 return body.isEmpty ? nil : body

@@ -133,6 +133,30 @@ embed_mlx_metallib() {
 
 embed_mlx_metallib
 
+# Vendored browser runtimes for the artifact frame. SwiftPM drops them in its
+# own resource bundle, but ArtifactSchemeHandler resolves them from the app's
+# Contents/Resources — which is also exactly where the Xcode build's folder
+# reference puts them, so both builds agree. Copied from the source tree rather
+# than the build output so the layout cannot drift.
+embed_artifact_runtime() {
+  local src="$ROOT/Sources/GrizzyBot/Resources/ArtifactRuntime"
+  if [[ ! -d "$src" ]]; then
+    echo "error: ArtifactRuntime resources not found; HTML, SVG, diagram and React artifacts would render blank" >&2
+    exit 1
+  fi
+  rm -rf "$APP/Contents/Resources/ArtifactRuntime"
+  cp -R "$src" "$APP/Contents/Resources/ArtifactRuntime"
+
+  for required in react.js react-dom.js babel.js mermaid.js tailwind.js; do
+    if [[ ! -s "$APP/Contents/Resources/ArtifactRuntime/$required" ]]; then
+      echo "error: $required missing from the embedded artifact runtime" >&2
+      exit 1
+    fi
+  done
+}
+
+embed_artifact_runtime
+
 ICON="$ROOT/Sources/GrizzyBot/Resources/AppIcon.icns"
 if [[ -f "$ICON" ]]; then
   cp "$ICON" "$APP/Contents/Resources/AppIcon.icns"

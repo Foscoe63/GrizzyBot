@@ -7,6 +7,7 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var hoverComputer = false
     @State private var hoverCanvas = false
+    @State private var hoverArtifacts = false
     @State private var showTaskPicker = false
     @State private var newTaskTitle = ""
     @State private var confirmClearChat = false
@@ -167,6 +168,23 @@ struct ChatView: View {
                 .help("Canvas")
                 .onHover { hoverCanvas = $0 }
                 .opacity(hoverCanvas || store.panel == .canvas || store.canvasOpen ? 1 : 0.9)
+                Button {
+                    store.toggleArtifactPanel()
+                } label: {
+                    Image(systemName: "doc.richtext")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.textSub)
+                        .frame(width: 30, height: 34)
+                        .contentShape(Rectangle())
+                        .background(
+                            store.panel == .artifact ? Color(hex: "#1B1B1E") : Color.clear
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .help("Artifacts")
+                .onHover { hoverArtifacts = $0 }
+                .opacity(hoverArtifacts || store.panel == .artifact ? 1 : 0.9)
             }
         }
         .padding(.horizontal, 22)

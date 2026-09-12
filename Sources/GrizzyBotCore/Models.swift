@@ -231,6 +231,10 @@ public enum MessageBlock: Codable, Sendable, Hashable {
     case childBot(botId: String, name: String, title: String?, status: ChildBotStatus)
     case approval(tool: String, detail: String, status: ApprovalStatus)
     case component(ComponentPayload)
+    /// A card for one artifact. Only the identity is stored on the message —
+    /// the content is read live from the artifact store, so an artifact edited
+    /// later does not leave a stale copy in the transcript.
+    case artifact(id: String, title: String, kind: ArtifactKind, summary: String, deleted: Bool)
 }
 
 public enum ApprovalStatus: String, Codable, Sendable {

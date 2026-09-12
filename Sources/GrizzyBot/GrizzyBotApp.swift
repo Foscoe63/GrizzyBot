@@ -144,6 +144,10 @@ struct GrizzyBotApp: App {
                 store.toggleCanvasPanel()
             }
             .keyboardShortcut("k", modifiers: [.command, .shift])
+            Button("Artifacts") {
+                store.toggleArtifactPanel()
+            }
+            .keyboardShortcut("a", modifiers: [.command, .shift])
         }
         CommandGroup(after: .pasteboard) {
             Button("Find in Chats") {

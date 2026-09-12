@@ -17,6 +17,7 @@ public enum Panel: String, Sendable, Equatable {
     case settings
     case routine
     case canvas
+    case artifact
 }
 
 /// Heart of the app: local store mirroring rakazo Shell.tsx state + API behavior.
@@ -99,6 +100,12 @@ public final class AppStore {
     public var activeCanvasId: String?
     public var canvases: [CanvasRecord] = []
     public var canvasRevision: Int = 0
+    public var artifacts: [ArtifactRecord] = []
+    public var activeArtifactId: String?
+    /// Bumped on every artifact write so the panel's web frame reloads.
+    public var artifactRevision: Int = 0
+    /// Which saved version the panel is showing; nil means the current one.
+    public var artifactVersionIndex: Int?
     public var booting: Bool = false
     public var pluginsOpen: Bool = false
     public var skillsOpen: Bool = false
@@ -190,6 +197,7 @@ public final class AppStore {
     private var botHome: BotHomeStore
     private var destinations: DestinationStore
     private var canvasBoard: CanvasBoardStore
+    private var artifactStore: ArtifactStore
     private var runTasks: [String: Task<Void, Never>] = [:]
     private var bootTasks: [String: Task<Void, Never>] = [:]
     private var pluginTasks: [String: Task<Void, Never>] = [:]
@@ -262,6 +270,7 @@ public final class AppStore {
         self.botHome = BotHomeStore(root: root)
         self.destinations = DestinationStore(root: root)
         self.canvasBoard = CanvasBoardStore(root: root)
+        self.artifactStore = ArtifactStore(root: root)
         self.computerRuntime = FileDesktopRuntime()
         self.delayScale = delayScale
         bootstrap()
@@ -269,7 +278,7 @@ public final class AppStore {
         reloadCanvases()
         seedSeenToolIdsIfNeeded()
         var catalogChanged = false
-        for id in AgentToolCatalog.builtinIds + CanvasBoardStore.toolIds {
+        for id in AgentToolCatalog.builtinIds + CanvasBoardStore.toolIds + ArtifactStore.toolIds {
             if optInNewTool(id) { catalogChanged = true }
         }
         if catalogChanged {
@@ -1827,6 +1836,7 @@ public final class AppStore {
             case "mcp_list_tools", "mcp_call": return ""
             default:
                 if CanvasBoardStore.toolIds.contains(name) { return "" }
+                if ArtifactStore.toolIds.contains(name) { return "" }
                 if mcpPromotedTools[name] != nil { return "" }
                 if AgentToolCatalog.builtinIds.contains(name) { return name }
                 return ""
@@ -2346,6 +2356,110 @@ public final class AppStore {
                 output: "Recorded the decline.",
                 blocks: [.card(lines: [CardLine(k: "declined", v: reason)])]
             )
+
+        case "artifact_create":
+            let rawKind = s("type", "kind", "artifact_type")
+            guard let kind = ArtifactKind.parse(rawKind) else {
+                return AgentToolCallResult(output: ArtifactError.unknownKind(rawKind).localizedDescription)
+            }
+            do {
+                let record = try artifactStore.create(
+                    id: s("id", "identifier", "slug"),
+                    title: s("title", "name"),
+                    kind: kind,
+                    language: s("language", "lang"),
+                    content: s("content", "body", "text"),
+                    botId: botId
+                )
+                let mirrored = mirrorArtifact(record, botId: botId, path: resolveToolPath(record.fileName))
+                showArtifact(record.id)
+                return artifactResult(mirrored, verb: "Created")
+            } catch {
+                return AgentToolCallResult(output: error.localizedDescription)
+            }
+
+        case "artifact_update":
+            do {
+                let record = try artifactStore.update(
+                    id: s("id", "artifact_id", "title"),
+                    oldString: s("old_str", "old_string", "find"),
+                    newString: s("new_str", "new_string", "replace")
+                )
+                let mirrored = mirrorArtifact(record, botId: botId, path: resolveToolPath(record.fileName))
+                showArtifact(record.id)
+                return artifactResult(mirrored, verb: "Updated")
+            } catch {
+                return AgentToolCallResult(output: error.localizedDescription)
+            }
+
+        case "artifact_rewrite":
+            do {
+                let newTitle = s("title", "name")
+                let record = try artifactStore.rewrite(
+                    id: s("id", "artifact_id"),
+                    content: s("content", "body", "text"),
+                    title: newTitle.isEmpty ? nil : newTitle
+                )
+                let mirrored = mirrorArtifact(record, botId: botId, path: resolveToolPath(record.fileName))
+                showArtifact(record.id)
+                return artifactResult(mirrored, verb: "Rewrote")
+            } catch {
+                return AgentToolCallResult(output: error.localizedDescription)
+            }
+
+        case "artifact_list":
+            reloadArtifacts()
+            if artifacts.isEmpty {
+                return AgentToolCallResult(output: "No artifacts yet. artifact_create makes one.")
+            }
+            let text = artifacts
+                .map { "• \($0.id) — \($0.title) (\($0.summary))" }
+                .joined(separator: "\n")
+            return AgentToolCallResult(
+                output: text,
+                blocks: [.card(lines: artifacts.prefix(8).map { CardLine(k: $0.title, v: $0.id) })]
+            )
+
+        case "artifact_read":
+            let id = s("id", "artifact_id", "title")
+            guard let record = artifactStore.load(id: id) else {
+                return AgentToolCallResult(output: ArtifactError.notFound(id).localizedDescription)
+            }
+            // The content is the point of the call, so it goes in the output
+            // verbatim — the card just names what was read.
+            return AgentToolCallResult(
+                output: record.content,
+                blocks: [.card(lines: [
+                    CardLine(k: "read", v: record.title),
+                    CardLine(k: "id", v: record.id),
+                    CardLine(k: "type", v: record.summary),
+                ])]
+            )
+
+        case "artifact_delete":
+            let id = s("id", "artifact_id", "title")
+            do {
+                let removed = try artifactStore.delete(id: id)
+                reloadArtifacts()
+                if activeArtifactId == removed.id {
+                    activeArtifactId = artifacts.first?.id
+                    artifactVersionIndex = nil
+                    if activeArtifactId == nil, panel == .artifact { panel = nil }
+                }
+                artifactRevision += 1
+                return AgentToolCallResult(
+                    output: "Deleted artifact \(removed.title) (\(removed.id)).",
+                    blocks: [.artifact(
+                        id: removed.id,
+                        title: removed.title,
+                        kind: removed.kind,
+                        summary: removed.summary,
+                        deleted: true
+                    )]
+                )
+            } catch {
+                return AgentToolCallResult(output: error.localizedDescription)
+            }
 
         case "canvas_list":
             reloadCanvases()
@@ -3924,6 +4038,203 @@ public final class AppStore {
 
     public func reloadCanvases() {
         canvases = canvasBoard.list()
+    }
+
+    // MARK: - Artifacts
+
+    public func reloadArtifacts() {
+        artifacts = artifactStore.list()
+    }
+
+    public func artifact(id: String) -> ArtifactRecord? {
+        artifacts.first { $0.id == id } ?? artifactStore.load(id: id)
+    }
+
+    public var activeArtifact: ArtifactRecord? {
+        activeArtifactId.flatMap { artifact(id: $0) }
+    }
+
+    /// Content for the panel: the selected saved version, else the current one.
+    public func artifactContent(_ record: ArtifactRecord) -> String {
+        guard let index = artifactVersionIndex,
+              record.versions.indices.contains(index)
+        else { return record.content }
+        return record.versions[index].content
+    }
+
+    public func openArtifact(id: String) {
+        reloadArtifacts()
+        guard artifact(id: id) != nil else { return }
+        activeArtifactId = id
+        artifactVersionIndex = nil
+        artifactRevision += 1
+        openPanel(.artifact)
+    }
+
+    public func toggleArtifactPanel() {
+        if panel == .artifact {
+            panel = nil
+            return
+        }
+        reloadArtifacts()
+        if activeArtifactId == nil || artifact(id: activeArtifactId ?? "") == nil {
+            activeArtifactId = artifacts.first?.id
+        }
+        artifactVersionIndex = nil
+        openPanel(.artifact)
+    }
+
+    public func showArtifactVersion(_ index: Int?) {
+        artifactVersionIndex = index
+        artifactRevision += 1
+    }
+
+    /// Creates an artifact by hand from the panel. Bots reach the same store
+    /// through `artifact_create`; this exists so an artifact is not something
+    /// only a bot can start.
+    @discardableResult
+    public func createArtifact(
+        title: String,
+        kind: ArtifactKind,
+        language: String? = nil,
+        content: String? = nil
+    ) -> ArtifactRecord? {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = content ?? kind.starterContent
+        guard let record = try? artifactStore.create(
+            id: "",
+            title: trimmed.isEmpty ? "Untitled" : trimmed,
+            kind: kind,
+            language: language,
+            content: body,
+            botId: activeBotId
+        ) else { return nil }
+
+        if let bot = activeBot {
+            _ = mirrorArtifact(
+                record,
+                botId: bot.id,
+                path: WorkingFolder.resolve(record.fileName, workingFolder: effectiveWorkingFolder(for: bot))
+            )
+        }
+        reloadArtifacts()
+        activeArtifactId = record.id
+        artifactVersionIndex = nil
+        artifactRevision += 1
+        return artifact(id: record.id) ?? record
+    }
+
+    /// Saves an edit made in the panel as a new version.
+    ///
+    /// `baseVersionCount` is what the editor opened against. Bots and routines
+    /// share this store and can write while the editor is open, so a save that
+    /// lands on top of newer work says so — the history keeps every version, but
+    /// silently superseding a bot's edit is the kind of thing you only discover
+    /// much later.
+    @discardableResult
+    public func saveArtifactEdit(
+        id: String,
+        content: String,
+        baseVersionCount: Int
+    ) -> ArtifactSaveOutcome {
+        guard let current = artifactStore.load(id: id) else {
+            return .failed(ArtifactError.notFound(id).localizedDescription)
+        }
+        guard content != current.content else { return .unchanged }
+
+        let arrived = max(0, current.versions.count - baseVersionCount)
+        let saved: ArtifactRecord
+        do {
+            saved = try artifactStore.rewrite(id: id, content: content, title: nil)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+
+        if let bot = activeBot {
+            _ = mirrorArtifact(
+                saved,
+                botId: bot.id,
+                path: WorkingFolder.resolve(saved.fileName, workingFolder: effectiveWorkingFolder(for: bot))
+            )
+        }
+        reloadArtifacts()
+        activeArtifactId = saved.id
+        artifactVersionIndex = nil
+        artifactRevision += 1
+        return arrived > 0 ? .savedOverNewerVersions(arrived) : .saved
+    }
+
+    public func deleteArtifact(id: String) {
+        guard let removed = try? artifactStore.delete(id: id) else { return }
+        reloadArtifacts()
+        if activeArtifactId == removed.id {
+            activeArtifactId = artifacts.first?.id
+            artifactVersionIndex = nil
+            if activeArtifactId == nil, panel == .artifact { panel = nil }
+        }
+        artifactRevision += 1
+    }
+
+    /// Refreshes the panel after a tool wrote an artifact. Headless routine
+    /// ticks stay headless — the artifact is still created and mirrored, it
+    /// just does not yank a panel open with nobody watching.
+    private func showArtifact(_ id: String) {
+        reloadArtifacts()
+        activeArtifactId = id
+        artifactVersionIndex = nil
+        artifactRevision += 1
+        if !headlessRoutineTick {
+            openPanel(.artifact)
+        }
+    }
+
+    /// Writes the artifact into the run's working folder (or the bot home when
+    /// none is set). A failed mirror is reported but never fails the tool: the
+    /// artifact itself is already saved, and losing it to a disk error would be
+    /// the worse outcome.
+    private func mirrorArtifact(_ record: ArtifactRecord, botId: String, path: String) -> ArtifactMirror {
+        do {
+            try botHome.writeFlexible(botId: botId, path: path, content: record.content)
+            if !BotHomeStore.isHostPath(path) {
+                upsertFile(path: path, content: record.content)
+                refreshFilesMirror(botId: botId)
+            }
+            let noted = (try? artifactStore.noteMirror(id: record.id, path: path)) ?? record
+            return ArtifactMirror(record: noted, path: path, error: nil)
+        } catch {
+            return ArtifactMirror(record: record, path: nil, error: error.localizedDescription)
+        }
+    }
+
+    private func artifactResult(_ mirror: ArtifactMirror, verb: String) -> AgentToolCallResult {
+        let record = mirror.record
+        var lines = [
+            CardLine(k: verb.lowercased(), v: record.title),
+            CardLine(k: "id", v: record.id),
+            CardLine(k: "type", v: record.summary),
+        ]
+        var output = "\(verb) artifact \(record.title) (\(record.id)) — \(record.summary)."
+        if let path = mirror.path {
+            lines.append(CardLine(k: "file", v: path))
+            output += " Mirrored to \(path)."
+        }
+        if let error = mirror.error {
+            lines.append(CardLine(k: "file", v: "not mirrored: \(error)"))
+            output += " The artifact saved, but writing the file copy failed: \(error)."
+        }
+        return AgentToolCallResult(
+            output: output,
+            blocks: [
+                .artifact(
+                    id: record.id,
+                    title: record.title,
+                    kind: record.kind,
+                    summary: record.summary,
+                    deleted: false
+                ),
+                .card(lines: lines),
+            ]
+        )
     }
 
     public func toggleCanvasPanel() {
@@ -5665,6 +5976,10 @@ public final class AppStore {
                 return StreamText.visible(t)
             case .component(let payload):
                 return payload.title
+            case .artifact(let id, let title, let kind, let summary, let deleted):
+                return deleted
+                    ? "[artifact deleted] \(title) (\(id))"
+                    : "[artifact \(kind.rawValue)] \(title) (\(id)) — \(summary)"
             }
         }.joined(separator: "\n")
     }
@@ -6248,6 +6563,7 @@ public final class AppStore {
         guard appConfig.seenToolIds.isEmpty else { return }
         var seen = Set(AgentToolCatalog.builtinIds)
         seen.formUnion(CanvasBoardStore.toolIds)
+        seen.formUnion(ArtifactStore.toolIds)
         seen.formUnion(appConfig.defaultEnabledTools)
         seen.formUnion(customTools.map(\.id))
         seen.formUnion(mcpServers.map(\.toolId))

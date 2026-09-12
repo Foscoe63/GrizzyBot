@@ -309,6 +309,12 @@ public enum AgentToolCatalog {
         .init(id: "canvas_save", label: "Canvas save", subtitle: "Create or update a shared canvas"),
         .init(id: "canvas_delete", label: "Canvas delete", subtitle: "Delete a shared canvas"),
         .init(id: "canvas_place_image", label: "Canvas place image", subtitle: "Drop a screenshot or image onto a canvas"),
+        .init(id: "artifact_create", label: "Artifact create", subtitle: "Create a shared artifact"),
+        .init(id: "artifact_update", label: "Artifact update", subtitle: "Edit part of an artifact"),
+        .init(id: "artifact_rewrite", label: "Artifact rewrite", subtitle: "Replace an artifact's contents"),
+        .init(id: "artifact_list", label: "Artifact list", subtitle: "List shared artifacts on this Mac"),
+        .init(id: "artifact_read", label: "Artifact read", subtitle: "Read an artifact's contents"),
+        .init(id: "artifact_delete", label: "Artifact delete", subtitle: "Delete a shared artifact"),
         .init(id: "capabilities_discover", label: "Discover capabilities", subtitle: "Search skills and MCP tools on demand"),
         .init(id: "capabilities_load", label: "Load capabilities", subtitle: "Activate discovered skills or MCP tools"),
         .init(id: "todo", label: "Todo", subtitle: "Write a multi-step checklist for this turn"),
@@ -378,6 +384,7 @@ extension Bot {
         if enabledTools.contains(toolId) { return true }
         if toolId.hasPrefix("computer_"), enabledTools.contains("request_takeover") { return true }
         if CanvasBoardStore.toolIds.contains(toolId) { return true }
+        if ArtifactStore.toolIds.contains(toolId) { return true }
         if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
         if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
         if toolId == "import_skills", enabledTools.contains("read_file") { return true }
@@ -468,6 +475,7 @@ extension AgentToolCatalog {
                     ? ["search_knowledge"] : []
             )
             .union(CanvasBoardStore.toolIds)
+            .union(ArtifactStore.toolIds)
             .union(["capabilities_discover", "capabilities_load", "todo", "complete", "clarify"])
         var tools: [ChatTool] = []
 
@@ -725,7 +733,7 @@ extension AgentToolCatalog {
         )
         add(
             "plugin_call",
-            description: "Call a connected plugin (gmail, google-calendar, github, x, …). For Gmail inbox/list: action=search (or list) with optional query like in:inbox or is:unread — do not invent thread_id/attachment ids. action=write sends mail (title=subject, body=text). If multiple Gmail accounts are linked, set account to one alias (gmail_lerwa-gharry) or account=all. Prefer Plugins → Account picker. For X/Twitter use slug x (twitter also works). Do not use slug composio_connect.",
+            description: "Call a connected plugin (gmail, google-calendar, github, x, …). For Gmail inbox/list: action=search (or list) with optional query like in:inbox or is:unread — do not invent thread_id/attachment ids. action=write sends mail (title=subject, body=text). If multiple Gmail accounts are linked, set account to one alias (gmail_lerwa-gharry) or account=all. Prefer Plugins → Account picker. For google-calendar: action=write creates an event — title=event name, body=JSON such as {\"day\":5,\"repeat\":\"monthly\"} for a day-of-month all-day event, or {\"start\":\"2026-10-05T09:00:00\",\"end\":\"2026-10-05T10:00:00\"} for a timed one. A successful write returns the Google event link, so if you do not see one it was not created. For X/Twitter use slug x (twitter also works). Do not use slug composio_connect.",
             properties: [
                 "slug": stringProp("Plugin slug, e.g. gmail, google-calendar, or x"),
                 "action": stringProp("search, list, get, or write"),
@@ -735,6 +743,56 @@ extension AgentToolCatalog {
                 "body": stringProp("Body for writes"),
             ],
             required: ["slug"]
+        )
+        add(
+            "artifact_create",
+            description: "Create a shared artifact: a self-contained document, program, diagram, or app the user will keep, re-read, or run. Use it for substantial standalone content (over ~15 lines, or anything visual) — not for conversational answers, explanations, or short snippets, which belong in the reply. type is one of markdown, code, html, svg, mermaid, react. For code set language. react artifacts are JSX that must end with `export default function App() { … }`; they may import react and react-dom only, and Tailwind classes are available. Artifacts are shared across every bot on this Mac and survive restarts, so routines can create them too.",
+            properties: [
+                "id": stringProp("Short kebab-case id, e.g. morning-brief. Reused by artifact_update/artifact_rewrite"),
+                "title": stringProp("Human title shown on the artifact"),
+                "type": stringProp("markdown, code, html, svg, mermaid, or react"),
+                "language": stringProp("Language for type=code, e.g. swift, python"),
+                "content": stringProp("The full artifact contents"),
+            ],
+            required: ["title", "type", "content"]
+        )
+        add(
+            "artifact_update",
+            description: "Replace one exact passage inside an existing artifact, keeping the rest. old_str must appear EXACTLY once — include enough surrounding text to be unique, or the call is refused rather than guessing which occurrence you meant. Prefer this over artifact_rewrite for small edits; each call saves a new version.",
+            properties: [
+                "id": stringProp("Artifact id from artifact_create or artifact_list"),
+                "old_str": stringProp("Exact text to replace, unique within the artifact"),
+                "new_str": stringProp("Replacement text"),
+            ],
+            required: ["id", "old_str", "new_str"]
+        )
+        add(
+            "artifact_rewrite",
+            description: "Replace an artifact's entire contents. Use when the change is too broad for artifact_update. Saves a new version; earlier versions stay readable in the artifact panel.",
+            properties: [
+                "id": stringProp("Artifact id"),
+                "content": stringProp("The complete new contents"),
+                "title": stringProp("New title (optional)"),
+            ],
+            required: ["id", "content"]
+        )
+        add(
+            "artifact_list",
+            description: "List the artifacts on this Mac — id, title, type, and version count. Call this before updating an artifact whose id you do not have.",
+            properties: [:],
+            required: []
+        )
+        add(
+            "artifact_read",
+            description: "Read an artifact's current contents back. Use before editing one you did not create in this conversation, so old_str matches what is actually there.",
+            properties: ["id": stringProp("Artifact id or exact title")],
+            required: ["id"]
+        )
+        add(
+            "artifact_delete",
+            description: "Permanently delete an artifact and its version history. Only when the user asked for it.",
+            properties: ["id": stringProp("Artifact id or exact title")],
+            required: ["id"]
         )
         add(
             "import_skills",

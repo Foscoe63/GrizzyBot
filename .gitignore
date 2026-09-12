@@ -28,3 +28,7 @@ sparkle_eddsa_private.key
 
 # Xcode clang cache inside the generated project
 GrizzyBot.xcodeproj/-Xcc/
+
+# Renders written when an overlay golden fails, plus the re-record trigger
+.snapshot-failures/
+Tests/GrizzyBotAppTests/Goldens/.refresh
