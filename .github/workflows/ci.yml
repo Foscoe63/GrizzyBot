@@ -7,9 +7,21 @@ on:
 
 jobs:
   test:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+
+      # mlx-swift needs Swift tools 6.3. The image default is older than that,
+      # so pick the newest Xcode present rather than pinning a version that
+      # will age out of the image.
+      - name: Select an Xcode new enough for mlx-swift
+        run: |
+          newest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          echo "Selecting $newest"
+          sudo xcode-select -s "$newest"
+          xcodebuild -version
+          swift --version
+
       - name: Agent eval CI suite
         run: swift test --filter 'Agent eval CI'
       - name: Swift tests
