@@ -3176,7 +3176,8 @@ public final class AppStore {
                 )
             }
             let action = s("action").lowercased()
-            let isWrite = action.isEmpty || action == "write"
+            let isDelete = action == "delete" || action == "remove" || action == "cancel"
+            let isWrite = !isDelete && (action.isEmpty || action == "write")
             if isWrite, let gated = gatedWrite(
                 tool: "plugin_call",
                 detail: "\(slug) \(s("title"))",
@@ -3190,6 +3191,23 @@ public final class AppStore {
                 let account = s("account", "connected_account", "connected_account_id")
                 if !account.isEmpty {
                     storeAccountPreferenceFromTool(slug: slug, account: account)
+                }
+                if isDelete {
+                    if let gated = gatedWrite(
+                        tool: "plugin_call",
+                        detail: "\(slug) delete \(s("id", "event_id", "eventId", "query", "body"))",
+                        argumentsJSON: argumentsJSON,
+                        bot: bot,
+                        approved: approved
+                    ) {
+                        return gated
+                    }
+                    let target = s("id", "event_id", "eventId", "query", "body", "title")
+                    let removed = try await deletePlugin(slug: slug, id: target)
+                    return AgentToolCallResult(
+                        output: "Plugin \(slug) deleted \(removed).",
+                        blocks: [.card(lines: [CardLine(k: slug, v: "deleted \(removed)")])]
+                    )
                 }
                 if isWrite {
                     let remote = try await writePlugin(
@@ -4335,15 +4353,24 @@ public final class AppStore {
 
     private func canvasImageData(botId: String, path: String) -> Data? {
         if !path.isEmpty {
-            let url: URL
-            if BotHomeStore.isHostPath(path) {
-                url = URL(fileURLWithPath: BotHomeStore.expandPath(path))
-            } else if let home = try? botHome.homeURL(botId: botId) {
-                url = home.appendingPathComponent(path)
-            } else {
-                return nil
+            // Resolve like every other file tool: a relative path means the
+            // run's working folder when one is set, and the bot home
+            // otherwise. Reading only the home is why an image the bot had
+            // just written to its working folder came back "No image to
+            // place."
+            let bot = bots.first(where: { $0.id == botId })
+            let resolved = bot.map { WorkingFolder.resolve(path, workingFolder: effectiveWorkingFolder(for: $0)) } ?? path
+            var candidates: [URL] = []
+            if BotHomeStore.isHostPath(resolved) {
+                candidates.append(URL(fileURLWithPath: BotHomeStore.expandPath(resolved)))
             }
-            return try? Data(contentsOf: url)
+            if let home = try? botHome.homeURL(botId: botId) {
+                candidates.append(home.appendingPathComponent(path))
+            }
+            for url in candidates {
+                if let data = try? Data(contentsOf: url), !data.isEmpty { return data }
+            }
+            return nil
         }
         if let home = try? botHome.homeURL(botId: botId) {
             let shot = home.appendingPathComponent(".computer/screen.jpg")
@@ -5214,6 +5241,17 @@ public final class AppStore {
             throw PluginError.rejected("Plugin \(slug) is not connected.")
         }
         return try await pluginClient.write(slug: slug, token: token, title: title, body: body)
+    }
+
+    private func deletePlugin(slug: String, id: String) async throws -> String {
+        let token = connectionSecrets[slug]
+        if let googleToken = try await liveGoogleAccessToken(for: slug) {
+            return try await pluginClient.delete(slug: slug, token: googleToken, id: id)
+        }
+        guard let token, token != ComposioClient.composioTokenSentinel, token != Self.googleTokenSentinel else {
+            throw PluginError.rejected("Plugin \(slug) is not connected.")
+        }
+        return try await pluginClient.delete(slug: slug, token: token, id: id)
     }
 
     private func readPlugin(slug: String, query: String, account: String? = nil) async throws -> String {

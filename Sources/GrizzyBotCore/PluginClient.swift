@@ -17,6 +17,15 @@ public protocol PluginConnecting: Sendable {
     func write(slug: String, token: String, title: String, body: String) async throws -> String
     func search(slug: String, token: String, query: String) async throws -> String
     func revoke(slug: String, token: String) async
+    /// Removes one record. Defaulted so a connector without a delete API says
+    /// so rather than every conformer having to.
+    func delete(slug: String, token: String, id: String) async throws -> String
+}
+
+extension PluginConnecting {
+    public func delete(slug: String, token: String, id: String) async throws -> String {
+        throw PluginError.rejected("\(slug) has no delete API in GrizzyBot — nothing was removed.")
+    }
 }
 
 public struct PluginClient: PluginConnecting {
@@ -133,6 +142,76 @@ public struct PluginClient: PluginConnecting {
             return (json["ts"] as? String) ?? "slack"
         case "notion":
             return "notion: stored locally (page create needs a parent id)"
+        case "gmail":
+            // The tool has always advertised "action=write sends mail"; until
+            // now it fell through to a branch that sent nothing.
+            let draft = try GmailDraft.parse(title: title, body: body)
+            let json = try await postJSON(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+                token: token,
+                body: ["raw": draft.rawMessage()]
+            )
+            guard let id = json["id"] as? String else {
+                throw PluginError.rejected("Gmail returned no message id, so nothing was sent.")
+            }
+            return "sent to \(draft.to.joined(separator: ", ")) (\(id))"
+
+        case "google-sheets", "googlesheets":
+            let ref = try SheetsRef.parse(body.isEmpty ? title : body)
+            let rows = SheetsRef.rows(from: body)
+            guard !rows.isEmpty else {
+                throw PluginError.rejected("No rows to append. Pass values as JSON, TSV, or CSV in the body.")
+            }
+            let json = try await postJSON(
+                "https://sheets.googleapis.com/v4/spreadsheets/\(urlEncode(ref.spreadsheetId))/values/\(urlEncode(ref.range)):append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS",
+                token: token,
+                body: ["values": rows]
+            )
+            let updates = json["updates"] as? [String: Any]
+            let cells = (updates?["updatedCells"] as? NSNumber)?.intValue ?? 0
+            return "appended \(rows.count) row\(rows.count == 1 ? "" : "s") (\(cells) cells) to \(ref.spreadsheetId)"
+
+        case "google-docs", "googledocs":
+            let (fields, remainder) = GoogleRequests.fields(body)
+            let text = fields["body"] ?? fields["text"] ?? fields["content"] ?? remainder
+            let created = try await postJSON(
+                "https://docs.googleapis.com/v1/documents",
+                token: token,
+                body: ["title": title.isEmpty ? "Untitled" : title]
+            )
+            guard let documentId = created["documentId"] as? String else {
+                throw PluginError.rejected("Docs returned no documentId, so nothing was created.")
+            }
+            if !text.isEmpty {
+                _ = try await postJSON(
+                    "https://docs.googleapis.com/v1/documents/\(urlEncode(documentId)):batchUpdate",
+                    token: token,
+                    body: ["requests": [["insertText": ["location": ["index": 1], "text": text]]]]
+                )
+            }
+            return "https://docs.google.com/document/d/\(documentId)/edit"
+
+        case "google-drive", "googledrive", "gdrive":
+            let (fields, remainder) = GoogleRequests.fields(body)
+            let name = [fields["name"], fields["filename"], title]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty } ?? "untitled.txt"
+            let content = fields["body"] ?? fields["text"] ?? fields["content"] ?? remainder
+            guard !content.isEmpty else {
+                throw PluginError.rejected("Nothing to upload — the body is empty.")
+            }
+            let json = try await postMultipart(
+                "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
+                token: token,
+                body: DriveUpload.multipart(
+                    name: name,
+                    mimeType: fields["mimetype"] ?? fields["mime_type"] ?? DriveUpload.mimeType(for: name),
+                    content: content,
+                    folderId: fields["parent"] ?? fields["folderid"] ?? fields["folder_id"]
+                )
+            )
+            return (json["webViewLink"] as? String) ?? (json["id"] as? String) ?? name
+
         case "google-calendar", "googlecalendar":
             let draft = try CalendarEventDraft.parse(title: title, body: body)
             let json = try await postJSON(
@@ -168,6 +247,39 @@ public struct PluginClient: PluginConnecting {
             throw PluginError.rejected(
                 "\(slug) has no write API in GrizzyBot — nothing was sent. Connect Composio for \(slug) writes."
             )
+        }
+    }
+
+    public func delete(slug: String, token: String, id: String) async throws -> String {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw PluginError.rejected("An id is required to delete. Read the calendar first — each result ends with [eventId].")
+        }
+        switch slug {
+        case "google-calendar", "googlecalendar":
+            // Accept a bare id, or the JSON the model tends to produce.
+            var eventId = trimmed
+            var calendarId = "primary"
+            if let data = trimmed.data(using: .utf8),
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                eventId = (object["eventId"] as? String)
+                    ?? (object["event_id"] as? String)
+                    ?? (object["id"] as? String)
+                    ?? ""
+                calendarId = (object["calendarId"] as? String)
+                    ?? (object["calendar_id"] as? String)
+                    ?? "primary"
+            }
+            guard !eventId.isEmpty else {
+                throw PluginError.rejected("No eventId in \(trimmed). Read the calendar first — each result ends with [eventId].")
+            }
+            try await deleteRequest(
+                "https://www.googleapis.com/calendar/v3/calendars/\(urlEncode(calendarId))/events/\(urlEncode(eventId))",
+                token: token
+            )
+            return eventId
+        default:
+            throw PluginError.rejected("\(slug) has no delete API in GrizzyBot — nothing was removed.")
         }
     }
 
@@ -227,22 +339,39 @@ public struct PluginClient: PluginConnecting {
             }
             return lines.joined(separator: "\n")
         case "google-calendar", "googlecalendar":
-            let encoded = urlEncode(q)
-            let json = try await getJSON(
-                "https://www.googleapis.com/calendar/v3/calendars/primary/events?q=\(encoded)&maxResults=8&singleEvents=true&orderBy=startTime",
-                token: token
-            )
+            var request = CalendarReadQueryParser.parse(q)
+            // A calendar named rather than identified ("Ed Griswold") is not a
+            // usable id. Resolve it against the account's calendar list instead
+            // of searching for the words, which is what used to happen.
+            if request.calendarId != "primary", !request.calendarId.contains("@") {
+                request.calendarId = try await resolveCalendarId(request.calendarId, token: token)
+            }
+            let json = try await getJSON(request.url(), token: token)
             let items = (json["items"] as? [[String: Any]]) ?? []
-            if items.isEmpty { return "No Calendar events for \(q)." }
-            return items.prefix(8).compactMap { item in
+            if items.isEmpty {
+                return "No Calendar events for \(request.describedAs)."
+            }
+            return items.prefix(request.maxResults).map { item in
                 let summary = item["summary"] as? String ?? "(no title)"
                 let start = ((item["start"] as? [String: Any])?["dateTime"] as? String)
                     ?? ((item["start"] as? [String: Any])?["date"] as? String)
                     ?? ""
-                return "• \(summary) — \(start)"
+                // The id travels with the result so a follow-up can act on the
+                // event without a second lookup.
+                let id = (item["id"] as? String).map { " [\($0)]" } ?? ""
+                return "• \(summary) — \(start)\(id)"
             }.joined(separator: "\n")
         case "google-sheets", "googlesheets":
-            return "Google Sheets search needs a spreadsheet id in the query (spreadsheetId …). Connected via Google OAuth."
+            let ref = try SheetsRef.parse(q)
+            let json = try await getJSON(
+                "https://sheets.googleapis.com/v4/spreadsheets/\(urlEncode(ref.spreadsheetId))/values/\(urlEncode(ref.range))",
+                token: token
+            )
+            let values = (json["values"] as? [[Any]]) ?? []
+            if values.isEmpty { return "No rows in \(ref.range) of \(ref.spreadsheetId)." }
+            return values.prefix(50).map { row in
+                "• " + row.map { cell in (cell as? String) ?? String(describing: cell) }.joined(separator: " | ")
+            }.joined(separator: "\n")
         case "google-docs", "googledocs":
             let encoded = urlEncode("mimeType='application/vnd.google-apps.document' \(q)")
             let json = try await getJSON(
@@ -285,6 +414,32 @@ public struct PluginClient: PluginConnecting {
         default:
             throw PluginError.rejected("Paste-token \(slug) has no read API in GrizzyBot. Connect Composio or Google OAuth for search.")
         }
+    }
+
+    /// Maps a calendar's display name to its id via the account's calendar
+    /// list. Falls back to the given string so an id that simply is not in the
+    /// list still reaches Google and produces a real error.
+    private func resolveCalendarId(_ name: String, token: String) async throws -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "primary" }
+        let json = try await getJSON(
+            "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250",
+            token: token
+        )
+        let items = (json["items"] as? [[String: Any]]) ?? []
+        for item in items {
+            let summary = (item["summary"] as? String) ?? ""
+            let id = (item["id"] as? String) ?? ""
+            if summary.compare(trimmed, options: .caseInsensitive) == .orderedSame { return id }
+            if id.compare(trimmed, options: .caseInsensitive) == .orderedSame { return id }
+        }
+        if items.contains(where: { ($0["primary"] as? Bool) == true }) {
+            // Named something that is not a calendar here — say so by listing
+            // what does exist rather than silently reading the wrong one.
+            let names = items.compactMap { $0["summary"] as? String }.prefix(10).joined(separator: ", ")
+            throw PluginError.rejected("No calendar named \(trimmed). Available: \(names).")
+        }
+        return trimmed
     }
 
     public func revoke(slug: String, token: String) async {
@@ -426,6 +581,35 @@ public struct PluginClient: PluginConnecting {
             throw PluginError.rejected(Self.apiErrorMessage(status: status, body: data))
         }
         return json
+    }
+
+    private func deleteRequest(_ url: String, token: String) async throws {
+        guard let parsed = URL(string: url) else { throw PluginError.rejected("bad url") }
+        var request = URLRequest(url: parsed, timeoutInterval: 20)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        // Google answers a successful delete with 204, and 410 when the event
+        // is already gone — which is the outcome the caller wanted either way.
+        guard (200..<300).contains(status) || status == 410 else {
+            throw PluginError.rejected(Self.apiErrorMessage(status: status, body: data))
+        }
+    }
+
+    private func postMultipart(_ url: String, token: String, body: Data) async throws -> [String: Any] {
+        guard let parsed = URL(string: url) else { throw PluginError.rejected("bad url") }
+        var request = URLRequest(url: parsed, timeoutInterval: 30)
+        request.httpMethod = "POST"
+        request.setValue("multipart/related; boundary=\(DriveUpload.boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            throw PluginError.rejected(Self.apiErrorMessage(status: status, body: data))
+        }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 
     private func postForm(_ url: String, token: String) async throws -> [String: Any] {

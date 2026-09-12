@@ -363,6 +363,39 @@ struct WorkingFolderStoreTests {
         ])
     }
 
+    @Test("canvas_place_image finds an image in the working folder, not just the bot home")
+    func canvasPlaceImageUsesWorkingFolder() async throws {
+        let (store, _) = tempStore()
+        #expect(store.signUp(name: "A", email: "wfcanvas@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Shot", title: "ops")
+        if let idx = store.bots.firstIndex(where: { $0.id == bot.id }) {
+            store.bots[idx].autoApprove = true
+        }
+        let folder = try projectFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        store.updateBot(botId: bot.id, workingFolder: folder.path)
+
+        // A 1x1 JPEG written where the bot's file tools would have put it.
+        let jpeg = Data(base64Encoded: "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==")!
+        try jpeg.write(to: folder.appendingPathComponent("shot.jpg"))
+
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [LLMToolCall(
+                id: "1",
+                name: "canvas_place_image",
+                arguments: #"{"title":"From work folder","path":"shot.jpg"}"#
+            )]),
+            ChatCompletionResponse(text: "placed"),
+        ])
+        store.send(botId: bot.id, text: "place it")
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+
+        store.reloadCanvases()
+        let board = store.canvases.first { $0.title == "From work folder" }
+        #expect(board != nil, "canvas_place_image did not find the working-folder image")
+        #expect(board?.images.isEmpty == false)
+    }
+
     private func saveWatcher(
         store: AppStore,
         name: String,

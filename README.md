@@ -53,14 +53,17 @@
 - **Artifact panel** at ⇧⌘A or the chat-header icon: browse, step through versions, preview or read source, copy, export, delete, and create one by hand.
 - **Syntax-highlighted editor** with line numbers for artifacts, covering Swift, JS/JSX/TS, Python, shell, CSS, JSON, HTML/SVG/XML, Markdown, and Mermaid. Saving appends a version, so restoring an old one is just editing it.
 - **Local MLX.** On Apple Silicon, run MLX models **in-process** inside GrizzyBot (no API base URL): Rescan disk (Hugging Face cache / LM Studio / custom folders), optional Hugging Face search & download, pick **Runs in app** in Model Connect. See [Models](#-models).
-- **Direct Google OAuth** with fixed loopback `http://127.0.0.1:8765`, step-by-step Cloud Console guide in Settings → Connections, and real **Google Calendar** event writes (returns a Google event link).
+- **Direct Google OAuth** with fixed loopback `http://127.0.0.1:8765` and a step-by-step Cloud Console guide in Settings → Connections.
+- **The Google plugins now do what their descriptions promise.** Gmail **sends mail** (it never could, despite the tool advertising it), Calendar **creates and removes** events, Sheets **reads real cells and appends rows** (it was a stub), Docs **creates documents**, and Drive **uploads files**. See [Google / Gmail](#-google--gmail).
 
 ### Fixed
 
-- **Google Calendar writes never reached Google.** `plugin_call` had no write path for `google-calendar`, so every event fell through to a fallback that returned a fabricated `wrote local` success without making a single API call. Reads worked the whole time, which made it look like a sync or scope problem. Calendar events are now genuinely created and return a Google event link.
+- **Google Calendar writes never reached Google.** `plugin_call` had no write path for `google-calendar`, so every event fell through to a fallback that returned a fabricated `wrote local` success without making a single API call. Reads worked the whole time, which made it look like a sync or scope problem. Events are now genuinely created and return a Google event link.
+- **Google Calendar could not be read at all.** Every query went to Google's full-text `q=` parameter, so `primary` searched for the *word* primary and `2026-09-12` searched for that string in event titles — a healthy calendar always reported "No Calendar events", which is what sent a bot round in circles insisting the calendar was empty. Reads are now time windows, with dates, ranges, and `today` / `this week` understood, and a calendar named rather than identified is resolved against your calendar list.
 - **Silent fake success for every other write-less plugin.** That same fallback reported success for Gmail, Drive, Docs, Jira, Asana and the rest. It now fails loudly and says nothing was sent.
+- **`canvas_place_image` ignored the working folder**, unlike every other file tool, so an image a bot had just written came back as "No image to place."
 - **The CI build had been broken since August** — every run failed at the first step on a compiler type-check timeout in `ContextCompactor.encodedSize`, so no test in the repo had actually run in CI. Rewritten as plain statements.
-- **Overlay snapshot tests** compared an exact PNG hash, which cannot pass on any machine but the one that recorded it. Now a pixel comparison with a tolerance, plus the failing render saved for inspection. Stale goldens re-recorded.
+- **Overlay snapshot tests** compared an exact PNG hash, which cannot pass on any machine but the one that recorded it. Now a pixel comparison with a tolerance, plus the failing render saved for inspection.
 - **Three flaky tests, each a real bug:** a data race in the parallel-tool test recorder (`@unchecked Sendable` with unsynchronised `append`), wall-clock `Task.sleep` waits left in `ProductSurfaceTests`, and parallel tests sharing the process-wide `FolderWatcherService` while it watched real directories. The suite now runs clean across repeated full runs.
 
 ---
@@ -215,7 +218,7 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 🃏 | **UI** | `present_component` (form, gallery, activity, refusals, or a published card), `report_decline`. |
 | ♾️ | **Loop** | `capabilities_discover`, `capabilities_load`, `todo`, `complete`, `clarify`. |
 | 🧩 | **MCP** | First-class `server-slug__tool` names plus `mcp_list_tools` / `mcp_call` — see [Plugins, MCP & destinations](#-plugins-mcp--destinations). |
-| 🔌 | **Plugins & skills** | `plugin_call`, `destination_write`, `read_skill`, `import_skills`, plus any custom tools you add. |
+| 🔌 | **Plugins & skills** | `plugin_call` (`action=search` / `write` / `delete`), `destination_write`, `read_skill`, `import_skills`, plus any custom tools you add. |
 
 If a builtin file or web tool is off, the loop routes to a **connected MCP server that actually has that tool** (for example fast-filesystem or a search server). It does **not** send those calls to Toolport unless Toolport is enabled and listed.
 
@@ -416,7 +419,19 @@ Composio Connect OAuth, your own Google Client ID/Secret (Gmail / Calendar / She
 
 Settings → Connections → Google includes a **step-by-step Cloud Console guide** (enable APIs, OAuth consent screen / Test users, Desktop or Web client). Paste Client ID + Secret, **Copy** the redirect URI `http://127.0.0.1:8765` (no trailing slash), and add that exact value under the OAuth client’s **Authorized redirect URIs**. Save credentials, then Plugins → **Sign in with Google** (one sign-in unlocks Gmail, Calendar, Sheets, Docs, and Drive). When those credentials are set, Plugins prefer direct Google OAuth over Composio for Google apps. Empty Gmail searches default to `in:inbox`. With several linked inboxes, use the Plugins **Account** menu (auto / one alias / **All accounts**) or pass `account` / `account=all` on `plugin_call`. API failures distinguish expired sign-in, missing scopes, rate limits, and **API not enabled** in the Cloud project (enable the API from the linked Console URL — you usually do not need to reconnect).
 
-**Calendar writes** create real events. `plugin_call` with `slug=google-calendar`, `action=write` takes the event name as `title` and the details as JSON in `body` — `{"day":5,"repeat":"monthly"}` for an all-day recurring bill, or `{"start":"2026-10-05T09:00:00","end":"2026-10-05T10:00:00"}` for a timed one. It also accepts Google's own `{"start":{"date":…}}` shape, `key: value` lines, an explicit `recurrence` RRULE, `location`, `description`, `time_zone`, and `calendar_id`. A successful write returns the **Google event link** — if you do not see one, nothing was created. An event with no usable start is refused rather than guessed at, and a malformed recurrence rule is reported instead of silently creating a one-off.
+**What each Google plugin can do.** Every one of these goes through `plugin_call` with the slug below; write details are JSON in `body` (a `key: value` header block and, for Sheets, TSV/CSV also work).
+
+| Slug | Read (`action=search`) | Write (`action=write`) | Remove |
+|---|---|---|---|
+| `gmail` | Query syntax (`in:inbox`, `is:unread`, …); empty defaults to `in:inbox` | Sends mail — `title`=subject, `body`=`{to, cc, bcc, body}` or `{html}` | — |
+| `google-calendar` | A **time window**: empty, `today`, `this week`, `2026-09-12`, `2026-09-01..2026-09-30` | Creates an event — `{"day":5,"repeat":"monthly"}` or `{"start":…,"end":…}` | `action=delete` with the `[eventId]` from a read |
+| `google-sheets` | Real cell values — pass an id, a Sheets URL, or `id!Sheet1!A1:C10` | Appends rows — `{spreadsheetId, range, values}`, or TSV/CSV | — |
+| `google-docs` | Finds documents by name | Creates a document — `title`=name, `body`=text; returns its link | — |
+| `google-drive` | Full-text file search | Uploads a file — `title`=name, `body`=contents | — |
+
+**Calendar reads are time windows, not search terms.** A query that is not a date is a full-text *title* search, so asking for `primary` or a bare date used to return "No Calendar events" on a perfectly healthy calendar. Leave the query empty for the next 30 days, or pass a day or range. Each result ends with `[eventId]` so a follow-up can delete or reference it, and naming a calendar (`{"calendarId":"Ed Griswold"}`) resolves against your calendar list — if there is no such calendar, the error lists the ones there are.
+
+**Writes fail loudly.** A calendar event with no usable start, a malformed recurrence rule, an email with no recipient or a bad address, an empty message, or a spreadsheet named in prose rather than by id are all refused with a message saying nothing was sent — rather than half-succeeding. A successful calendar write returns the **Google event link**, and a successful Docs or Drive write returns the file link; if you do not see one, nothing was created.
 
 ### 🐦 X / Twitter
 

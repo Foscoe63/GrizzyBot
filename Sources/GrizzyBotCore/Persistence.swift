@@ -128,15 +128,15 @@ public struct UserWorkspace: Codable, Sendable {
 /// Built-in plugin catalog. Connect uses Composio OAuth when a Connect key is set.
 public enum ConnectionCatalog {
     public static let defaults: [ConnectionItem] = [
-        ConnectionItem(slug: "gmail", name: "Gmail", blurb: "Read and send email", domain: "gmail.com"),
+        ConnectionItem(slug: "gmail", name: "Gmail", blurb: "Search the inbox and send mail", domain: "gmail.com"),
         ConnectionItem(slug: "slack", name: "Slack", blurb: "Post updates and read channels", domain: "slack.com"),
         ConnectionItem(slug: "github", name: "GitHub", blurb: "Issues, pull requests, and code", domain: "github.com"),
         ConnectionItem(slug: "notion", name: "Notion", blurb: "Pages and databases", domain: "notion.so"),
         ConnectionItem(slug: "linear", name: "Linear", blurb: "Issues and project tracking", domain: "linear.app"),
-        ConnectionItem(slug: "google-calendar", name: "Google Calendar", blurb: "Read and create events", domain: "calendar.google.com"),
-        ConnectionItem(slug: "google-sheets", name: "Google Sheets", blurb: "Read and update spreadsheets", domain: "sheets.google.com"),
-        ConnectionItem(slug: "google-docs", name: "Google Docs", blurb: "Read and write documents", domain: "docs.google.com"),
-        ConnectionItem(slug: "google-drive", name: "Google Drive", blurb: "Browse and manage files", domain: "drive.google.com"),
+        ConnectionItem(slug: "google-calendar", name: "Google Calendar", blurb: "List, create, and remove events", domain: "calendar.google.com"),
+        ConnectionItem(slug: "google-sheets", name: "Google Sheets", blurb: "Read cells and append rows", domain: "sheets.google.com"),
+        ConnectionItem(slug: "google-docs", name: "Google Docs", blurb: "Find documents and create new ones", domain: "docs.google.com"),
+        ConnectionItem(slug: "google-drive", name: "Google Drive", blurb: "Search files and upload new ones", domain: "drive.google.com"),
         ConnectionItem(slug: "microsoft-onedrive", name: "OneDrive", blurb: "Files on OneDrive", domain: "onedrive.live.com"),
         ConnectionItem(slug: "hubspot", name: "HubSpot", blurb: "CRM search and updates", domain: "hubspot.com"),
         ConnectionItem(slug: "salesforce", name: "Salesforce", blurb: "CRM records and reports", domain: "salesforce.com"),
