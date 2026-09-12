@@ -31,7 +31,14 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
       - name: Build app
-        run: xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot -destination 'platform=macOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
+          # mlx-swift ships a CudaBuild build-tool plugin, and the MLX
+          # tokenizer bridge is a macro. Xcode wants both trusted
+          # interactively, which cannot happen on a runner.
+        run: |
+          xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot \
+            -destination 'platform=macOS' -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            -skipMacroValidation -skipPackagePluginValidation build
       # Unit tests for the app target: overlay snapshots (pixel comparison with
       # a tolerance — see OverlaySnapshotTests) and the artifact web frame.
       #
@@ -46,6 +53,7 @@ jobs:
           xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot \
             -destination 'platform=macOS' -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
+            -skipMacroValidation -skipPackagePluginValidation \
             -skip-testing:GrizzyBotUITests test
 
       # A failing snapshot writes the render it produced; upload it so the

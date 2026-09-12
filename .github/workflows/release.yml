@@ -90,6 +90,7 @@ jobs:
             -destination 'platform=macOS' \
             CODE_SIGN_IDENTITY="Developer ID Application" \
             DEVELOPMENT_TEAM="${{ secrets.GRIZZYBOT_DEVELOPMENT_TEAM }}" \
+            -skipMacroValidation -skipPackagePluginValidation \
             build
 
       - name: Locate app bundle
