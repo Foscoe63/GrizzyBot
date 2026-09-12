@@ -124,7 +124,15 @@ struct GrizzyBotApp: App {
     @ViewBuilder
     private var windowRoot: some View {
         if UITestLaunch.isTestHost {
-            Color.clear.frame(width: 1, height: 1)
+            // Flexible, not a rigid 1x1. Pinning the content to a single point
+            // while the window wants ~1080x720 leaves NSHostingView
+            // renegotiating constraints until AppKit throws
+            // NSGenericException — which aborts the host app before a single
+            // test runs. It only surfaces where the display configuration
+            // differs from a developer's Mac, so CI saw it and no one else
+            // did. Nothing is displayed here either way; the tests host their
+            // own views.
+            Color.clear
         } else if AppDelegate.isHeadlessRoutineTick {
             Color.clear
                 .frame(width: 1, height: 1)
