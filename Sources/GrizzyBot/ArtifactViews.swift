@@ -111,18 +111,20 @@ enum ArtifactFrameError: LocalizedError {
 
 /// Cancels everything except the frame's own scheme, and hands link clicks to
 /// the real browser instead of navigating the artifact away from itself.
+@MainActor
 final class ArtifactNavigationDelegate: NSObject, WKNavigationDelegate {
     func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,
-        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        preferences: WKWebpagePreferences,
+        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
     ) {
         guard let url = navigationAction.request.url else {
-            decisionHandler(.cancel)
+            decisionHandler(.cancel, preferences)
             return
         }
         if url.scheme == ArtifactRuntime.scheme {
-            decisionHandler(.allow)
+            decisionHandler(.allow, preferences)
             return
         }
         if navigationAction.navigationType == .linkActivated,
@@ -130,7 +132,7 @@ final class ArtifactNavigationDelegate: NSObject, WKNavigationDelegate {
            scheme == "http" || scheme == "https" {
             NSWorkspace.shared.open(url)
         }
-        decisionHandler(.cancel)
+        decisionHandler(.cancel, preferences)
     }
 }
 

@@ -145,6 +145,7 @@ struct CodeEditorView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: CodeEditorView
         /// Guards against the round trip where our own programmatic update
