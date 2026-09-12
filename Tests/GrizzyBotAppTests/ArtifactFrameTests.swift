@@ -126,6 +126,80 @@ struct ArtifactFrameTests {
         }
     }
 
+    /// The bug that shipped was not logic — it was dispatch. The delegate
+    /// method's signature did not match what WebKit calls, so the runtime
+    /// never reached it and the frame fell back to WebKit's default of
+    /// allowing everything.
+    ///
+    /// Asserting the behaviour instead turned out to prove nothing: the
+    /// frame's own CSP blocks a scripted navigation whether or not the
+    /// delegate is consulted, so that test passed happily against a
+    /// deliberately broken delegate. This checks the one thing that actually
+    /// failed — that the Objective-C runtime can find the method under a
+    /// selector WebKit dispatches.
+    @Test("WebKit can dispatch to the frame's navigation delegate")
+    func navigationDelegateIsReachable() {
+        let delegate = ArtifactNavigationDelegate()
+        let withPreferences = NSSelectorFromString(
+            "webView:decidePolicyForNavigationAction:preferences:decisionHandler:"
+        )
+        let withoutPreferences = NSSelectorFromString(
+            "webView:decidePolicyForNavigationAction:decisionHandler:"
+        )
+        #expect(
+            delegate.responds(to: withPreferences) || delegate.responds(to: withoutPreferences),
+            """
+            WebKit cannot dispatch to ArtifactNavigationDelegate: it implements \
+            neither decidePolicyForNavigationAction:preferences:decisionHandler: \
+            nor decidePolicyForNavigationAction:decisionHandler:, so every \
+            navigation falls back to WebKit's default of allow and the frame is \
+            not sandboxed at all.
+            """
+        )
+    }
+
+    @Test("The delegate allows its own scheme and refuses everything else")
+    @MainActor
+    func navigationPolicyDecisions() async {
+        let delegate = ArtifactNavigationDelegate()
+        let web = WKWebView(frame: .zero)
+
+        func decision(for urlString: String) async -> WKNavigationActionPolicy {
+            await withCheckedContinuation { continuation in
+                let request = URLRequest(url: URL(string: urlString)!)
+                delegate.webView(
+                    web,
+                    decidePolicyFor: StubNavigationAction(request: request),
+                    preferences: WKWebpagePreferences()
+                ) { policy, _ in
+                    continuation.resume(returning: policy)
+                }
+            }
+        }
+
+        #expect(await decision(for: "grizzy-artifact://frame/index.html") == .allow)
+        #expect(await decision(for: "grizzy-artifact://frame/react.js") == .allow)
+        #expect(await decision(for: "https://example.com") == .cancel)
+        #expect(await decision(for: "http://127.0.0.1:9/") == .cancel)
+        #expect(await decision(for: "file:///etc/passwd") == .cancel)
+        #expect(await decision(for: "javascript:alert(1)") == .cancel)
+    }
+
+    @Test("The scheme handler serves only the frame and its runtimes")
+    func schemeHandlerRefusesUnknownPaths() throws {
+        // Anything that is not index.html or a known runtime has no business
+        // being served, however it is asked for.
+        for name in ["evil.js", "../../etc/passwd", "secrets.json", "react.js.map"] {
+            #expect(
+                ArtifactRuntime.Runtime(rawValue: (name as NSString).lastPathComponent) == nil,
+                "\(name) resolved to a servable runtime"
+            )
+        }
+        for runtime in ArtifactRuntime.Runtime.allCases {
+            #expect(ArtifactRuntime.Runtime(rawValue: runtime.rawValue) != nil)
+        }
+    }
+
     @Test("Every bundled runtime is present in the built app")
     func runtimesAreBundled() throws {
         for runtime in ArtifactRuntime.Runtime.allCases {
@@ -135,4 +209,19 @@ struct ArtifactFrameTests {
             #expect(size > 1024, "\(runtime.rawValue) is empty or truncated")
         }
     }
+}
+
+
+/// `WKNavigationAction` has no public initialiser, so the policy test supplies
+/// its own with the one property the delegate reads.
+private final class StubNavigationAction: WKNavigationAction {
+    private let stubRequest: URLRequest
+
+    init(request: URLRequest) {
+        self.stubRequest = request
+        super.init()
+    }
+
+    override var request: URLRequest { stubRequest }
+    override var navigationType: WKNavigationType { .other }
 }

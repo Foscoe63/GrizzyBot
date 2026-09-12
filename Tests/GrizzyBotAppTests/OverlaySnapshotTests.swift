@@ -128,8 +128,7 @@ struct OverlaySnapshotTests {
                 downsample: Self.downsample
             )
         } catch {
-            writeActual(png, name: name)
-            Issue.record("\(error)")
+            Issue.record("\(error)\n\(writeActual(png, name: name))")
             return
         }
 
@@ -137,14 +136,14 @@ struct OverlaySnapshotTests {
 
         // Leave the render on disk next to the golden: a percentage tells you
         // that something moved, not what, and CI has no other way to show you.
-        let actualURL = writeActual(png, name: name)
+        let saved = writeActual(png, name: name)
         Issue.record(
             """
             Snapshot \(name) differs from its golden by \
             \(String(format: "%.3f", result.differingFraction * 100))% of pixels \
             (limit \(String(format: "%.3f", Self.maxDifferingFraction * 100))%, \
             largest channel delta \(result.maxChannelDelta)).
-            Wrote the render to \(actualURL.path) — compare it against the golden.
+            \(saved)
             If the change is intended, re-record with UPDATE_SNAPSHOTS=1 (swift test) \
             or by creating Goldens/.refresh (xcodebuild, which does not forward the env var).
             """
@@ -155,17 +154,28 @@ struct OverlaySnapshotTests {
     /// path in project.yml, so a stray file there becomes a build input and
     /// the next `xcodegen generate` bakes in a reference that breaks the build
     /// the moment the file is cleaned up.
+    /// Returns where the render landed, or why it did not.
+    ///
+    /// This used to swallow both errors with `try?` and then report the path
+    /// regardless — so a CI run claimed it had saved a render when the
+    /// directory did not exist and nothing had been written. A failure
+    /// message that lies about its own evidence is worse than one that admits
+    /// it has none.
     @discardableResult
-    private func writeActual(_ png: Data, name: String) -> URL {
+    private func writeActual(_ png: Data, name: String) -> String {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // GrizzyBotAppTests
             .deletingLastPathComponent()   // Tests
             .deletingLastPathComponent()   // repo root
             .appendingPathComponent(".snapshot-failures", isDirectory: true)
-        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let url = root.appendingPathComponent("\(name).actual.png")
-        try? png.write(to: url)
-        return url
+        do {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try png.write(to: url)
+            return "Wrote the render to \(url.path) — compare it against the golden."
+        } catch {
+            return "Could not save the render to \(url.path): \(error.localizedDescription)"
+        }
     }
 }
 
