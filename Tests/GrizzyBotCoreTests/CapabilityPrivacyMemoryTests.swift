@@ -103,6 +103,123 @@ struct MemoryLeanTests {
     }
 }
 
+@Suite("Memory embeddings")
+struct MemoryEmbeddingTests {
+    private func doc(_ path: String, _ content: String) -> MemoryDocument {
+        MemoryDocument(id: path, scope: "bot", botId: "b1", path: path, content: content, revision: 1, updatedAt: .now)
+    }
+
+    @Test("cosine is 1 for identical, 0 for orthogonal and for degenerate input")
+    func cosine() {
+        let a = MemoryVector([1, 0, 0])
+        let b = MemoryVector([1, 0, 0])
+        let c = MemoryVector([0, 1, 0])
+        #expect(abs(MemoryVector.cosine(a, b) - 1) < 0.000_001)
+        #expect(abs(MemoryVector.cosine(a, c)) < 0.000_001)
+        // Degenerate: zero magnitude, mismatched length, empty.
+        #expect(MemoryVector.cosine(a, MemoryVector([0, 0, 0])) == 0)
+        #expect(MemoryVector.cosine(a, MemoryVector([1, 0])) == 0)
+        #expect(MemoryVector.cosine(MemoryVector([]), MemoryVector([])) == 0)
+    }
+
+    @Test("an unavailable embedder yields no vectors and no semantic hits")
+    func unavailableEmbedder() {
+        let embedder = MemoryEmbedder.unavailable
+        #expect(!embedder.isAvailable)
+        #expect(embedder.vector(for: "anything at all") == nil)
+
+        let hits = MemorySemanticIndex.rank(
+            documents: [doc("MEMORY.md", "the deploy pipeline signs the app")],
+            query: "deploy",
+            botId: "b1",
+            embedder: embedder
+        )
+        #expect(hits.isEmpty)
+    }
+
+    @Test("keyword retrieval still works when embeddings are unavailable")
+    func fallsBackToKeywords() {
+        let documents = [doc("MEMORY.md", "The release pipeline notarizes the app before upload.")]
+        let hits = MemoryHybridSearch.search(
+            documents: documents,
+            query: "notarizes",
+            botId: "b1",
+            embedder: .unavailable
+        )
+        #expect(!hits.isEmpty)
+        #expect(hits.contains { $0.snippet.contains("notarizes") })
+    }
+
+    @Test("the cache embeds a given text once")
+    func cacheDedupes() throws {
+        let embedder = MemoryEmbedder()
+        try #require(embedder.isAvailable)
+        #expect(embedder.cachedCount == 0)
+        _ = embedder.vector(for: "the routine failed to run this morning")
+        let afterFirst = embedder.cachedCount
+        _ = embedder.vector(for: "the routine failed to run this morning")
+        #expect(embedder.cachedCount == afterFirst)
+        _ = embedder.vector(for: "something else entirely")
+        #expect(embedder.cachedCount == afterFirst + 1)
+    }
+
+    @Test("the cache evicts oldest first rather than growing without bound")
+    func cacheEvicts() throws {
+        let embedder = MemoryEmbedder(cacheLimit: 2)
+        try #require(embedder.isAvailable)
+        _ = embedder.vector(for: "first entry about routines")
+        _ = embedder.vector(for: "second entry about artifacts")
+        _ = embedder.vector(for: "third entry about skills")
+        #expect(embedder.cachedCount == 2)
+    }
+
+    @Test("semantic retrieval surfaces a passage sharing no keyword with the query")
+    func semanticRecall() throws {
+        let embedder = MemoryEmbedder()
+        try #require(embedder.isAvailable)
+
+        // Zero token overlap — the tokenizer keeps every word of two characters
+        // or more, stopwords included, so "the" in both would have been enough
+        // for BM25 to find it and this test would prove nothing.
+        // Measured: cosine 0.481 here, against 0.132 for unrelated prose.
+        let documents = [doc("MEMORY.md", "The nightly routine silently failed to start at dawn.")]
+        let query = "scheduled job never fired"
+
+        let keyword = MemoryIndex.search(documents: documents, query: query, botId: "b1")
+        let semantic = MemorySemanticIndex.rank(
+            documents: documents,
+            query: query,
+            botId: "b1",
+            embedder: embedder
+        )
+
+        #expect(keyword.isEmpty, "this passage is meant to be invisible to BM25")
+        #expect(!semantic.isEmpty, "the semantic lane should reach it")
+
+        // And the fused search returns it, which the old salience lane could not.
+        let hybrid = MemoryHybridSearch.search(
+            documents: documents,
+            query: query,
+            botId: "b1",
+            embedder: embedder
+        )
+        #expect(!hybrid.isEmpty)
+    }
+
+    @Test("unrelated text is filtered by the similarity floor")
+    func floorRejectsNoise() throws {
+        let embedder = MemoryEmbedder()
+        try #require(embedder.isAvailable)
+        let hits = MemorySemanticIndex.rank(
+            documents: [doc("MEMORY.md", "Banana bread recipe with walnuts and cinnamon.")],
+            query: "scheduled job never fired",
+            botId: "b1",
+            embedder: embedder
+        )
+        #expect(hits.isEmpty)
+    }
+}
+
 @Suite("FolderWatcherGlob")
 struct FolderWatcherGlobTests {
     @Test("exclude and include globs")

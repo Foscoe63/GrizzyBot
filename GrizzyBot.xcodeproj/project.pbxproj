@@ -106,6 +106,7 @@
 		7B06747F29BFD784602A65CD /* BotHomeWebSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034ABF68635D68B313AA7DEA /* BotHomeWebSearchTests.swift */; };
 		7CF60431448BE1F4392DC278 /* AppSettingsOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46DAE4FA2D21D33E50DC75AC /* AppSettingsOverlayView.swift */; };
 		7D4E2F48AB9923854901A15F /* ArtifactRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = F66C8F2FDAF015D559C0EE37 /* ArtifactRuntime.swift */; };
+		7DA0B481E8EAEE9E22C11108 /* MemoryEmbedding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9400EAF466ADEFC2406D5BC5 /* MemoryEmbedding.swift */; };
 		7EED246F2CB22EF04A3149C0 /* BotTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB794C6AE198441526123B6F /* BotTemplates.swift */; };
 		806541D7903FEFC7C6A0BF0C /* DiagnosticScrubber.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D5559FC77159F1177010B8 /* DiagnosticScrubber.swift */; };
 		83679BCB66DF620E2156104F /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A8C39A00FDBD11E12B8B3518 /* Sentry */; };
@@ -400,6 +401,7 @@
 		916FFD0C6C6F1C1DB4E2F235 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		92038B47C33FBFAFC7237354 /* RightPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RightPanelView.swift; sourceTree = "<group>"; };
 		92A71407064CF2D0B90D2773 /* PluginClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginClient.swift; sourceTree = "<group>"; };
+		9400EAF466ADEFC2406D5BC5 /* MemoryEmbedding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryEmbedding.swift; sourceTree = "<group>"; };
 		952F78D26F1214CD06838DD4 /* AgentLoopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLoopTests.swift; sourceTree = "<group>"; };
 		9578D078F56BF3798A2507EE /* RoutineRescheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineRescheduleTests.swift; sourceTree = "<group>"; };
 		95CA7AD23A206B7E0DB1696D /* GrizzyThemePalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrizzyThemePalette.swift; sourceTree = "<group>"; };
@@ -784,6 +786,7 @@
 				FAAAF7AB908DE6EBB68D5394 /* McpGatewayCall.swift */,
 				D2F98EB9BD8E7B414D17F5FF /* McpToolGate.swift */,
 				54D0BC9641DCCE35A309E36E /* McpToolRouting.swift */,
+				9400EAF466ADEFC2406D5BC5 /* MemoryEmbedding.swift */,
 				5FC2BCBCCEAF080C3034CD88 /* MemoryIndex.swift */,
 				6861A66B06A6E2D79FA220E6 /* MemoryLean.swift */,
 				0DB2D2419378187A5D98A63A /* MemoryLedger.swift */,
@@ -1152,6 +1155,7 @@
 				972DF04DE576CF2FEBC3C6C0 /* McpGatewayCall.swift in Sources */,
 				42E69FF955364D66884E8322 /* McpToolGate.swift in Sources */,
 				69BCFEDA49356BA041DE8D31 /* McpToolRouting.swift in Sources */,
+				7DA0B481E8EAEE9E22C11108 /* MemoryEmbedding.swift in Sources */,
 				B5F54CF7C94AF3A43DA1DCF2 /* MemoryIndex.swift in Sources */,
 				E2B81E40625292AF3E08E2CF /* MemoryLean.swift in Sources */,
 				54A30211DE3B9E02D99E087A /* MemoryLedger.swift in Sources */,

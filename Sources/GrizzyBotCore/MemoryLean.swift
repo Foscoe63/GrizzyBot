@@ -192,24 +192,54 @@ public enum MemoryHybridSearch {
             .joined(separator: " ")
     }
 
-    /// Hybrid-ish: BM25 primary + secondary ranking by salience/overlap RRF for snippet ids.
+    /// Hybrid: BM25 and semantic retrieval as two independent lanes, fused by RRF.
+    ///
+    /// The second lane used to re-rank the BM25 hits by salience, which could
+    /// reorder results but never add one — a passage sharing no keyword with the
+    /// query stayed invisible however well it matched in meaning. It is a real
+    /// retrieval lane now: `MemorySemanticIndex` scores every chunk in scope, so
+    /// the fusion sees two genuinely different candidate lists.
+    ///
+    /// Salience remains the fallback. When no embedding is available — assets
+    /// missing, or a query that will not vectorise — the lane degrades to the
+    /// previous behaviour rather than collapsing to keyword-only.
     public static func search(
         documents: [MemoryDocument],
         query: String,
         limit: Int = 8,
-        botId: String? = nil
+        botId: String? = nil,
+        embedder: MemoryEmbedder = .shared
     ) -> [MemoryHit] {
         let textHits = MemoryIndex.search(documents: documents, query: query, limit: limit * 2, botId: botId)
-        guard !textHits.isEmpty else { return [] }
-        // Second lane: same hits re-ranked by salience of snippet (stand-in until embeddings land).
-        let salienceSorted = textHits.sorted {
-            MemorySalience.score($0.snippet) > MemorySalience.score($1.snippet)
-        }
-        let textIDs = textHits.map { "\($0.path)#\($0.snippet.prefix(48))" }
-        let vectorIDs = salienceSorted.map { "\($0.path)#\($0.snippet.prefix(48))" }
+        let semanticHits = MemorySemanticIndex.rank(
+            documents: documents,
+            query: query,
+            limit: limit * 2,
+            botId: botId,
+            embedder: embedder
+        )
+        guard !textHits.isEmpty || !semanticHits.isEmpty else { return [] }
+
+        let secondLane: [MemoryHit] = semanticHits.isEmpty
+            ? textHits.sorted { MemorySalience.score($0.snippet) > MemorySalience.score($1.snippet) }
+            : semanticHits
+
+        let textIDs = textHits.map(hitID)
+        let vectorIDs = secondLane.map(hitID)
         let fused = reciprocalRankFusion(textIDs: textIDs, vectorIDs: vectorIDs, limit: limit)
-        let byId = Dictionary(uniqueKeysWithValues: zip(textIDs, textHits))
+        // Keyword hits win a tie on identity: they carry the BM25 score callers
+        // read, and the same chunk reached from both lanes is one result.
+        var byId: [String: MemoryHit] = [:]
+        for hit in secondLane + textHits {
+            byId[hitID(hit)] = hit
+        }
         return fused.compactMap { byId[$0] }
+    }
+
+    /// Identity of a hit across lanes: the same chunk must collide so RRF adds
+    /// its two ranks instead of listing it twice.
+    static func hitID(_ hit: MemoryHit) -> String {
+        "\(hit.path)#\(hit.snippet.prefix(48))"
     }
 }
 
