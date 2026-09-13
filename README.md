@@ -576,7 +576,7 @@ flowchart LR
 
 `GrizzyBotApp.swift` is `@main`. Persistence is per-user under Application Support. Machine-level `governance.json` and `audit.json` sit at the global root. The Xcode project is generated from `project.yml`.
 
-`Sources/GrizzyBot/Resources/ArtifactRuntime` holds the vendored browser builds an artifact frame runs on (React 18.3.1, ReactDOM, Babel standalone, Mermaid 11, Tailwind 3) — bundled so the frame works with the network closed. They must reach `GrizzyBot.app/Contents/Resources/ArtifactRuntime`: the Xcode folder reference does that directly, and `make-app.sh` copies them explicitly, because SwiftPM otherwise leaves resources in its own side bundle. Adding a resource means updating `Package.swift`, `project.yml`, **and** `make-app.sh`.
+`Sources/GrizzyBot/Resources/ArtifactRuntime` holds the vendored browser builds an artifact frame runs on (React 18.3.1, ReactDOM, Babel standalone, Mermaid 11, Tailwind 3) — bundled so the frame works with the network closed. They must reach `GrizzyBot.app/Contents/Resources/ArtifactRuntime`, which the Xcode folder reference does directly. Adding a resource means updating `Package.swift` **and** `project.yml` — `make-app.sh` builds through Xcode, so it picks the change up on its own.
 
 ---
 
@@ -627,7 +627,7 @@ Live model evals are gated on `GRIZZYBOT_LIVE_EVAL=1`.
 
 1. Copy `Configs/Team.xcconfig.example` → `Configs/Team.xcconfig` (gitignored) with your team ID.
 2. Create iCloud container `iCloud.com.grizzybot.app` — see `Configs/iCloud-setup.md`.
-3. `./Scripts/make-app.sh` (or Release archive) with team config.
+3. `./Scripts/make-app.sh` with team config — it builds Release through Xcode, the same steps the release workflow runs, and verifies the bundle before it hands it back.
 4. `./Scripts/notarize.sh GrizzyBot.app` — keychain profile `GrizzyBot-notary` by default.
 5. Wrap in a DMG and upload to a GitHub release.
 
