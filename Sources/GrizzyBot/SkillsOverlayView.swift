@@ -208,6 +208,12 @@ struct SkillsOverlayView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
+            Button("Open in editor") {
+                store.openSkillInEditor(skill.id)
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 13))
+            .foregroundStyle(Theme.textGhost)
             Button("Edit") {
                 beginEdit(skill)
             }

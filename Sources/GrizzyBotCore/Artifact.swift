@@ -125,6 +125,9 @@ public struct ArtifactRecord: Codable, Sendable, Hashable, Identifiable {
     public var updatedAt: Date
     /// Working-folder path this artifact was last mirrored to, if any.
     public var mirroredPath: String?
+    /// Set when this artifact *is* a skill's SKILL.md opened for editing. Saving
+    /// such an artifact writes the skill library, so the two never drift apart.
+    public var linkedSkillId: String?
 
     public init(
         id: String,
@@ -136,7 +139,8 @@ public struct ArtifactRecord: Codable, Sendable, Hashable, Identifiable {
         botId: String? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now,
-        mirroredPath: String? = nil
+        mirroredPath: String? = nil,
+        linkedSkillId: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -148,6 +152,7 @@ public struct ArtifactRecord: Codable, Sendable, Hashable, Identifiable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.mirroredPath = mirroredPath
+        self.linkedSkillId = linkedSkillId
     }
 
     public var versionCount: Int { max(1, versions.count) }
@@ -316,6 +321,15 @@ public struct ArtifactStore: Sendable {
     public func noteMirror(id: String, path: String?) throws -> ArtifactRecord {
         guard var record = load(id: id) else { throw ArtifactError.notFound(id) }
         record.mirroredPath = path
+        return try write(record, touch: false)
+    }
+
+    /// Binds an artifact to the skill it was opened from. Like `noteMirror`,
+    /// kept out of `rewrite` so it never costs a version.
+    @discardableResult
+    public func link(id: String, skillId: String?) throws -> ArtifactRecord {
+        guard var record = load(id: id) else { throw ArtifactError.notFound(id) }
+        record.linkedSkillId = skillId
         return try write(record, touch: false)
     }
 

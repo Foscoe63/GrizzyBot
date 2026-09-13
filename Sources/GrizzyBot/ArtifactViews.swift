@@ -479,11 +479,21 @@ struct ArtifactPanelView: View {
                 cancelEdit()
             }
             Spacer()
-            Text(editingOlderVersion(record) ? "Saving makes this the newest version" : "Saves as a new version")
+            Text(saveHint(record))
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textMuted)
+                .multilineTextAlignment(.trailing)
         }
         .padding(.top, 14)
+    }
+
+    /// A skill document saves to the skill library, not just to the artifact —
+    /// worth saying on the button that does it.
+    private func saveHint(_ record: ArtifactRecord) -> String {
+        if let skillId = record.linkedSkillId {
+            return "Saves the \(skillId) skill"
+        }
+        return editingOlderVersion(record) ? "Saving makes this the newest version" : "Saves as a new version"
     }
 
     private func viewActions(_ record: ArtifactRecord) -> some View {

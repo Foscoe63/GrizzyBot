@@ -269,4 +269,90 @@ struct AbilityStoreTests {
         }
     }
 
+
+    @Test("a skill opens as an artifact and saving the document writes the skill")
+    func skillRoundTripsThroughTheArtifactEditor() throws {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "artifact@b.com", password: "password1") == nil)
+        try store.installUserSkill(
+            AgentSkill(
+                id: "tidy",
+                name: "tidy",
+                description: "Tidy a folder",
+                body: "# Tidy\n\nMove files.",
+                source: .user,
+                allowedTools: ["list_files", "move_file"],
+                keywords: ["organize", "tidy"]
+            )
+        )
+
+        let opened = try #require(store.openSkillInEditor("tidy"))
+        #expect(opened.linkedSkillId == "tidy")
+        #expect(opened.kind == .markdown)
+        // The whole file, so frontmatter is editable — not just the body.
+        #expect(opened.content.contains("description: Tidy a folder"))
+        #expect(opened.content.contains("keywords: [organize, tidy]"))
+        #expect(store.panel == .artifact)
+
+        let edited = opened.content
+            .replacingOccurrences(of: "Tidy a folder", with: "Tidy any folder")
+            .replacingOccurrences(of: "Move files.", with: "Move files carefully.")
+        let outcome = store.saveArtifactEdit(
+            id: opened.id,
+            content: edited,
+            baseVersionCount: opened.versions.count
+        )
+        #expect(outcome == .saved)
+
+        let saved = try #require(store.skills.first(where: { $0.id == "tidy" }))
+        #expect(saved.description == "Tidy any folder")
+        #expect(saved.body.contains("carefully"))
+        // Fields the three-field form has no box for survive the round trip.
+        #expect(saved.allowedTools == ["list_files", "move_file"])
+        #expect(saved.keywords == ["organize", "tidy"])
+        // And it reached disk, not just the in-memory list: reloadSkills re-reads
+        // the library folder.
+        store.reloadSkills()
+        #expect(store.skills.first(where: { $0.id == "tidy" })?.description == "Tidy any folder")
+    }
+
+    @Test("a skill document that no longer parses is refused, not saved")
+    func brokenSkillDocumentIsRefused() throws {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "broken@b.com", password: "password1") == nil)
+        try store.installUserSkill(id: "tidy", description: "Tidy a folder", body: "# Tidy")
+        let opened = try #require(store.openSkillInEditor("tidy"))
+
+        let outcome = store.saveArtifactEdit(
+            id: opened.id,
+            content: "# Tidy\n\nNo frontmatter at all.",
+            baseVersionCount: opened.versions.count
+        )
+        guard case .failed = outcome else {
+            Issue.record("expected a refusal, got \(outcome)")
+            return
+        }
+        // The library still holds the version that parsed.
+        #expect(store.skills.first(where: { $0.id == "tidy" })?.description == "Tidy a folder")
+        // And the artifact was not given a version recording content the library rejected.
+        #expect(store.artifact(id: opened.id)?.content == opened.content)
+    }
+
+    @Test("reopening a skill does not pile up artifact versions")
+    func reopeningDoesNotAddVersions() throws {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "reopen@b.com", password: "password1") == nil)
+        try store.installUserSkill(id: "tidy", description: "Tidy a folder", body: "# Tidy")
+
+        let first = try #require(store.openSkillInEditor("tidy"))
+        let again = try #require(store.openSkillInEditor("tidy"))
+        #expect(again.versions.count == first.versions.count)
+
+        // But an edit made elsewhere does reseed, so the document is never stale.
+        try store.installUserSkill(id: "tidy", description: "Tidy a folder", body: "# Tidy\n\nChanged.")
+        let reseeded = try #require(store.openSkillInEditor("tidy"))
+        #expect(reseeded.content.contains("Changed."))
+        #expect(reseeded.versions.count == first.versions.count + 1)
+    }
+
 }
