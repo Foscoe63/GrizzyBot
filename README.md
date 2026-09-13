@@ -243,6 +243,8 @@ The `type` argument also accepts Claude Desktop's media types (`application/vnd.
 
 **Panel.** ⇧⌘A, or the document icon in the chat header. Browse every artifact, step back through versions, toggle preview/source, copy, **Save as…**, or delete. **New artifact** creates one by hand. **Edit** opens a syntax-highlighted editor with line numbers, and saving appends a version — so stepping back to an older version and saving is also how you restore it. If a bot or routine wrote to the same artifact while the editor was open, the save says so rather than quietly winning; nothing is lost, because versions only ever append.
 
+**Skill documents.** A skill opened from the Skills panel is an artifact like any other, except that saving it writes the skill library rather than mirroring a file into the working folder — the `SKILL.md` is the file, and a second copy is the one people edit by mistake. See [Skills](#-skills).
+
 **Sandbox.** The frame has no network. React 18, ReactDOM, Babel, Mermaid and Tailwind are bundled into the app and served over a private URL scheme — `connect-src 'none'`, no script-message bridge back into the app, a non-persistent data store, and a navigation delegate that cancels every off-scheme load (links open in your real browser instead). A React artifact may import `react` and `react-dom`; anything else fails visibly in the frame, naming the import, rather than rendering a blank panel.
 
 **Routines.** Routines run through the same tool dispatch, so a scheduled bot can create and update artifacts unattended. A headless tick still writes and mirrors the artifact — it just does not pull a panel open with nobody watching.
@@ -331,6 +333,15 @@ Skills are `SKILL.md` playbooks. Matching skills inject into the turn; others lo
 | 🛠️ | **skill-creator** | Author a new `SKILL.md` |
 
 Import a folder of `SKILL.md` files (for example `~/.agents/skills`) with `import_skills`, or write one by hand in the sidebar's **Skills** panel → New skill.
+
+**Editing a skill.** Every row in the Skills panel offers two ways in:
+
+- **Edit** reopens the three-field form — id, description, body — with the id shown as text rather than a field, since changing it would write a second `SKILL.md` under the new name and leave the original behind.
+- **Open in editor** loads the whole file, frontmatter included, into the artifact panel: markdown preview, source view, version history with a stepper, and a save that tells you if a bot wrote to it while you were typing. This is the only route that reaches `keywords` and `allowed-tools`. The document is reseeded from the library each time it opens, so it can never shadow a `SKILL.md` changed elsewhere, and a save whose frontmatter no longer parses is refused before anything is written.
+
+Editing a bundled skill saves a user copy under the same id, which then overrides the bundled one.
+
+**Ready-made interaction steps.** The editor's **Add action** menu appends a written-out step for the built-in tools that make a skill feel alive rather than silent: ask the user a question (`clarify`), confirm before anything irreversible, show a progress checklist (`todo`), finish with a summary (`complete`), and hand the screen over for a login or captcha (`request_takeover`). The first four wrap tools every bot can call regardless of its tool settings. Snippets land at the end of the body, not at the caret.
 
 **Skills are per bot.** The bot profile has a collapsible **Skills** section listing every installed skill — bundled and imported alike — with an on/off switch each, an `on/total` count in the header, and Enable all / Disable all. A disabled skill never reaches that bot: not in its catalog, not through `read_skill`, not in its `/` menu. Templates start bots with a subset (a Researcher gets research, memory, and office-docs); the Skills panel toggles the same switches for whichever bot is selected. A skill written there is turned on for every bot, while an imported one starts off until you turn it on.
 
@@ -507,6 +518,7 @@ Fallback when nothing is promoted yet: search once → `mcp_call` with the exact
 | 📋 | **Sidebar** | Bots, rooms, routines, plugins, skills, weekly usage (Chief of Staff highlighted on the roster) |
 | 🔝 | **Chat header** | Session menu (chat export/import/transcript), task picker, search (⌘F), **monitor** (Computer panel), **artifacts** (⇧⌘A), canvas, edit |
 | 📐 | **Right panel** | Resizable computer preview + Take control / Release, routines, bot files, settings, shared canvas editor, memory; share-safe **redacted** chat export |
+| ✦ | **Skills panel** | Every skill with an on/off switch, **Edit** for the three-field form, and **Open in editor** to edit the whole `SKILL.md` as an artifact. **Add action** appends a ready-made `clarify` / `todo` / `complete` / `request_takeover` step. |
 | ✏️ | **Prose fields** | Description, Instructions, Memory, a routine's Instruction, skill bodies, and the MCP Env / Headers boxes are real multi-line editors — Return breaks the line, selection and undo behave, and the box scrolls at a fixed height rather than growing and shoving the Save button down the panel. |
 | ⚙️ | **Settings** | General (profile, shared memory, token counters, **Session** snapshots / export / iCloud backup+restore / wipe), Connections (Google Client ID/Secret + redirect URI Copy + setup guide), Computer, Voice, **Tools** (MCP first), Themes, Privacy, Watchers, Diagnostics, **Governance**, **Knowledge**, **Components** |
 | 🧬 | **Model Connect** | Cloud keys, subscriptions, local/LAN OpenAI-compatible servers, and **Local MLX** (Rescan, HF/LM Studio folders, optional Hub download) |
