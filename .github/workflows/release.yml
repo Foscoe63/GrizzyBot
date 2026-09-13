@@ -127,6 +127,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/GrizzyBot/Info.plist)"
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${{ steps.app.outputs.path }}/Contents/Info.plist")"
           gh release create "v${VERSION}" GrizzyBot.dmg --title "v${VERSION}" --notes "Signed and notarized GrizzyBot ${VERSION}" || \
             gh release upload "v${VERSION}" GrizzyBot.dmg --clobber
