@@ -15,9 +15,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.1</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>2</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>NSAccessibilityUsageDescription</key>
@@ -29,14 +29,14 @@
 	</dict>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>GrizzyBot agents can open URLs and control this Mac when a bot’s computer mode is This Mac.</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>GrizzyBot talks to local and LAN model servers (Ollama, LM Studio, vMLX, oMLX) on this network.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_http._tcp</string>
 	</array>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>GrizzyBot talks to local and LAN model servers (Ollama, LM Studio, vMLX, oMLX) on this network.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>GrizzyBot uses the microphone so you can dictate messages to a bot.</string>
 	<key>NSPrincipalClass</key>

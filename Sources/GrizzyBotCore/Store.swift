@@ -4060,17 +4060,27 @@ public final class AppStore {
     }
 
     public func installUserSkill(id: String, description: String, body: String) throws {
-        let skill = AgentSkill(
-            id: SkillMarkdown.slug(id),
-            name: id,
-            description: description,
-            body: body,
-            source: .user
+        try installUserSkill(
+            AgentSkill(
+                id: SkillMarkdown.slug(id),
+                name: id,
+                description: description,
+                body: body,
+                source: .user
+            )
         )
-        try SkillLibrary.saveUserSkill(skill, root: userPersistence.root)
+    }
+
+    /// Whole-skill install, so a SKILL.md edited as a document keeps the fields
+    /// the three-field form has no box for — `keywords` and `allowed-tools`.
+    public func installUserSkill(_ skill: AgentSkill) throws {
+        var stored = skill
+        stored.id = SkillMarkdown.slug(skill.id)
+        stored.source = .user
+        try SkillLibrary.saveUserSkill(stored, root: userPersistence.root)
         reloadSkills()
-        for i in bots.indices where !bots[i].enabledSkills.contains(skill.id) {
-            bots[i].enabledSkills.append(skill.id)
+        for i in bots.indices where !bots[i].enabledSkills.contains(stored.id) {
+            bots[i].enabledSkills.append(stored.id)
         }
         save()
     }
@@ -4194,6 +4204,57 @@ public final class AppStore {
         artifactRevision += 1
     }
 
+    /// Artifact id a skill is edited under. Namespaced so a skill's document
+    /// cannot collide with an artifact a bot made for something else.
+    public static func skillArtifactId(_ skillId: String) -> String {
+        ArtifactStore.slug("skill-\(skillId)")
+    }
+
+    /// Opens a skill's SKILL.md in the artifact panel — the full file, frontmatter
+    /// included, so description, keywords, and allowed-tools are editable too.
+    ///
+    /// The artifact is reseeded from the library every time it is opened. The
+    /// SKILL.md on disk is the original; a stale document that quietly shadowed it
+    /// would be the worst kind of bug here, because you would be editing a copy of
+    /// something you had already changed elsewhere.
+    @discardableResult
+    public func openSkillInEditor(_ skillId: String) -> ArtifactRecord? {
+        guard let skill = skills.first(where: { $0.id == skillId }) else { return nil }
+        let id = Self.skillArtifactId(skill.id)
+        let content = SkillMarkdown.render(skill)
+
+        var record: ArtifactRecord?
+        if let existing = artifactStore.load(id: id) {
+            // `rewrite` always appends a version, so reseeding an unchanged
+            // document would add one on every open.
+            record = existing.content == content
+                ? existing
+                : try? artifactStore.rewrite(id: id, content: content, title: nil)
+        } else {
+            record = try? artifactStore.create(
+                id: id,
+                title: "Skill: \(skill.id)",
+                kind: .markdown,
+                language: nil,
+                content: content,
+                botId: activeBotId
+            )
+        }
+        guard var saved = record else { return nil }
+
+        if saved.linkedSkillId != skill.id {
+            saved = (try? artifactStore.link(id: id, skillId: skill.id)) ?? saved
+        }
+
+        skillsOpen = false
+        reloadArtifacts()
+        activeArtifactId = saved.id
+        artifactVersionIndex = nil
+        artifactRevision += 1
+        openPanel(.artifact)
+        return saved
+    }
+
     /// Creates an artifact by hand from the panel. Bots reach the same store
     /// through `artifact_create`; this exists so an artifact is not something
     /// only a bot can start.
@@ -4248,6 +4309,19 @@ public final class AppStore {
         guard content != current.content else { return .unchanged }
 
         let arrived = max(0, current.versions.count - baseVersionCount)
+
+        // A skill document is refused before it is saved, not after. Storing a
+        // version the library rejected would leave the panel showing a skill the
+        // bots cannot see.
+        var editedSkill: AgentSkill?
+        if let skillId = current.linkedSkillId {
+            do {
+                editedSkill = try SkillMarkdown.parse(content, fallbackId: skillId, source: .user)
+            } catch {
+                return .failed(error.localizedDescription)
+            }
+        }
+
         let saved: ArtifactRecord
         do {
             saved = try artifactStore.rewrite(id: id, content: content, title: nil)
@@ -4255,7 +4329,16 @@ public final class AppStore {
             return .failed(error.localizedDescription)
         }
 
-        if let bot = activeBot {
+        if let editedSkill {
+            do {
+                try installUserSkill(editedSkill)
+            } catch {
+                return .failed(error.localizedDescription)
+            }
+        } else if let bot = activeBot {
+            // Skill documents are not mirrored: the SKILL.md in the library is
+            // the file, and a second copy in the working folder would be the one
+            // people edit by mistake.
             _ = mirrorArtifact(
                 saved,
                 botId: bot.id,
