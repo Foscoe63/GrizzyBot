@@ -43,7 +43,7 @@ public enum ActionGateway {
              "mcp_list_tools", "read_skill", "plugin_call_read":
             return .read
         case "shell", "shell.exec", "remember", "forget", "import_skills",
-             "plugin_call", "spawn_bot", "delete_bot":
+             "plugin_call", "spawn_bot", "message_bot", "delete_bot":
             return .writeFile
         case "mcp_call":
             return mcpEffect == .read ? .readTool : .writeTool

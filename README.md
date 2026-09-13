@@ -152,7 +152,7 @@ Create from a template or from scratch.
 | 💻 | **Coder** | Read, edit, and run code in the bot home |
 | 🕹️ | **Operator** | Drive the in-app browser or this Mac |
 
-Each bot has a **name**, **title**, description, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), a private **home** folder, and an optional **working folder**. Toggles cover auto-approve, speak replies, notifications, and **Chief of Staff** (roster badge / highlight; that bot cannot be hidden or deleted — it does **not** change the agent loop or auto-delegate work). Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation.
+Each bot has a **name**, **title**, description, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), a private **home** folder, and an optional **working folder**. Toggles cover auto-approve, speak replies, notifications, and **Chief of Staff** (roster badge / highlight; that bot cannot be hidden or deleted). Every bot's prompt lists the other bots on this Mac and their roles, and the Chief of Staff is additionally told it owns coordination across them — it still does **not** auto-delegate; it delegates only when it decides to call `message_bot`. Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation.
 
 <details>
 <summary><strong>📁 Home vs working folder</strong></summary>
@@ -214,7 +214,7 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 🖥️ | **Computer** | `computer_open`, `computer_screenshot`, `computer_click`, `computer_scroll`, `computer_type`, `computer_key`, `request_takeover`. |
 | 🖼️ | **Canvas** | `canvas_list`, `canvas_open`, `canvas_save`, `canvas_delete`, `canvas_place_image` — shared boards on this Mac (not the bot home). `canvas_open` after a screenshot places the last capture. |
 | 🧩 | **Artifacts** | `artifact_create`, `artifact_update`, `artifact_rewrite`, `artifact_list`, `artifact_read`, `artifact_delete` — shared on this Mac, versioned, and mirrored into the working folder as files. See [Artifacts](#-artifacts). |
-| 👥 | **Team** | `spawn_bot`, `delete_bot`, `run_subagent`. |
+| 👥 | **Team** | `spawn_bot`, `message_bot`, `delete_bot`, `run_subagent`. Every bot's system prompt carries the **roster** — the other bots on this Mac, their roles, and which ones it created — so `message_bot` can hand a job to an existing bot instead of spawning a near-copy. It **waits** for that bot by default (120s) and folds the answer into its own reply; if the peer stops for an approval, fails, or is still going at the cap, the caller is told exactly that and the work carries on in the peer's thread. `wait:false` dispatches without holding the turn open. The chief of staff is told it owns coordination. |
 | 🃏 | **UI** | `present_component` (form, gallery, activity, refusals, or a published card), `report_decline`. |
 | ♾️ | **Loop** | `capabilities_discover`, `capabilities_load`, `todo`, `complete`, `clarify`. |
 | 🧩 | **MCP** | First-class `server-slug__tool` names plus `mcp_list_tools` / `mcp_call` — see [Plugins, MCP & destinations](#-plugins-mcp--destinations). |
@@ -330,7 +330,9 @@ Skills are `SKILL.md` playbooks. Matching skills inject into the turn; others lo
 | 🧠 | **memory** | Pin, remember, forget |
 | 🛠️ | **skill-creator** | Author a new `SKILL.md` |
 
-Import a folder of `SKILL.md` files (for example `~/.agents/skills`) with `import_skills` or Settings → Skills.
+Import a folder of `SKILL.md` files (for example `~/.agents/skills`) with `import_skills`, or write one by hand in the sidebar's **Skills** panel → New skill.
+
+**Skills are per bot.** The bot profile has a collapsible **Skills** section listing every installed skill — bundled and imported alike — with an on/off switch each, an `on/total` count in the header, and Enable all / Disable all. A disabled skill never reaches that bot: not in its catalog, not through `read_skill`, not in its `/` menu. Templates start bots with a subset (a Researcher gets research, memory, and office-docs); the Skills panel toggles the same switches for whichever bot is selected. A skill written there is turned on for every bot, while an imported one starts off until you turn it on.
 
 ---
 
@@ -372,9 +374,13 @@ Loop helpers: `todo` / `complete` / `clarify`. Optional per-bot **working folder
 Cron jobs that send a prompt to a bot.
 
 - Scheduler while the app is open (cap two concurrent routine runs).
-- **Background routines** (signed Release): a LaunchAgent helper wakes the app with `-grizzybot-tick-routines`. If GrizzyBot is already open, the helper pings it and exits. Headless ticks wait up to 15 minutes for runs to finish.
+- **Background routines** (signed Release): a LaunchAgent helper wakes the app with `-grizzybot-tick-routines`. If GrizzyBot is already open, the helper pings it and exits. A headless tick stays alive until the run finishes; a run that parks waiting for an approval nobody is there to give is abandoned after a few minutes.
 - Menu bar lists upcoming routines and runs a specific one, not “whatever is first.”
 - Due routines with no model skip honestly and still advance `nextRunAt`.
+
+**Schedule.** All five cron fields are honored — minute, hour, day-of-month, month, day-of-week — so *Weekdays* skips the weekend and *Every month* waits for the 1st. When both day fields are restricted, a day matching either one qualifies, the way cron does. Clock times are read in the routine's own zone, which is this Mac's unless one is set: the picker says 7:00 AM and the routine runs at 7:00 AM.
+
+**When a run does not succeed.** A failed scheduled run retries on a backoff — 15m, 30m, 1h — and after three tries stops and waits for its next scheduled slot rather than hammering a broken tool all day. Stopping a run is a decision, not a fault: a cancelled run goes straight back to its normal slot with no retry. **Run now** never rewrites the schedule — a hand-run that fails queues nothing, and one that succeeds clears a retry the scheduler was already holding. A finished run never leaves `nextRunAt` in the past, so nothing re-fires seconds later.
 
 ---
 

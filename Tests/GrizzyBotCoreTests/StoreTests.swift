@@ -133,6 +133,157 @@ struct StoreTests {
         #expect(!(store.threads[bot.id]?.llmMessages.isEmpty ?? true))
     }
 
+    /// Chief + peer share one completer, and a waiting `message_bot` blocks the
+    /// chief's loop while the peer runs — so the queue is consumed in a fixed
+    /// order: chief's tool call, the peer's whole turn, then the chief's reply.
+    private func rosterStore(email: String) -> (AppStore, Bot, Bot) {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: email, password: "password1") == nil)
+        let chief = store.createBot(name: "GrizzyBot", title: "Orchestrator")
+        store.setChiefOfStaff(chief.id, enabled: true)
+        let researcher = store.createBot(name: "Researcher", title: "Research & briefs")
+        return (store, chief, researcher)
+    }
+
+    private func childBotStatus(in messages: [ThreadMessage], botId: String) -> ChildBotStatus? {
+        for message in messages {
+            for block in message.blocks {
+                if case .childBot(let id, _, _, let status) = block, id == botId { return status }
+            }
+        }
+        return nil
+    }
+
+    private func messageBotCall(_ arguments: String) -> ChatCompletionResponse {
+        ChatCompletionResponse(toolCalls: [LLMToolCall(id: "1", name: "message_bot", arguments: arguments)])
+    }
+
+    @Test("a waiting message_bot brings the peer's answer back into this turn")
+    func messageBotWaitsForTheAnswer() async {
+        let (store, chief, researcher) = rosterStore(email: "roster@b.com")
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"researcher\",\"task\":\"Brief me on the filing\"}"),
+            ChatCompletionResponse(text: "The filing closes on the 30th."),
+            ChatCompletionResponse(text: "Researcher says the filing closes on the 30th."),
+        ])
+        store.send(botId: chief.id, text: "get me a brief")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+
+        // The task ran in the peer's own thread…
+        #expect(store.messages(for: researcher.id).contains {
+            $0.role == .user && $0.firstText.contains("Brief me on the filing")
+        })
+        // …and its answer came back to the chief as the tool result, so the
+        // chief could answer instead of pointing at another thread.
+        let toolResults = (store.threads[chief.id]?.llmMessages ?? []).filter { $0.role == "tool" }
+        #expect(toolResults.contains { ($0.content ?? "").contains("The filing closes on the 30th.") })
+        #expect(childBotStatus(in: store.messages(for: chief.id), botId: researcher.id) == .answered)
+        #expect(store.activeBotId == chief.id)
+        #expect(store.bots.filter { $0.name == "Researcher" }.count == 1)
+    }
+
+    @Test("wait:false dispatches without holding the turn open")
+    func messageBotDispatches() async {
+        let (store, chief, researcher) = rosterStore(email: "roster-async@b.com")
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"Researcher\",\"task\":\"Run the morning brief\",\"wait\":false}"),
+            ChatCompletionResponse(text: "Researcher is on it."),
+            ChatCompletionResponse(text: "Brief done."),
+        ])
+        store.send(botId: chief.id, text: "kick off the brief")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        let toolResults = (store.threads[chief.id]?.llmMessages ?? []).filter { $0.role == "tool" }
+        #expect(toolResults.contains { ($0.content ?? "").contains("its own thread") })
+        #expect(childBotStatus(in: store.messages(for: chief.id), botId: researcher.id) == .messaged)
+        #expect(await store.waitForRunCompletion(botId: researcher.id))
+    }
+
+    @Test("a peer that stops for approval reports back as needing the user")
+    func messageBotPeerPausesForApproval() async {
+        let (store, chief, researcher) = rosterStore(email: "roster-gate@b.com")
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"Researcher\",\"task\":\"Check the disk\"}"),
+            ChatCompletionResponse(toolCalls: [LLMToolCall(id: "2", name: "shell", arguments: "{\"command\":\"echo hi\"}")]),
+            ChatCompletionResponse(text: "Researcher needs your approval."),
+        ])
+        store.send(botId: chief.id, text: "ask Researcher to check the disk")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        #expect(store.threads[researcher.id]?.run?.status == .waitingInput)
+        let toolResults = (store.threads[chief.id]?.llmMessages ?? []).filter { $0.role == "tool" }
+        #expect(toolResults.contains {
+            let text = $0.content ?? ""
+            return text.contains("needs the user") && text.contains("shell")
+        })
+        // Not reported as answered — the chief must not claim the job is done.
+        #expect(childBotStatus(in: store.messages(for: chief.id), botId: researcher.id) == .messaged)
+    }
+
+    @Test("a slow peer times out into the dispatch answer instead of hanging the turn")
+    func messageBotTimesOutIntoDispatch() async {
+        let (store, chief, researcher) = rosterStore(email: "roster-slow@b.com")
+        let client = GatedChatClient(
+            gating: "Researcher",
+            queue: [
+                messageBotCall("{\"name\":\"Researcher\",\"task\":\"Read every filing\"}"),
+                ChatCompletionResponse(text: "Took a while, but here it is."),
+                ChatCompletionResponse(text: "Researcher is still reading."),
+            ]
+        )
+        store.chatCompleter = client
+        store.peerReplyTimeout = 0.05
+        store.send(botId: chief.id, text: "ask Researcher for everything")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+
+        // The chief got its turn back while the peer was still going — the peer
+        // cannot have finished, because only the release below lets it.
+        #expect(store.threads[researcher.id]?.run?.status.isActive == true)
+        let toolResults = (store.threads[chief.id]?.llmMessages ?? []).filter { $0.role == "tool" }
+        #expect(toolResults.contains { ($0.content ?? "").contains("still working") })
+        #expect(childBotStatus(in: store.messages(for: chief.id), botId: researcher.id) == .messaged)
+
+        client.release()
+        #expect(await store.waitForRunCompletion(botId: researcher.id))
+    }
+
+    @Test("message_bot refuses an unknown name and lists the real ones")
+    func messageBotUnknown() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "roster2@b.com", password: "password1") == nil)
+        let chief = store.createBot(name: "GrizzyBot", title: "Orchestrator")
+        _ = store.createBot(name: "Researcher", title: "Research & briefs")
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(
+                toolCalls: [
+                    LLMToolCall(
+                        id: "1",
+                        name: "message_bot",
+                        arguments: "{\"name\":\"Analyst\",\"task\":\"do a thing\"}"
+                    ),
+                ]
+            ),
+            ChatCompletionResponse(text: "No such bot."),
+        ])
+        store.send(botId: chief.id, text: "ask the analyst")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        let tools = store.threads[chief.id]?.llmMessages.filter { $0.role == "tool" } ?? []
+        #expect(tools.contains {
+            let text = $0.content ?? ""
+            return text.contains("No bot named Analyst") && text.contains("Researcher")
+        })
+    }
+
+    @Test("the roster the prompt sees skips this bot and hidden bots")
+    func rosterEntriesSkipSelfAndHidden() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "roster3@b.com", password: "password1") == nil)
+        let chief = store.createBot(name: "GrizzyBot", title: "Orchestrator")
+        _ = store.createBot(name: "Researcher", title: "Research & briefs")
+        let hidden = store.createBot(name: "Ghost", title: "Hidden")
+        store.setBotHidden(hidden.id, hidden: true)
+        let entries = store.rosterEntries(for: store.bots.first { $0.id == chief.id }!)
+        #expect(entries.map(\.name) == ["Researcher"])
+    }
+
     @Test("stopRun cancels")
     func stopRun() async {
         let store = tempStore()
@@ -154,12 +305,37 @@ struct StoreTests {
             prompt: "say hi",
             cron: "0 9 * * *"
         )
+        store.chatCompleter = QueueChatClient([])
         store.runNow(botId: bot.id)
         #expect(await store.waitForRunCompletion(botId: bot.id, timeout: 5))
         let msgs = store.messages(for: bot.id)
+        // "fired", not just the name: the no-model skip path also names the routine,
+        // so matching on "Morning" alone passes whether or not it actually ran.
         #expect(msgs.contains(where: { msg in
-            msg.blocks.contains { if case .meta(let t) = $0 { return t.contains("Morning") }; return false }
+            msg.blocks.contains { if case .meta(let t) = $0 { return t.contains("Morning") && t.contains("fired") }; return false }
         }))
+    }
+
+    @Test("stopping a routine run does not queue a retry")
+    func stoppedRoutineDoesNotRetry() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "stoproutine@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Agent", title: "helper")
+        _ = store.createRoutine(botId: bot.id, name: "Morning", prompt: "say hi", cron: "0 9 * * *")
+        store.chatCompleter = QueueChatClient([]) // without a model the routine is skipped, not run
+
+        // Both calls stay on this actor, so the run task cannot start in between:
+        // the routine is cancelled in flight, exactly like pressing Stop.
+        store.runNow(botId: bot.id)
+        #expect(store.threads[bot.id]?.run?.trigger == RoutineTrigger.manual)
+        store.stopRun(botId: bot.id)
+
+        let saved = store.routines[bot.id]?.first
+        #expect(saved?.inProgress == false)
+        #expect(saved?.lastError == "cancelled")
+        // Neither the ladder nor an overdue slot: no second run 15 minutes later.
+        #expect(saved?.failCount == 0)
+        #expect((saved?.nextRunAt ?? .distantPast) > .now)
     }
 
     @Test("computer boot takeControl release")

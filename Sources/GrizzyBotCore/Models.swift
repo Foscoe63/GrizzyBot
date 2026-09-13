@@ -203,6 +203,10 @@ public enum SubagentStatus: String, Codable, Sendable {
 
 public enum ChildBotStatus: String, Codable, Sendable {
     case created
+    /// Handed a task that is still running in that bot's own thread.
+    case messaged
+    /// Handed a task and answered before this turn ended.
+    case answered
     case deleted
 }
 
@@ -337,6 +341,18 @@ public enum RunStatus: String, Codable, Sendable {
         case .queued, .leased, .running: return true
         default: return false
         }
+    }
+}
+
+/// `Run.trigger` values that mean "a routine fired this".
+public enum RoutineTrigger {
+    /// The scheduler fired it because the routine came due.
+    public static let scheduled = "routine"
+    /// The user pressed Run now. Its outcome must not rewrite the schedule.
+    public static let manual = "routine-manual"
+
+    public static func isRoutine(_ trigger: String) -> Bool {
+        trigger == scheduled || trigger == manual
     }
 }
 
@@ -508,7 +524,8 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
         name: String,
         prompt: String,
         cron: String,
-        timezone: String = "UTC",
+        /// Empty means this Mac's zone — see the decoder.
+        timezone: String = "",
         active: Bool = true,
         notify: Bool = true,
         lastRunAt: Date? = nil,
@@ -546,7 +563,12 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
         name = try c.decode(String.self, forKey: .name)
         prompt = try c.decodeIfPresent(String.self, forKey: .prompt) ?? ""
         cron = try c.decode(String.self, forKey: .cron)
-        timezone = try c.decodeIfPresent(String.self, forKey: .timezone) ?? "UTC"
+        // Every stored routine says "UTC" because nothing ever applied the field:
+        // cron times have always been read in this Mac's zone, which is also what
+        // the time picker shows. Treat that literal as unset so honoring the field
+        // in Cron.nextDate does not shift anyone's morning routine by their offset.
+        let storedZone = try c.decodeIfPresent(String.self, forKey: .timezone) ?? ""
+        timezone = storedZone == "UTC" ? "" : storedZone
         active = try c.decodeIfPresent(Bool.self, forKey: .active) ?? true
         notify = try c.decodeIfPresent(Bool.self, forKey: .notify) ?? true
         lastRunAt = try c.decodeIfPresent(Date.self, forKey: .lastRunAt)

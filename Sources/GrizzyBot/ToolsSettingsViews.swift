@@ -20,7 +20,7 @@ enum AgentToolGroup: String, CaseIterable, Identifiable {
         case .canvas: return "Canvas"
         case .artifacts: return "Artifacts"
         case .bots: return "Bots & plugins"
-        case .skills: return "Skills"
+        case .skills: return "Skill tools"
         case .loop: return "Agent loop"
         case .custom: return "Custom"
         }
@@ -48,7 +48,7 @@ enum AgentToolGroup: String, CaseIterable, Identifiable {
             ]
         case .bots:
             [
-                "spawn_bot", "delete_bot", "run_subagent", "destination_write",
+                "spawn_bot", "message_bot", "delete_bot", "run_subagent", "destination_write",
                 "plugin_call", "present_component", "report_decline",
             ]
         case .skills:

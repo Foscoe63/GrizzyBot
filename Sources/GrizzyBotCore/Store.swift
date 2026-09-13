@@ -205,6 +205,9 @@ public final class AppStore {
 
     /// Shorter delays in tests so `swift test` stays fast.
     public var delayScale: Double = 1.0
+    /// How long a waiting `message_bot` gives a peer before handing the turn
+    /// back with "still working". Tests lower it to exercise that path.
+    public var peerReplyTimeout: TimeInterval = 120
     /// Watcher runs pin file tools to the watch path until the run goes idle.
     private var runWorkingFolderOverride: [String: String] = [:]
     /// Bot currently executing a watcher-triggered run (for echo suppression).
@@ -1367,7 +1370,9 @@ public final class AppStore {
                 charBudget: AgentLoopRequest.charBudget(provider: provider),
                 computerNote: computerNote,
                 workingFolderNote: workingFolderNote,
-                stallMs: stallMs
+                stallMs: stallMs,
+                roster: rosterEntries(for: bot),
+                isChiefOfStaff: bot.chiefOfStaff
             )
             let execute: @Sendable (String, String) async -> AgentToolCallResult = { [weak self] name, arguments in
                 guard let self else {
@@ -2772,6 +2777,83 @@ public final class AppStore {
                 blocks: [.childBot(botId: child.id, name: child.name, title: child.title, status: .created)]
             )
 
+        case "message_bot":
+            let task = s("task", "prompt", "message")
+            let targetId = s("bot_id", "id")
+            let targetName = s("name", "bot")
+            guard !task.isEmpty else { return AgentToolCallResult(output: "task is required") }
+            if depth > 0 {
+                return AgentToolCallResult(output: "Helpers cannot hand work to other bots. Do it yourself or report back.")
+            }
+            let peer: Bot? = {
+                if !targetId.isEmpty {
+                    return bots.first(where: { $0.id == targetId })
+                }
+                return bots.first(where: { $0.name.caseInsensitiveCompare(targetName) == .orderedSame })
+            }()
+            guard let peer else {
+                let known = bots.filter { $0.id != botId && !$0.hidden }.map(\.name).joined(separator: ", ")
+                return AgentToolCallResult(
+                    output: known.isEmpty
+                        ? "No other bots exist yet. Use spawn_bot to create one."
+                        : "No bot named \(targetName.isEmpty ? targetId : targetName). Bots: \(known)."
+                )
+            }
+            if peer.id == botId {
+                return AgentToolCallResult(output: "That is you. Do the work yourself.")
+            }
+            let peerKey = threadKey(for: peer.id)
+            if threads[peerKey]?.run?.status == .running {
+                return AgentToolCallResult(
+                    output: "\(peer.name) is already working on something. Wait for it to finish before handing it more."
+                )
+            }
+            // Default to waiting: the user asked *this* bot, so "go read the other
+            // thread" is a non-answer. `wait: false` stays for long background jobs.
+            let wait = s("wait").lowercased() != "false"
+            send(botId: peer.id, text: task)
+            activeBotId = botId
+
+            func dispatched(_ note: String) -> AgentToolCallResult {
+                AgentToolCallResult(
+                    output: note,
+                    blocks: [.childBot(botId: peer.id, name: peer.name, title: peer.title, status: .messaged)]
+                )
+            }
+
+            guard wait else {
+                return dispatched(
+                    "Asked \(peer.name) to: \(task.prefix(200)). It works in its own thread — its answer lands there, not here."
+                )
+            }
+
+            let settled = await awaitPeerReply(threadKey: peerKey)
+            switch settled {
+            case .completed:
+                let reply = threads[peerKey]?.messages.last(where: { $0.role == .bot })?.firstText ?? ""
+                guard !reply.isEmpty else {
+                    return dispatched("\(peer.name) finished but said nothing. Its thread has the detail.")
+                }
+                return AgentToolCallResult(
+                    output: "\(peer.name) answered:\n\n\(reply)",
+                    blocks: [.childBot(botId: peer.id, name: peer.name, title: peer.title, status: .answered)]
+                )
+            case .waitingInput, .waitingTakeover:
+                let pending = threads[peerKey]?.pendingTool
+                let what = pending.map { " on \($0.tool)\($0.detail.isEmpty ? "" : " (\($0.detail))")" } ?? ""
+                return dispatched(
+                    "\(peer.name) stopped and needs the user\(what). Tell them to answer it in \(peer.name)'s thread — do not claim the task is done."
+                )
+            case .failed, .cancelled:
+                let why = threads[peerKey]?.run?.error ?? "no reason recorded"
+                return dispatched("\(peer.name) did not finish: \(why). Its thread has the detail.")
+            case .queued, .leased, .running, .none:
+                // Still going. This is the fire-and-forget outcome, reached honestly.
+                return dispatched(
+                    "\(peer.name) is still working after \(Int(peerReplyTimeout))s. Its answer will land in its own thread — say so rather than waiting or guessing at it."
+                )
+            }
+
         case "delete_bot":
             let confirm = s("confirm_name", "name")
             let targetId = s("bot_id", "id")
@@ -3752,32 +3834,25 @@ public final class AppStore {
         status: RunStatus?,
         error: String?
     ) {
-        guard let run = threads[threadKey]?.run, run.trigger == "routine",
+        guard let run = threads[threadKey]?.run, RoutineTrigger.isRoutine(run.trigger),
               let routineId = run.routineId,
-              let idx = routines[botId]?.firstIndex(where: { $0.id == routineId })
+              let idx = routines[botId]?.firstIndex(where: { $0.id == routineId }),
+              let routine = routines[botId]?[idx]
         else { return }
-        let cron = routines[botId]?[idx].cron ?? ""
-        switch status {
-        case .waitingInput, .waitingTakeover:
-            routines[botId]?[idx].inProgress = false
-            routines[botId]?[idx].nextRunAt = Cron.nextDate(cron, from: .now)
-            save()
-        case .completed:
-            routines[botId]?[idx].inProgress = false
-            routines[botId]?[idx].failCount = 0
-            routines[botId]?[idx].lastError = nil
-            routines[botId]?[idx].nextRunAt = Cron.nextDate(cron, from: .now)
-            save()
-        case .failed, .cancelled:
-            let fails = (routines[botId]?[idx].failCount ?? 0) + 1
-            routines[botId]?[idx].inProgress = false
-            routines[botId]?[idx].failCount = fails
-            routines[botId]?[idx].lastError = error
-            routines[botId]?[idx].nextRunAt = Cron.backoffDate(failCount: fails, from: .now)
-            save()
-        case .running, .queued, .leased, .none:
-            break
+        guard let status, status != .running, status != .queued, status != .leased else {
+            return // still in flight; leave inProgress set
         }
+        let plan = RoutineTickPolicy.reschedule(
+            routine,
+            status: status,
+            manual: run.trigger == RoutineTrigger.manual,
+            error: error
+        )
+        routines[botId]?[idx].inProgress = false
+        routines[botId]?[idx].nextRunAt = plan.nextRunAt
+        routines[botId]?[idx].failCount = plan.failCount
+        routines[botId]?[idx].lastError = plan.lastError
+        save()
     }
 
     public func stopRun(botId: String) {
@@ -3966,10 +4041,22 @@ public final class AppStore {
     }
 
     public func setBotSkill(_ botId: String, skillId: String, enabled: Bool) {
+        setBotSkills(botId, skillIds: [skillId], enabled: enabled)
+    }
+
+    /// Bulk form for the profile's Enable all / Disable all.
+    public func setBotSkills(_ botId: String, skillIds: [String], enabled: Bool) {
         guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
-        bots[idx].setSkill(skillId, enabled: enabled)
+        for id in skillIds {
+            bots[idx].setSkill(id, enabled: enabled)
+        }
         bots[idx].updatedAt = .now
         save()
+    }
+
+    /// Every skill in the library, whether or not this bot has it on.
+    public func setAllBotSkills(_ botId: String, enabled: Bool) {
+        setBotSkills(botId, skillIds: skills.map(\.id), enabled: enabled)
     }
 
     public func installUserSkill(id: String, description: String, body: String) throws {
@@ -4502,7 +4589,7 @@ public final class AppStore {
         name: String,
         prompt: String,
         cron: String,
-        timezone: String = "UTC",
+        timezone: String = "",
         active: Bool = true,
         notify: Bool = true
     ) -> Routine {
@@ -4521,7 +4608,7 @@ public final class AppStore {
                 updated.timezone = timezone
                 updated.active = active
                 updated.notify = notify
-                updated.nextRunAt = Cron.nextDate(cron, from: .now)
+                updated.nextRunAt = Cron.nextDate(cron, from: .now, timezone: timezone)
                 updated.botId = targetBotId
 
                 if ownerId == targetBotId {
@@ -4550,7 +4637,7 @@ public final class AppStore {
             timezone: timezone,
             active: active,
             notify: notify,
-            nextRunAt: Cron.nextDate(cron, from: .now)
+            nextRunAt: Cron.nextDate(cron, from: .now, timezone: timezone)
         )
         var list = routines[targetBotId] ?? []
         list.append(routine)
@@ -4623,7 +4710,7 @@ public final class AppStore {
     public func runRoutine(_ routineId: String) {
         guard let botId = routines.first(where: { $0.value.contains(where: { $0.id == routineId }) })?.key,
               let routine = routines[botId]?.first(where: { $0.id == routineId }) else { return }
-        fireRoutine(botId: botId, routine: routine)
+        fireRoutine(botId: botId, routine: routine, manual: true)
     }
 
     public func runNow(botId: String) {
@@ -4636,10 +4723,10 @@ public final class AppStore {
             openNewRoutine()
             return
         }
-        fireRoutine(botId: botId, routine: routine)
+        fireRoutine(botId: botId, routine: routine, manual: true)
     }
 
-    private func fireRoutine(botId: String, routine: Routine) {
+    private func fireRoutine(botId: String, routine: Routine, manual: Bool = false) {
         if !headlessRoutineTick {
             selectBot(botId)
             showChat()
@@ -4648,13 +4735,19 @@ public final class AppStore {
         guard var thread = threads[key] ?? threads[botId] else {
             threads[botId] = ThreadData(threadId: bots.first(where: { $0.id == botId })?.threadId ?? Ids.new())
             guard var created = threads[botId] else { return }
-            appendRoutineRun(botId: botId, routine: routine, thread: &created, threadKey: botId)
+            appendRoutineRun(botId: botId, routine: routine, thread: &created, threadKey: botId, manual: manual)
             return
         }
-        appendRoutineRun(botId: botId, routine: routine, thread: &thread, threadKey: key)
+        appendRoutineRun(botId: botId, routine: routine, thread: &thread, threadKey: key, manual: manual)
     }
 
-    private func appendRoutineRun(botId: String, routine: Routine, thread: inout ThreadData, threadKey: String) {
+    private func appendRoutineRun(
+        botId: String,
+        routine: Routine,
+        thread: inout ThreadData,
+        threadKey: String,
+        manual: Bool
+    ) {
         let bot = bots.first(where: { $0.id == botId })
         if let bot, let reason = RoutineTickPolicy.skipReason(canRunLLM: canRunLLM(for: bot)) {
             let meta = ThreadMessage(
@@ -4669,7 +4762,11 @@ public final class AppStore {
             threads[threadKey] = thread
             if let idx = routines[botId]?.firstIndex(where: { $0.id == routine.id }) {
                 routines[botId]?[idx].lastRunAt = .now
-                routines[botId]?[idx].nextRunAt = Cron.nextDate(routine.cron, from: .now)
+                routines[botId]?[idx].nextRunAt = Cron.nextDate(
+                    routine.cron,
+                    from: .now,
+                    timezone: routine.timezone
+                )
                 routines[botId]?[idx].inProgress = false
             }
             appendRunLog(botId: botId, kind: "routine", text: reason)
@@ -4692,7 +4789,7 @@ public final class AppStore {
             botId: botId,
             threadId: thread.threadId,
             status: .running,
-            trigger: "routine",
+            trigger: manual ? RoutineTrigger.manual : RoutineTrigger.scheduled,
             routineId: routine.id
         )
         thread.run = run
@@ -5614,6 +5711,22 @@ public final class AppStore {
         return home
     }
 
+    /// The other bots this bot should know about. Without this the prompt says
+    /// nothing about siblings and a bot resorts to shelling around the app
+    /// support folder to discover them.
+    public func rosterEntries(for bot: Bot) -> [BotRosterEntry] {
+        bots
+            .filter { $0.id != bot.id && !$0.hidden }
+            .map {
+                BotRosterEntry(
+                    name: $0.name,
+                    title: $0.title.isEmpty ? $0.description : $0.title,
+                    isChild: $0.parentBotId == bot.id,
+                    isChiefOfStaff: $0.chiefOfStaff
+                )
+            }
+    }
+
     private func computerNote(for bot: Bot) -> String {
         let mode = resolvedComputerMode(for: bot)
         switch mode {
@@ -5674,7 +5787,7 @@ public final class AppStore {
         var activeRoutineRuns = 0
         for (botId, _) in routines {
             let run = threads[threadKey(for: botId)]?.run
-            if run?.status.isActive == true, run?.trigger == "routine" {
+            if run?.status.isActive == true, RoutineTrigger.isRoutine(run?.trigger ?? "") {
                 activeRoutineRuns += 1
             }
         }
@@ -5722,7 +5835,9 @@ public final class AppStore {
                 routines[botId]?[idx].inProgress = false
                 routines[botId]?[idx].failCount = fails
                 routines[botId]?[idx].lastError = "stale in-progress run"
-                routines[botId]?[idx].nextRunAt = Cron.backoffDate(failCount: fails, from: now)
+                routines[botId]?[idx].nextRunAt = fails <= Cron.retryLimit
+                    ? Cron.backoffDate(failCount: fails, from: now)
+                    : Cron.nextDate(routine.cron, from: now, timezone: routine.timezone)
             }
         }
     }
@@ -7169,6 +7284,24 @@ public final class AppStore {
             guard let task = runTasks[run.id], awaited.insert(run.id).inserted else { break }
             _ = await task.value
         }
+    }
+
+    /// Wait for a peer bot's run to settle on behalf of a waiting `message_bot`.
+    ///
+    /// Bounded on purpose. `drainRuns` awaits the run's task outright, which is
+    /// right for tests but would pin the delegating bot's turn open for as long
+    /// as the peer cares to work. Polling the status instead keeps the cap, and
+    /// costs nothing in the normal case because `RunStatus.isActive` excludes
+    /// `waitingInput` / `waitingTakeover` — a peer that stops for an approval
+    /// gate settles here immediately rather than burning the whole budget.
+    ///
+    /// Counting scheduling opportunities rather than wall clock, for the reason
+    /// `poll` documents.
+    private func awaitPeerReply(threadKey key: String) async -> RunStatus? {
+        _ = await poll(timeout: peerReplyTimeout) {
+            self.threads[key]?.run?.status.isActive != true
+        }
+        return threads[key]?.run?.status
     }
 
     public func waitForRunStatus(botId: String, status: RunStatus, timeout: TimeInterval = 15) async -> Bool {
