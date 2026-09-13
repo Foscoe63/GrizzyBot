@@ -231,4 +231,42 @@ struct AbilityStoreTests {
         let fromDupes = SkillMarkdown.matching(withDupes, prompt: "author a new skill file")
         #expect(!fromDupes.isEmpty)
     }
+
+    @Test("action snippets append with one blank line between steps")
+    func actionSnippetsAppend() {
+        let first = SkillActions.append(SkillActions.progress, to: "")
+        #expect(first == SkillActions.progress.snippet)
+        #expect(!first.hasPrefix("\n"))
+
+        let second = SkillActions.append(SkillActions.ask, to: first)
+        #expect(second.contains(SkillActions.progress.snippet))
+        #expect(second.hasSuffix(SkillActions.ask.snippet))
+        #expect(!second.contains("\n\n\n"))
+
+        // Trailing whitespace in the editor must not widen the gap.
+        let padded = SkillActions.append(SkillActions.ask, to: first + "\n\n  \n")
+        #expect(!padded.contains("\n\n\n"))
+    }
+
+    @Test("every editor action names a tool a bot can actually call")
+    func actionSnippetsNameRealTools() throws {
+        let alwaysOn = Set(["todo", "complete", "clarify"])
+        let bare = Bot(id: "b", name: "Bare", color: "#fff", threadId: "t", enabledTools: [], enabledSkills: [])
+        for action in SkillActions.all {
+            #expect(!action.label.isEmpty)
+            #expect(!action.summary.isEmpty)
+            // `confirm` is a usage pattern built on clarify, not a tool of its own.
+            let tool = action.id == "confirm" ? "clarify" : action.id
+            #expect(
+                AgentToolCatalog.builtinIds.contains(tool),
+                "\(action.id) references unknown tool \(tool)"
+            )
+            #expect(action.snippet.contains("`\(tool)`"))
+            if alwaysOn.contains(tool) {
+                // Always-on tools stay callable even with every tool switched off.
+                #expect(bare.isToolEnabled(tool), "\(tool) should not need enabling")
+            }
+        }
+    }
+
 }

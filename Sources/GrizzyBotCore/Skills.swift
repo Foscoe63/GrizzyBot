@@ -491,3 +491,101 @@ public enum SkillLibrary {
         }
     }
 }
+
+/// A ready-made interaction step offered by the skill editor's "Add action" menu.
+///
+/// Each one wraps a built-in tool that pauses, reports, or hands control back to
+/// the user. Those tools (`clarify`, `todo`, `complete`) are always available to
+/// a bot regardless of its tool settings, so a snippet never lands a skill on a
+/// tool the bot cannot call.
+public struct SkillAction: Sendable, Hashable, Identifiable {
+    public var id: String
+    public var label: String
+    public var summary: String
+    public var snippet: String
+
+    public init(id: String, label: String, summary: String, snippet: String) {
+        self.id = id
+        self.label = label
+        self.summary = summary
+        self.snippet = snippet
+    }
+}
+
+public enum SkillActions {
+    public static let all: [SkillAction] = [ask, confirm, progress, finish, takeover]
+
+    public static let ask = SkillAction(
+        id: "clarify",
+        label: "Ask the user a question",
+        summary: "Pause the run until they answer",
+        snippet: """
+        ## Ask before continuing
+
+        When you need something only the user can tell you, call `clarify` with the
+        question and stop. The run pauses there and their reply resumes it.
+
+        Decide from the message that started *this* run. An answer given earlier in
+        the conversation, or in a previous run, does not count as already specified —
+        ask again rather than reusing it.
+        """
+    )
+
+    public static let confirm = SkillAction(
+        id: "confirm",
+        label: "Confirm before destructive steps",
+        summary: "Show the plan, wait for a yes",
+        snippet: """
+        ## Confirm before anything irreversible
+
+        Before the first step that deletes, overwrites, sends, or publishes: list
+        exactly what will change, then call `clarify` to ask for a yes. Act only on
+        an explicit go-ahead, and only on the items you listed.
+        """
+    )
+
+    public static let progress = SkillAction(
+        id: "todo",
+        label: "Show a progress checklist",
+        summary: "One visible item per phase",
+        snippet: """
+        ## Show progress
+
+        Call `todo` at the start with one item per phase of the work, and tick each
+        one off as you finish it. This is the user's progress bar for the run, not
+        private bookkeeping — name the phases the way they would.
+        """
+    )
+
+    public static let finish = SkillAction(
+        id: "complete",
+        label: "Finish with a summary",
+        summary: "End the run deliberately",
+        snippet: """
+        ## Finish cleanly
+
+        When the work is done, call `complete` with a short summary of what actually
+        changed — counts, paths, anything the user now needs to know. Do not keep
+        calling tools after it.
+        """
+    )
+
+    public static let takeover = SkillAction(
+        id: "request_takeover",
+        label: "Hand the screen to the user",
+        summary: "For logins, captchas, 2FA",
+        snippet: """
+        ## Hand over when blocked
+
+        If a sign-in, captcha, or two-factor prompt blocks the run, call
+        `request_takeover` and wait for the user to clear it. Never type their
+        credentials yourself, and never work around the check.
+        """
+    )
+
+    /// Append a snippet to a skill body, keeping exactly one blank line between steps.
+    public static func append(_ action: SkillAction, to body: String) -> String {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? action.snippet : trimmed + "\n\n" + action.snippet
+    }
+}

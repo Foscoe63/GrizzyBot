@@ -5,6 +5,8 @@ struct SkillsOverlayView: View {
     @Environment(AppStore.self) private var store
     @State private var search = ""
     @State private var creating = false
+    /// Non-nil while the form is editing an existing skill rather than making one.
+    @State private var editingId: String?
     @State private var draftId = ""
     @State private var draftDescription = ""
     @State private var draftBody = ""
@@ -36,7 +38,7 @@ struct SkillsOverlayView: View {
                     }
                     Spacer()
                     Button {
-                        creating.toggle()
+                        if creating { resetDraft() } else { creating = true }
                     } label: {
                         Text(creating ? "Cancel" : "New skill")
                             .font(.system(size: 13.5))
@@ -113,7 +115,18 @@ struct SkillsOverlayView: View {
 
     private var createForm: some View {
         VStack(alignment: .leading, spacing: 10) {
-            GrizzyField(label: "Id", placeholder: "my-workflow", text: $draftId)
+            if let editingId {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Id")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textSecondary)
+                    Text(editingId)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.textBright)
+                }
+            } else {
+                GrizzyField(label: "Id", placeholder: "my-workflow", text: $draftId)
+            }
             GrizzyField(label: "Description", placeholder: "When to use this skill", text: $draftDescription)
             GrizzyField(
                 label: "Body",
@@ -122,12 +135,51 @@ struct SkillsOverlayView: View {
                 axis: .vertical,
                 lineLimit: 6...12
             )
-            GrizzyButton(title: "Save skill", variant: .cream, size: .sm) {
-                saveDraft()
+            HStack(spacing: 10) {
+                GrizzyButton(title: editingId == nil ? "Save skill" : "Save changes", variant: .cream, size: .sm) {
+                    saveDraft()
+                }
+                .disabled(draftId.trimmingCharacters(in: .whitespaces).isEmpty
+                    || draftDescription.trimmingCharacters(in: .whitespaces).isEmpty)
+                addActionMenu
+                Spacer()
             }
-            .disabled(draftId.trimmingCharacters(in: .whitespaces).isEmpty
-                || draftDescription.trimmingCharacters(in: .whitespaces).isEmpty)
+            if editingBundled {
+                Text("Saving keeps the bundled skill's id and overrides it with your copy.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+            }
         }
+    }
+
+    /// Ready-made interaction steps. A TextEditor exposes no caret, so a chosen
+    /// action lands at the end of the body rather than at the cursor.
+    private var addActionMenu: some View {
+        Menu {
+            ForEach(SkillActions.all) { action in
+                Button {
+                    draftBody = SkillActions.append(action, to: draftBody)
+                } label: {
+                    Text("\(action.label) — \(action.summary)")
+                }
+            }
+        } label: {
+            Text("Add action ▾")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textGhost)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Theme.bgDarkButtonAlt)
+                .clipShape(Capsule())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
+    private var editingBundled: Bool {
+        guard let editingId else { return false }
+        return store.skills.first(where: { $0.id == editingId })?.source == .bundled
     }
 
     private func skillRow(_ skill: AgentSkill) -> some View {
@@ -156,6 +208,12 @@ struct SkillsOverlayView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
+            Button("Edit") {
+                beginEdit(skill)
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 13))
+            .foregroundStyle(Theme.textGhost)
             if skill.source == .user {
                 Button("Delete") {
                     try? store.deleteUserSkill(skill.id)
@@ -183,18 +241,35 @@ struct SkillsOverlayView: View {
         .padding(.vertical, 10)
     }
 
+    private func beginEdit(_ skill: AgentSkill) {
+        error = nil
+        editingId = skill.id
+        draftId = skill.id
+        draftDescription = skill.description
+        draftBody = skill.body
+        creating = true
+    }
+
+    private func resetDraft() {
+        creating = false
+        editingId = nil
+        draftId = ""
+        draftDescription = ""
+        draftBody = ""
+        error = nil
+    }
+
     private func saveDraft() {
         error = nil
         do {
+            // installUserSkill writes by slugged id, so an edit overwrites the
+            // same SKILL.md instead of leaving a second copy behind.
             try store.installUserSkill(
-                id: draftId,
+                id: editingId ?? draftId,
                 description: draftDescription,
                 body: draftBody
             )
-            creating = false
-            draftId = ""
-            draftDescription = ""
-            draftBody = ""
+            resetDraft()
         } catch {
             self.error = error.localizedDescription
         }
