@@ -41,7 +41,7 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.5** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.6** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
