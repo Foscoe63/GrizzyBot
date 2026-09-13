@@ -25,6 +25,22 @@ fi
 swift build -c release --product GrizzyBot
 swift build -c release --product GrizzyBotRoutineAgent
 
+# The version lives in project.yml so the Xcode build and this script cannot
+# disagree about what they shipped. Read it rather than restating it: the two
+# were hard-coded separately and sat at 1.1 through four tagged releases.
+read_setting() {
+  local key="$1" value
+  value="$(sed -n "s/^[[:space:]]*${key}:[[:space:]]*\"\{0,1\}\([^\"]*\)\"\{0,1\}[[:space:]]*$/\1/p" project.yml | head -1)"
+  if [[ -z "$value" ]]; then
+    echo "error: ${key} not found in project.yml" >&2
+    exit 1
+  fi
+  printf '%s' "$value"
+}
+MARKETING_VERSION="$(read_setting MARKETING_VERSION)"
+CURRENT_PROJECT_VERSION="$(read_setting CURRENT_PROJECT_VERSION)"
+echo "Packaging GrizzyBot $MARKETING_VERSION (build $CURRENT_PROJECT_VERSION)"
+
 APP="$ROOT/GrizzyBot.app"
 BIN="$ROOT/.build/release/GrizzyBot"
 AGENT_BIN="$ROOT/.build/release/GrizzyBotRoutineAgent"
@@ -32,7 +48,7 @@ AGENT_BIN="$ROOT/.build/release/GrizzyBotRoutineAgent"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -46,9 +62,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleVersion</key>
-	<string>2</string>
+	<string>${CURRENT_PROJECT_VERSION}</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.1</string>
+	<string>${MARKETING_VERSION}</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>NSPrincipalClass</key>
