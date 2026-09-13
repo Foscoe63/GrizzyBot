@@ -37,6 +37,14 @@
   <a href="#-license">License</a>
 </p>
 
+<br>
+
+<p align="center">
+  <img src="Docs/screenshot-chat.png" width="880" alt="GrizzyBot chat window: bot roster on the left, Orchestrator session on the right">
+</p>
+
+<br>
+
 ---
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
