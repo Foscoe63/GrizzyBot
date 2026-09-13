@@ -159,4 +159,57 @@ struct AgentToolsTests {
         #expect(note?.contains("Do not ask to enable") == true)
         #expect(note?.contains("Toolport is in that server list") == true)
     }
+
+    @Test("shortcuts tools ride on the shell switch, so saved bots get them without a migration")
+    func shortcutsDeriveFromShell() {
+        var bot = Bot(id: "1", name: "A", color: "#fff", threadId: "t", enabledTools: ["shell"], enabledSkills: [])
+        #expect(bot.isToolEnabled("shortcuts_list"))
+        #expect(bot.isToolEnabled("shortcuts_run"))
+
+        // Without shell there is no back door, so the switch means something.
+        bot.enabledTools = ["read_file"]
+        #expect(!bot.isToolEnabled("shortcuts_list"))
+        #expect(!bot.isToolEnabled("shortcuts_run"))
+
+        // And they can be granted on their own.
+        bot.enabledTools = ["shortcuts_run"]
+        #expect(bot.isToolEnabled("shortcuts_run"))
+    }
+
+    @Test("the shortcuts schema reaches the model only when enabled")
+    func shortcutsSchema() {
+        let withShell = AgentToolCatalog.chatTools(enabledIds: ["shell"])
+        let names = Set(withShell.map(\.function.name))
+        #expect(names.contains("shortcuts_list"))
+        #expect(names.contains("shortcuts_run"))
+
+        let without = AgentToolCatalog.chatTools(enabledIds: ["read_file"])
+        let bare = Set(without.map(\.function.name))
+        #expect(!bare.contains("shortcuts_run"))
+    }
+
+    @Test("shortcuts_run refuses an empty name without launching anything")
+    func shortcutsRunRequiresName() async {
+        await #expect(throws: ShortcutsError.emptyName) {
+            try await ShortcutsRuntime.run(name: "   ")
+        }
+    }
+
+    @Test("a missing shortcut fails with the CLI's own message rather than silently succeeding")
+    func shortcutsRunReportsFailure() async throws {
+        try #require(ShortcutsRuntime.isAvailable)
+        do {
+            _ = try await ShortcutsRuntime.run(name: "grizzybot-test-no-such-shortcut-\(UUID().uuidString)")
+            Issue.record("expected a failure for a shortcut that does not exist")
+        } catch let error as ShortcutsError {
+            guard case .failed(let message) = error else {
+                Issue.record("expected .failed, got \(error)")
+                return
+            }
+            // The CLI exits non-zero and writes to stderr; stdout stays empty,
+            // so the status is what the runner trusts.
+            #expect(message.lowercased().contains("couldn't find") || message.lowercased().contains("error"))
+        }
+    }
+
 }

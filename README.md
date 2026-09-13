@@ -220,6 +220,7 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 🃏 | **UI** | `present_component` (form, gallery, activity, refusals, or a published card), `report_decline`. |
 | ♾️ | **Loop** | `capabilities_discover`, `capabilities_load`, `todo`, `complete`, `clarify`. |
 | 🧩 | **MCP** | First-class `server-slug__tool` names plus `mcp_list_tools` / `mcp_call` — see [Plugins, MCP & destinations](#-plugins-mcp--destinations). |
+| 🔗 | **Shortcuts** | `shortcuts_list` names every Shortcut in your library; `shortcuts_run` runs one by name with optional text input and returns what it produced. Structured system automation instead of clicking a menu that moves between OS versions. Approval-gated as `shortcuts.run`, and granted by the **Shell** switch since a shell can already invoke `/usr/bin/shortcuts`. |
 | 🔌 | **Plugins & skills** | `plugin_call` (`action=search` / `write` / `delete`), `destination_write`, `read_skill`, `import_skills`, plus any custom tools you add. |
 
 If a builtin file or web tool is off, the loop routes to a **connected MCP server that actually has that tool** (for example fast-filesystem or a search server). It does **not** send those calls to Toolport unless Toolport is enabled and listed.

@@ -2172,6 +2172,51 @@ public final class AppStore {
                 )
             }
 
+        case "shortcuts_list":
+            do {
+                let names = try await ShortcutsRuntime.list()
+                guard !names.isEmpty else {
+                    return AgentToolCallResult(output: "No shortcuts in this user's library.")
+                }
+                return AgentToolCallResult(
+                    output: names.joined(separator: "\n"),
+                    blocks: [.card(lines: [CardLine(k: "shortcuts", v: "\(names.count)")])]
+                )
+            } catch {
+                return AgentToolCallResult(output: "shortcuts_list failed: \(error.localizedDescription)")
+            }
+
+        case "shortcuts_run":
+            let name = s("name", "shortcut")
+            guard !name.isEmpty else { return AgentToolCallResult(output: "name is required") }
+            let input = s("input", "text")
+            // A shortcut is arbitrary automation on the user's Mac — send mail,
+            // change a setting, open a door. It goes through the same approval
+            // path as shell rather than running because a model asked.
+            if let gated = gatedWrite(
+                tool: "shortcuts.run",
+                detail: name,
+                argumentsJSON: argumentsJSON,
+                bot: bot,
+                approved: approved
+            ) {
+                return gated
+            }
+            let allowed = bot.autoApprove || bot.alwaysAllowTools.contains("shortcuts.run")
+            do {
+                let timeout = BotHomeStore.ShellTimeout.parse(s("timeout_seconds", "timeout"))
+                let output = try await ShortcutsRuntime.run(name: name, input: input, timeout: timeout)
+                return AgentToolCallResult(
+                    output: output.isEmpty ? "Ran \(name). It returned no output." : output,
+                    blocks: [
+                        .approval(tool: "shortcuts.run", detail: name, status: allowed ? .alwaysAllowed : .allowed),
+                        .card(lines: [CardLine(k: "shortcut", v: name)]),
+                    ]
+                )
+            } catch {
+                return AgentToolCallResult(output: "shortcuts_run failed: \(error.localizedDescription)")
+            }
+
         case "shell":
             let command = s("command", "cmd")
             let cwd = s("cwd")

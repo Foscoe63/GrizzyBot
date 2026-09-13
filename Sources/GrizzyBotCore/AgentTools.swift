@@ -284,6 +284,8 @@ public enum AgentToolCatalog {
         .init(id: "list_files", label: "List files", subtitle: "List the working folder when set, otherwise bot home"),
         .init(id: "web_search", label: "Web search", subtitle: "Search the internet and fetch pages"),
         .init(id: "shell", label: "Shell", subtitle: "Run shell commands in the bot home"),
+        .init(id: "shortcuts_list", label: "List shortcuts", subtitle: "See the Shortcuts in your library"),
+        .init(id: "shortcuts_run", label: "Run shortcut", subtitle: "Run one of your Shortcuts by name"),
         .init(id: "remember", label: "Remember", subtitle: "Store durable memory facts"),
         .init(id: "search_memory", label: "Search memory", subtitle: "Retrieve facts from bot and shared memory"),
         .init(id: "forget", label: "Forget", subtitle: "Remove a durable memory fact"),
@@ -388,6 +390,7 @@ extension Bot {
         if ArtifactStore.toolIds.contains(toolId) { return true }
         if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
         if toolId == "message_bot", enabledTools.contains("spawn_bot") { return true }
+        if toolId.hasPrefix("shortcuts_"), enabledTools.contains("shell") { return true }
         if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
         if toolId == "import_skills", enabledTools.contains("read_file") { return true }
         if toolId == "search_knowledge", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
@@ -484,6 +487,10 @@ extension AgentToolCatalog {
                     ? ["search_knowledge"] : []
             )
             .union(enabledIds.contains("spawn_bot") ? ["message_bot"] : [])
+            // A bot that can run shell commands can already invoke
+            // /usr/bin/shortcuts, so the structured tools grant it nothing new —
+            // and bots saved before these existed get them without a migration.
+            .union(enabledIds.contains("shell") ? ["shortcuts_list", "shortcuts_run"] : [])
             .union(CanvasBoardStore.toolIds)
             .union(ArtifactStore.toolIds)
             .union(["capabilities_discover", "capabilities_load", "todo", "complete", "clarify"])
@@ -580,6 +587,22 @@ extension AgentToolCatalog {
                 "timeout_seconds": stringProp("Optional timeout in seconds (5–300, default 120)"),
             ],
             required: ["command"]
+        )
+        add(
+            "shortcuts_list",
+            description: "List the Shortcuts in the user's library by name. Call this before shortcuts_run rather than guessing a name.",
+            properties: [:],
+            required: []
+        )
+        add(
+            "shortcuts_run",
+            description: "Run one of the user's Shortcuts by name and return whatever it produces as text. Prefer this over driving the UI with the computer tools when a shortcut already does the job.",
+            properties: [
+                "name": stringProp("Exact shortcut name, as given by shortcuts_list"),
+                "input": stringProp("Optional text passed to the shortcut as its input"),
+                "timeout_seconds": stringProp("Optional timeout in seconds (5-300, default 120)"),
+            ],
+            required: ["name"]
         )
         add(
             "remember",

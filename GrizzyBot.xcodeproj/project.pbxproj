@@ -163,6 +163,7 @@
 		BF59AC18191EBCC9DD739712 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AD1552B3178B76EEDCDDA8 /* MenuBarView.swift */; };
 		C08D89520A2ED9126D888EA1 /* MLXProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E235F89AE3377D7744F36D0E /* MLXProvider.swift */; };
 		C10A20A11AF13AA9F9E720EB /* PolicyCEL.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF745952D1E372EE721E0CD5 /* PolicyCEL.swift */; };
+		C26320D2B7C5073035359B14 /* ShortcutsRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFDB7BEB575C9892A385CE7F /* ShortcutsRuntime.swift */; };
 		C2D608D80F57EA61252D1407 /* ModelProviderProfiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90EA06CDFEC030B799F2E34 /* ModelProviderProfiles.swift */; };
 		C59C48A715B9989FDB06B11C /* CapabilityPrivacyMemoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4BE065E44138A6D65DE11C8 /* CapabilityPrivacyMemoryTests.swift */; };
 		C9CC3636E4ABB5D3ED534B3F /* AgentLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952F78D26F1214CD06838DD4 /* AgentLoopTests.swift */; };
@@ -460,6 +461,7 @@
 		DD3D2E3E81F0E6C6E3CE7C31 /* ComposerImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerImage.swift; sourceTree = "<group>"; };
 		DD69F88EDAEFE3272168C64F /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
 		DDF394BDED582E532893E9AD /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
+		DFDB7BEB575C9892A385CE7F /* ShortcutsRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsRuntime.swift; sourceTree = "<group>"; };
 		E0BAC0485B69EE9D834F1421 /* LLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMClient.swift; sourceTree = "<group>"; };
 		E235F89AE3377D7744F36D0E /* MLXProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXProvider.swift; sourceTree = "<group>"; };
 		E3AD1552B3178B76EEDCDDA8 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
@@ -811,6 +813,7 @@
 				A9FB21B70D5696E2911299D0 /* RoutineTickPlanner.swift */,
 				EFEF0D6BFF53DA0CBF74F153 /* ScriptedRuntime.swift */,
 				F73A3E686D63B7A8C6906E5D /* SecretStore.swift */,
+				DFDB7BEB575C9892A385CE7F /* ShortcutsRuntime.swift */,
 				DD69F88EDAEFE3272168C64F /* Skills.swift */,
 				890A21825B2F26F2634D849F /* SlashCommand.swift */,
 				916FFD0C6C6F1C1DB4E2F235 /* Store.swift */,
@@ -1172,6 +1175,7 @@
 				39DE855B15FE2326EA553556 /* RoutineTickPlanner.swift in Sources */,
 				B3084169C569910C1658D873 /* ScriptedRuntime.swift in Sources */,
 				AA5CEB9FC08A225B9D232A1A /* SecretStore.swift in Sources */,
+				C26320D2B7C5073035359B14 /* ShortcutsRuntime.swift in Sources */,
 				D1F6638E7866D8C5F78D1D6F /* Skills.swift in Sources */,
 				1CC1C5654299D92D5D75FF87 /* SlashCommand.swift in Sources */,
 				4EB54A526111A5A0F522FD81 /* Store.swift in Sources */,
