@@ -121,6 +121,28 @@ struct AbilityStoreTests {
         #expect(store.skills.contains(where: { $0.id == "research" }))
     }
 
+    @Test("the profile can toggle every skill in the library, user skills included")
+    func perBotSkillToggles() throws {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "toggle@b.com", password: "password1") == nil)
+        try store.installUserSkill(id: "House Style", description: "Write like us", body: "# House style")
+        let bot = store.createBot(from: BotTemplates.researcher)
+
+        // Every bundled skill plus the user's own is offered, not just the template's.
+        #expect(store.skills.count == BundledSkills.all.count + 1)
+        #expect(store.skills.contains(where: { $0.id == "house-style" && $0.source == .user }))
+
+        store.setAllBotSkills(bot.id, enabled: false)
+        #expect(store.bots.first(where: { $0.id == bot.id })?.enabledSkills.isEmpty == true)
+        #expect(store.enabledSkills(for: bot.id).isEmpty)
+
+        store.setBotSkill(bot.id, skillId: "coding", enabled: true)
+        #expect(store.enabledSkills(for: bot.id).map(\.id) == ["coding"])
+
+        store.setAllBotSkills(bot.id, enabled: true)
+        #expect(Set(store.enabledSkills(for: bot.id).map(\.id)) == Set(store.skills.map(\.id)))
+    }
+
     @Test("shared memory is visible to every bot")
     func sharedMemory() {
         let store = tempStore()
@@ -178,5 +200,35 @@ struct AbilityStoreTests {
         try? await Task.sleep(for: .milliseconds(400))
         #expect(store.readBotHomeFile(botId: bot.id, path: "inbox/\(src.lastPathComponent)") == "hello-attach")
         #expect(store.messages(for: bot.id).contains(where: { $0.role == .user && $0.firstText.contains("inbox/") }))
+    }
+
+    @Test("a user skill sharing a bundled id does not trap the matcher")
+    func duplicateSkillIdIsSurvivable() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("skills-dup-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let override = AgentSkill(
+            id: BundledSkills.skillCreator.id,
+            name: BundledSkills.skillCreator.name,
+            description: "My own take on authoring a SKILL.md file.",
+            body: "# Mine\nDo it my way.",
+            source: .user
+        )
+        try SkillLibrary.saveUserSkill(override, root: root)
+
+        let loaded = SkillLibrary.load(root: root)
+        let creators = loaded.filter { $0.id == BundledSkills.skillCreator.id }
+        #expect(creators.count == 1)
+        #expect(creators.first?.source == .user)
+        #expect(creators.first?.description == override.description)
+
+        // Would have trapped in Dictionary(uniqueKeysWithValues:) before the dedupe.
+        let matched = SkillMarkdown.matching(loaded, prompt: "author a new skill file")
+        #expect(matched.allSatisfy { loaded.contains($0) })
+
+        // Even if a duplicate reaches the matcher directly, it must rank, not crash.
+        let withDupes = BundledSkills.all + [override]
+        let fromDupes = SkillMarkdown.matching(withDupes, prompt: "author a new skill file")
+        #expect(!fromDupes.isEmpty)
     }
 }

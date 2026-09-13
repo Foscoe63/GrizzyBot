@@ -289,6 +289,7 @@ public enum AgentToolCatalog {
         .init(id: "forget", label: "Forget", subtitle: "Remove a durable memory fact"),
         .init(id: "request_takeover", label: "Request takeover", subtitle: "Hand the computer to you for sign-in"),
         .init(id: "spawn_bot", label: "Spawn bot", subtitle: "Create a child bot"),
+        .init(id: "message_bot", label: "Message bot", subtitle: "Hand a task to another bot in the workspace"),
         .init(id: "delete_bot", label: "Delete bot", subtitle: "Permanently remove a spawned bot"),
         .init(id: "run_subagent", label: "Run subagent", subtitle: "Delegate to a short-lived helper"),
         .init(id: "destination_write", label: "Destination write", subtitle: "Write through connected destinations"),
@@ -386,6 +387,7 @@ extension Bot {
         if CanvasBoardStore.toolIds.contains(toolId) { return true }
         if ArtifactStore.toolIds.contains(toolId) { return true }
         if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
+        if toolId == "message_bot", enabledTools.contains("spawn_bot") { return true }
         if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
         if toolId == "import_skills", enabledTools.contains("read_file") { return true }
         if toolId == "search_knowledge", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
@@ -452,6 +454,13 @@ extension AgentToolCatalog {
         return .object(object)
     }
 
+    private static func boolProp(_ description: String) -> JSONValue {
+        .object([
+            "type": .string("boolean"),
+            "description": .string(description),
+        ])
+    }
+
     private static func stringProp(_ description: String) -> JSONValue {
         .object([
             "type": .string("string"),
@@ -474,6 +483,7 @@ extension AgentToolCatalog {
                 (enabledIds.contains("remember") || enabledIds.contains("search_memory"))
                     ? ["search_knowledge"] : []
             )
+            .union(enabledIds.contains("spawn_bot") ? ["message_bot"] : [])
             .union(CanvasBoardStore.toolIds)
             .union(ArtifactStore.toolIds)
             .union(["capabilities_discover", "capabilities_load", "todo", "complete", "clarify"])
@@ -871,6 +881,17 @@ extension AgentToolCatalog {
                     "prompt": stringProp("Optional first task to run in the new bot's thread"),
                 ],
                 required: ["name"]
+            )
+            add(
+                "message_bot",
+                description: "Hand a task to a bot already listed in your roster. It works in its own thread; by default you wait and its answer comes back to you here. Prefer this over spawn_bot when a listed bot already does the job.",
+                properties: [
+                    "name": stringProp("Name of the bot from the roster"),
+                    "task": stringProp("What you want that bot to do, written as a full request"),
+                    "wait": boolProp("Default true: wait for its answer and use it in your reply. Pass false only for long background jobs you are not going to report on this turn."),
+                    "bot_id": stringProp("Optional bot id instead of the name"),
+                ],
+                required: ["name", "task"]
             )
             add(
                 "delete_bot",

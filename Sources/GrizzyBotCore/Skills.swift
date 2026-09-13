@@ -145,7 +145,9 @@ public enum SkillMarkdown {
         let entries = CapabilitySearch.entries(skills: skills, builtins: [], mcpAdvertised: [:], promotedMcp: [])
         let hits = CapabilitySearch.search(prompt, in: entries, topK: limit, kinds: [.skill])
         if !hits.isEmpty {
-            let byId = Dictionary(uniqueKeysWithValues: skills.map { ($0.id, $0) })
+            // Duplicate ids should not reach here (SkillLibrary.load dedupes), but a
+            // trapping init would abort the run. Keep the entry CapabilitySearch indexed.
+            let byId = Dictionary(skills.map { ($0.id, $0) }) { first, _ in first }
             return hits.compactMap { byId[$0.entry.id] }
         }
         let tokens = Set(MemoryIndex.tokenize(prompt))
@@ -413,8 +415,20 @@ public enum SkillLibrary {
         root.appendingPathComponent("skills", isDirectory: true)
     }
 
+    /// Bundled skills plus the user's own. A user skill that reuses a bundled id
+    /// overrides it rather than appearing twice — callers index these by id.
     public static func load(root: URL) -> [AgentSkill] {
-        BundledSkills.all + loadUserSkills(root: root)
+        var out = BundledSkills.all
+        var indexById = Dictionary(out.enumerated().map { ($0.element.id, $0.offset) }) { first, _ in first }
+        for skill in loadUserSkills(root: root) {
+            if let existing = indexById[skill.id] {
+                out[existing] = skill
+            } else {
+                indexById[skill.id] = out.count
+                out.append(skill)
+            }
+        }
+        return out
     }
 
     public static func loadUserSkills(root: URL) -> [AgentSkill] {

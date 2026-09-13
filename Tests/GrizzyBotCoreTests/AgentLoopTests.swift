@@ -183,6 +183,48 @@ final class QueueChatClient: ChatCompleting, @unchecked Sendable {
     }
 }
 
+/// Queue client that parks one named bot's turn until the test releases it, so
+/// "the peer is still working" is a fact the test controls rather than a race.
+final class GatedChatClient: ChatCompleting, @unchecked Sendable {
+    private let gating: String
+    private var queue: [ChatCompletionResponse]
+    private var released = false
+    private let lock = NSLock()
+
+    init(gating: String, queue: [ChatCompletionResponse]) {
+        self.gating = gating
+        self.queue = queue
+    }
+
+    func release() {
+        lock.lock()
+        released = true
+        lock.unlock()
+    }
+
+    private var isReleased: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return released
+    }
+
+    private func nextResponse() -> ChatCompletionResponse {
+        lock.lock()
+        defer { lock.unlock() }
+        return queue.isEmpty ? ChatCompletionResponse(text: "done.") : queue.removeFirst()
+    }
+
+    func complete(_ request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
+        let system = request.messages.first { $0.role == "system" }?.content ?? ""
+        if system.hasPrefix("You are \(gating),") {
+            while !isReleased {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        return nextResponse()
+    }
+}
+
 final class FailAfterToolsClient: ChatCompleting, @unchecked Sendable {
     let first: ChatCompletionResponse
     var calls = 0
@@ -828,5 +870,79 @@ struct DestinationTests {
         let listed = store.list(slug: "github")
         #expect(listed.count == 1)
         #expect(listed[0].title == "T")
+    }
+}
+
+@Suite("Bot roster")
+struct BotRosterPromptTests {
+    private func request(
+        roster: [BotRosterEntry],
+        chief: Bool = false,
+        tools: [ChatTool] = []
+    ) -> AgentLoopRequest {
+        AgentLoopRequest(
+            endpoint: ModelEndpoint(provider: "x", model: "y", baseURL: "https://x", apiKey: "k"),
+            botName: "GrizzyBot",
+            prompt: "hi",
+            tools: tools,
+            roster: roster,
+            isChiefOfStaff: chief
+        )
+    }
+
+    private var messageBotTool: ChatTool {
+        AgentToolCatalog.chatTools(enabledIds: ["spawn_bot"], includeDelegation: true)
+            .first { $0.function.name == "message_bot" }!
+    }
+
+    @Test("the prompt names the other bots and their roles")
+    func rosterInPrompt() {
+        let prompt = AgentLoop.systemPrompt(
+            for: request(roster: [
+                .init(name: "Researcher", title: "Research & briefs"),
+                .init(name: "Coder", title: "Code in the bot home", isChild: true),
+            ])
+        )
+        #expect(prompt.contains("Other bots in this workspace"))
+        #expect(prompt.contains("- Researcher — Research & briefs"))
+        #expect(prompt.contains("- Coder — Code in the bot home [you created it]"))
+        #expect(prompt.contains("Do not shell around Application Support"))
+    }
+
+    @Test("delegation guidance only appears when message_bot is enabled")
+    func delegationGuidance() {
+        let roster: [BotRosterEntry] = [.init(name: "Operator", title: "Drive this Mac")]
+        #expect(!AgentLoop.systemPrompt(for: request(roster: roster)).contains("Use message_bot"))
+        let withTool = AgentLoop.systemPrompt(for: request(roster: roster, tools: [messageBotTool]))
+        #expect(withTool.contains("Use message_bot"))
+        #expect(withTool.contains("by default you wait for its answer"))
+    }
+
+    @Test("the chief of staff is told it owns coordination")
+    func chiefOfStaffLine() {
+        let prompt = AgentLoop.systemPrompt(
+            for: request(roster: [.init(name: "Researcher", title: "Research & briefs")], chief: true)
+        )
+        #expect(prompt.contains("You are the chief of staff"))
+        #expect(prompt.contains("Route work to the right one"))
+    }
+
+    @Test("a chief of staff with no peers is still told so")
+    func chiefWithEmptyRoster() {
+        #expect(AgentLoop.systemPrompt(for: request(roster: [], chief: true)).contains("No other bots exist yet"))
+    }
+
+    @Test("a plain bot with no peers gets no roster section")
+    func emptyRosterIsSilent() {
+        #expect(!AgentLoop.systemPrompt(for: request(roster: [])).contains("Other bots in this workspace"))
+    }
+
+    @Test("chief of staff sees peers it did not create")
+    func peersMarked() {
+        let prompt = AgentLoop.systemPrompt(
+            for: request(roster: [.init(name: "Inbox", title: "Email", isChiefOfStaff: false)])
+        )
+        #expect(prompt.contains("- Inbox — Email"))
+        #expect(!prompt.contains("[you created it]"))
     }
 }

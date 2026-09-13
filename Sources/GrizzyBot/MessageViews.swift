@@ -577,6 +577,8 @@ struct MessageView: View {
         status: ChildBotStatus
     ) -> some View {
         let deleted = status == .deleted
+        let messaged = status == .messaged
+        let answered = status == .answered
         return Button {
             guard !deleted else { return }
             store.selectBot(botId)
@@ -587,7 +589,7 @@ struct MessageView: View {
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Theme.textBright)
                     Spacer()
-                    Text(deleted ? "deleted" : "bot")
+                    Text(deleted ? "deleted" : (messaged ? "working" : (answered ? "answered" : "bot")))
                         .font(.system(size: 13))
                         .foregroundStyle(deleted ? Theme.orange : Theme.green)
                         .padding(.horizontal, 11)
@@ -600,7 +602,11 @@ struct MessageView: View {
                 Text(
                     deleted
                         ? "Removed this bot, including its chat, computer, and memory."
-                        : (title?.isEmpty == false ? title! : "Opened its own thread. Tap to switch.")
+                        : (messaged
+                            ? "Still working in its own thread. Tap to follow."
+                            : (answered
+                                ? "Answered in its own thread. Tap to read it there."
+                                : (title?.isEmpty == false ? title! : "Opened its own thread. Tap to switch.")))
                 )
                 .font(.system(size: 14.5))
                 .foregroundStyle(Theme.textSub)

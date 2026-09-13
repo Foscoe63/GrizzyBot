@@ -16,6 +16,23 @@ public struct AgentHistoryTurn: Sendable, Equatable {
     }
 }
 
+/// One sibling bot as the roster shows it in the system prompt.
+public struct BotRosterEntry: Sendable, Equatable {
+    public var name: String
+    public var title: String
+    /// True when the bot reading the prompt created this one.
+    public var isChild: Bool
+    /// True when this bot is the workspace chief of staff.
+    public var isChiefOfStaff: Bool
+
+    public init(name: String, title: String = "", isChild: Bool = false, isChiefOfStaff: Bool = false) {
+        self.name = name
+        self.title = title
+        self.isChild = isChild
+        self.isChiefOfStaff = isChiefOfStaff
+    }
+}
+
 public struct AgentLoopRequest: Sendable {
     public var endpoint: ModelEndpoint
     public var botName: String
@@ -40,6 +57,10 @@ public struct AgentLoopRequest: Sendable {
     public var workingFolderNote: String
     /// Silence limit for the model stream. 0 disables.
     public var stallMs: Int
+    /// The other bots in this workspace, so a bot never has to go hunting on disk for them.
+    public var roster: [BotRosterEntry]
+    /// True when this bot is the chief of staff and owns coordination across the roster.
+    public var isChiefOfStaff: Bool
 
     public init(
         endpoint: ModelEndpoint,
@@ -60,7 +81,9 @@ public struct AgentLoopRequest: Sendable {
         charBudget: Int = 100_000,
         computerNote: String = "",
         workingFolderNote: String = "",
-        stallMs: Int = 60_000
+        stallMs: Int = 60_000,
+        roster: [BotRosterEntry] = [],
+        isChiefOfStaff: Bool = false
     ) {
         self.endpoint = endpoint
         self.botName = botName
@@ -81,6 +104,8 @@ public struct AgentLoopRequest: Sendable {
         self.computerNote = computerNote
         self.workingFolderNote = workingFolderNote
         self.stallMs = stallMs
+        self.roster = roster
+        self.isChiefOfStaff = isChiefOfStaff
     }
 }
 
@@ -447,6 +472,40 @@ public enum AgentLoop {
             """
         }
 
+        /// The workspace roster. Without it a bot has no idea its siblings exist
+        /// and goes spelunking through Application Support to find them.
+        public static func roster(
+            _ entries: [BotRosterEntry],
+            isChiefOfStaff: Bool,
+            canMessage: Bool
+        ) -> String? {
+            guard !entries.isEmpty else {
+                return isChiefOfStaff
+                    ? "You are the chief of staff for this workspace. No other bots exist yet — spawn_bot when a job deserves its own standing bot."
+                    : nil
+            }
+            let lines = entries.map { entry -> String in
+                var tags: [String] = []
+                if entry.isChiefOfStaff { tags.append("chief of staff") }
+                if entry.isChild { tags.append("you created it") }
+                let role = entry.title.isEmpty ? "" : " — \(entry.title)"
+                let tag = tags.isEmpty ? "" : " [\(tags.joined(separator: ", "))]"
+                return "- \(entry.name)\(role)\(tag)"
+            }
+            var text = """
+            Other bots in this workspace:
+            \(lines.joined(separator: "\n"))
+            This list is complete and authoritative. Do not shell around Application Support or the bot homes looking for bots — it is already here.
+            """
+            if canMessage {
+                text += "\nUse message_bot to hand a job to one of them instead of duplicating its work or spawning a near-copy. It works in its own thread and by default you wait for its answer, so fold that answer into your reply rather than telling the user to go read another thread. Pass wait:false only for long background jobs you are not reporting on this turn. Reach for spawn_bot only when no listed bot fits."
+            }
+            if isChiefOfStaff {
+                text += "\nYou are the chief of staff: you own coordination across these bots. Route work to the right one, keep track of what you delegated, and say who is doing what."
+            }
+            return text
+        }
+
         public static func computer(_ note: String) -> String {
             let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty {
@@ -492,6 +551,13 @@ public enum AgentLoop {
         let instructions = request.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         if !instructions.isEmpty {
             lines.append("Instructions from the user:\n\(instructions)")
+        }
+        if let roster = PromptSection.roster(
+            request.roster,
+            isChiefOfStaff: request.isChiefOfStaff,
+            canMessage: request.tools.contains(where: { $0.function.name == "message_bot" })
+        ) {
+            lines.append(roster)
         }
         let memory = request.memory.trimmingCharacters(in: .whitespacesAndNewlines)
         if !memory.isEmpty {

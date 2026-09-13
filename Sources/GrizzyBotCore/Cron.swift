@@ -177,27 +177,87 @@ public enum Cron {
         !expr.isEmpty && expr.allSatisfy { $0.isNumber }
     }
 
-    /// Next minute (UTC) matching the cron expression, mirroring `nextCronDate`.
-    public static func nextDate(_ cron: String, from: Date) -> Date {
+    /// The zone a routine's clock times are read in. An empty or unrecognized
+    /// identifier means this Mac's zone, which is what the time picker shows.
+    public static func timeZone(_ identifier: String?) -> TimeZone {
+        guard let identifier, !identifier.isEmpty else { return .current }
+        return TimeZone(identifier: identifier) ?? .current
+    }
+
+    /// Next minute matching the cron expression, read in `timezone` (default: this
+    /// Mac's). All five fields are honored — minute, hour, day-of-month, month,
+    /// day-of-week. Day-of-month and day-of-week combine the way cron does: when
+    /// both are restricted, a day matching *either* one qualifies.
+    public static func nextDate(_ cron: String, from: Date, timezone: String? = nil) -> Date {
         let parts = cron.trimmingCharacters(in: .whitespaces).split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
         guard parts.count >= 5 else { return from.addingTimeInterval(60) }
         let minuteExpr = parts[0]
         let hourExpr = parts[1]
+        let domExpr = parts[2]
+        let monthExpr = parts[3]
+        let dowExpr = parts[4]
+
+        // An hour or minute field that matches nothing (a typo, say) would other-
+        // wise send the day loop through four years of calendar math.
+        let hourMatches = (0...23).contains { matchField(hourExpr, $0, min: 0, max: 23) }
+        let minuteMatches = (0...59).contains { matchField(minuteExpr, $0, min: 0, max: 59) }
+        guard hourMatches, minuteMatches else { return from.addingTimeInterval(60) }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone(timezone)
         let candidate = from.addingTimeInterval(60)
-        let calendar = Calendar(identifier: .gregorian)
         var components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: candidate)
         components.second = 0
         guard var date = calendar.date(from: components) else { return from.addingTimeInterval(60) }
-        for _ in 0..<(24 * 60 + 2) {
-            let c = calendar.dateComponents([.hour, .minute], from: date)
-            if matchField(minuteExpr, c.minute ?? 0, min: 0, max: 59)
-                && matchField(hourExpr, c.hour ?? 0, min: 0, max: 23) {
-                return date
+
+        // Leap day is the longest wait a valid expression can ask for.
+        for _ in 0..<(366 * 4 + 1) {
+            let startOfDay = calendar.startOfDay(for: date)
+            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else { break }
+            if dayMatches(date, calendar: calendar, dom: domExpr, month: monthExpr, dow: dowExpr) {
+                var minute = date
+                while minute < nextDay {
+                    let c = calendar.dateComponents([.hour, .minute], from: minute)
+                    if matchField(minuteExpr, c.minute ?? 0, min: 0, max: 59)
+                        && matchField(hourExpr, c.hour ?? 0, min: 0, max: 23) {
+                        return minute
+                    }
+                    minute = calendar.date(byAdding: .minute, value: 1, to: minute) ?? minute.addingTimeInterval(60)
+                }
             }
-            date = calendar.date(byAdding: .minute, value: 1, to: date) ?? date.addingTimeInterval(60)
+            date = nextDay
         }
         return from.addingTimeInterval(60)
     }
+
+    static func dayMatches(
+        _ date: Date,
+        calendar: Calendar,
+        dom: String,
+        month: String,
+        dow: String
+    ) -> Bool {
+        let c = calendar.dateComponents([.day, .month, .weekday], from: date)
+        guard matchField(month, c.month ?? 1, min: 1, max: 12) else { return false }
+        let domRestricted = dom != "*"
+        let dowRestricted = dow != "*"
+        let domHit = matchField(dom, c.day ?? 1, min: 1, max: 31)
+        let dowHit = matchDayOfWeek(dow, weekday: c.weekday ?? 1)
+        if domRestricted && dowRestricted { return domHit || dowHit }
+        return domHit && dowHit
+    }
+
+    /// Cron counts days 0–6 from Sunday and also accepts 7 for Sunday;
+    /// `Calendar` counts 1–7 from Sunday.
+    static func matchDayOfWeek(_ expr: String, weekday: Int) -> Bool {
+        let value = max(0, weekday - 1)
+        if matchField(expr, value, min: 0, max: 6) { return true }
+        return value == 0 && matchField(expr, 7, min: 0, max: 7)
+    }
+
+    /// Consecutive failures that still earn a quick retry. Past this the routine
+    /// waits for its next scheduled slot instead of hammering a broken tool.
+    public static let retryLimit = 3
 
     /// After a failed routine run: 15m, 30m, 1h, 2h, then cap at 4h.
     public static func backoffDate(failCount: Int, from: Date) -> Date {

@@ -91,6 +91,69 @@ struct CronTests {
         #expect(described.detail == "")
     }
 
+    private func utc(_ iso: String) -> Date {
+        let fmt = ISO8601DateFormatter()
+        fmt.timeZone = TimeZone(identifier: "UTC")
+        return fmt.date(from: iso)!
+    }
+
+    private func iso(_ date: Date) -> String {
+        let fmt = ISO8601DateFormatter()
+        fmt.timeZone = TimeZone(identifier: "UTC")
+        return fmt.string(from: date)
+    }
+
+    @Test("clock times are read in the routine's zone")
+    func nextDateTimezone() {
+        // 2026-09-13 is a Sunday; 06:00Z is before every 7am zone below.
+        let from = utc("2026-09-13T06:00:00Z")
+        #expect(iso(Cron.nextDate("0 7 * * *", from: from, timezone: "UTC")) == "2026-09-13T07:00:00Z")
+        #expect(iso(Cron.nextDate("0 7 * * *", from: from, timezone: "America/New_York")) == "2026-09-13T11:00:00Z")
+        #expect(iso(Cron.nextDate("0 7 * * *", from: from, timezone: "Asia/Tokyo")) == "2026-09-13T22:00:00Z")
+        // Unset or unrecognized means this Mac's zone, matching the time picker.
+        let local = Cron.nextDate("0 7 * * *", from: from)
+        #expect(iso(local) == iso(Cron.nextDate("0 7 * * *", from: from, timezone: TimeZone.current.identifier)))
+        #expect(iso(Cron.nextDate("0 7 * * *", from: from, timezone: "Not/AZone")) == iso(local))
+    }
+
+    @Test("day-of-week, day-of-month, and month are honored")
+    func nextDateCalendarFields() {
+        // Sunday 2026-09-13, 06:00 UTC.
+        let sunday = utc("2026-09-13T06:00:00Z")
+        // Weekdays skips Sunday and lands on Monday.
+        #expect(iso(Cron.nextDate("0 7 * * 1-5", from: sunday, timezone: "UTC")) == "2026-09-14T07:00:00Z")
+        // Weekly on Monday, same answer from a Sunday.
+        #expect(iso(Cron.nextDate("0 7 * * 1", from: sunday, timezone: "UTC")) == "2026-09-14T07:00:00Z")
+        // Sunday is both 0 and 7 in cron; from Monday the next one is the 20th.
+        let monday = utc("2026-09-14T06:00:00Z")
+        #expect(iso(Cron.nextDate("0 7 * * 0", from: monday, timezone: "UTC")) == "2026-09-20T07:00:00Z")
+        #expect(iso(Cron.nextDate("0 7 * * 7", from: monday, timezone: "UTC")) == "2026-09-20T07:00:00Z")
+        // Monthly waits for the 1st, not tomorrow.
+        #expect(iso(Cron.nextDate("0 7 1 * *", from: sunday, timezone: "UTC")) == "2026-10-01T07:00:00Z")
+        // A month field is respected even a year out.
+        #expect(iso(Cron.nextDate("0 7 4 7 *", from: sunday, timezone: "UTC")) == "2027-07-04T07:00:00Z")
+        // Daily is unchanged.
+        #expect(iso(Cron.nextDate("0 7 * * *", from: sunday, timezone: "UTC")) == "2026-09-13T07:00:00Z")
+    }
+
+    @Test("restricted day-of-month and day-of-week combine as cron does")
+    func nextDateDomOrDow() {
+        // Both restricted: either match qualifies. From Sun the 13th, Monday the
+        // 14th matches the dow half; the 20th matches the dom half.
+        let sunday = utc("2026-09-13T06:00:00Z")
+        #expect(iso(Cron.nextDate("0 7 20 * 1", from: sunday, timezone: "UTC")) == "2026-09-14T07:00:00Z")
+        let tuesday = utc("2026-09-15T06:00:00Z")
+        #expect(iso(Cron.nextDate("0 7 20 * 1", from: tuesday, timezone: "UTC")) == "2026-09-20T07:00:00Z")
+    }
+
+    @Test("an unmatchable expression does not spin")
+    func nextDateUnmatchable() {
+        let from = utc("2026-09-13T06:00:00Z")
+        // Hour 99 matches nothing; fall back to a minute out rather than walking years.
+        #expect(Cron.nextDate("0 99 * * *", from: from).timeIntervalSince(from) == 60)
+        #expect(Cron.nextDate("bogus", from: from).timeIntervalSince(from) == 60)
+    }
+
     @Test("routine backoff doubles then caps")
     func routineBackoff() {
         let now = Date(timeIntervalSince1970: 1_000_000)

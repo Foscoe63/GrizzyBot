@@ -21,6 +21,7 @@ struct RightPanelView: View {
     @State private var settingsError: String?
     @State private var settingsLoadedFor: String?
     @State private var redactedExport = true
+    @State private var skillsExpanded = false
 
     var body: some View {
         Group {
@@ -587,6 +588,8 @@ struct RightPanelView: View {
                 )
                 .padding(.top, 8)
 
+                skillsSection(bot)
+
                 toolsSection(bot)
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -688,6 +691,85 @@ struct RightPanelView: View {
                 .padding(.top, 20)
             }
         }
+    }
+
+    private func skillsSection(_ bot: Bot) -> some View {
+        let skills = store.skills
+        let onCount = skills.filter { bot.isSkillEnabled($0.id) }.count
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Button {
+                    skillsExpanded.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Skills")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.textSecondary)
+                        Text("\(onCount)/\(skills.count)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textGhost)
+                        Text(skillsExpanded ? "▾" : "▸")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Skills")
+                .accessibilityHint(skillsExpanded ? "Collapse" : "Expand")
+                Spacer()
+                Button("Enable all") {
+                    store.setAllBotSkills(bot.id, enabled: true)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textSidebarIcon)
+                .disabled(onCount == skills.count)
+                .opacity(onCount == skills.count ? 0.4 : 1)
+
+                Button("Disable all") {
+                    store.setAllBotSkills(bot.id, enabled: false)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.orange)
+                .disabled(onCount == 0)
+                .opacity(onCount == 0 ? 0.4 : 1)
+            }
+            .padding(.top, 18)
+
+            if skillsExpanded {
+                Text("Packaged workflows this bot may load. Disabled skills stay out of its catalog and its / menu. Add or write skills in the sidebar's Skills panel.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+
+                if skills.isEmpty {
+                    Text("No skills installed.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textMuted)
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(skills) { skill in
+                            ToolCapsuleToggle(
+                                title: skill.id,
+                                subtitle: skill.description,
+                                badge: skill.source == .user ? "user" : nil,
+                                isOn: bot.isSkillEnabled(skill.id),
+                                action: {
+                                    store.setBotSkill(
+                                        bot.id,
+                                        skillId: skill.id,
+                                        enabled: !bot.isSkillEnabled(skill.id)
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        // Skills live on disk; pick up anything added since the app launched.
+        .onAppear { store.reloadSkills() }
     }
 
     private func toolsSection(_ bot: Bot) -> some View {
