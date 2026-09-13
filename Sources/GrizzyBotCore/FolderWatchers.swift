@@ -110,9 +110,17 @@ public enum FolderWatcherFirePolicy {
     }
 }
 
-/// Process-wide suppress flag so FSEvents from an in-flight organize pass are dropped.
+/// Drops FSEvents produced by an in-flight organize pass, so a watcher that
+/// moves files does not retrigger itself.
+///
+/// One of these belongs to one `FolderWatcherService`. It used to be a global,
+/// which meant two services — two tests, or two workspaces — shared suppression
+/// state for watcher ids that had nothing to do with each other.
+///
+/// Synchronous and lock-protected rather than actor state, because the store
+/// reads it while deciding whether to fire, and that decision is not async.
 public final class FolderWatcherSuppression: @unchecked Sendable {
-    public static let shared = FolderWatcherSuppression()
+    public init() {}
 
     private let lock = NSLock()
     private var ids: Set<String> = []
@@ -319,7 +327,9 @@ public protocol FolderWatcherRunning: Sendable {
 
 /// Native FSEvents folder watcher runtime.
 public actor FolderWatcherService {
-    public static let shared = FolderWatcherService()
+    /// Suppression this service consults, shared with whoever owns it — the
+    /// store reads the same object synchronously when deciding to fire.
+    public nonisolated let suppression: FolderWatcherSuppression
 
     private var runner: (any FolderWatcherRunning)?
     private var persistenceRoot: URL?
@@ -329,7 +339,9 @@ public actor FolderWatcherService {
     private var convergenceCounts: [String: Int] = [:]
     private var pendingChangedPaths: [String: [String]] = [:]
 
-    private init() {}
+    public init(suppression: FolderWatcherSuppression = FolderWatcherSuppression()) {
+        self.suppression = suppression
+    }
 
     public func configure(root: URL, runner: any FolderWatcherRunning) {
         persistenceRoot = root
@@ -406,7 +418,7 @@ public actor FolderWatcherService {
         let id = watcher.id
         var context = FSEventStreamContext(
             version: 0,
-            info: Unmanaged.passRetained(WatcherCallbackBox(watcherId: id)).toOpaque(),
+            info: Unmanaged.passRetained(WatcherCallbackBox(watcherId: id, service: self)).toOpaque(),
             retain: nil,
             release: { info in
                 Unmanaged<WatcherCallbackBox>.fromOpaque(info!).release()
@@ -442,7 +454,7 @@ public actor FolderWatcherService {
     }
 
     fileprivate func handleFSEvent(watcherId: String, changedPaths: [String]) {
-        if FolderWatcherSuppression.shared.isSuppressed(watcherId) {
+        if suppression.isSuppressed(watcherId) {
             dropPending(watcherId: watcherId)
             return
         }
@@ -471,11 +483,11 @@ public actor FolderWatcherService {
 
     private func scheduleConvergenceCheck(watcher: FolderWatcherRecord) async {
         let id = watcher.id
-        if FolderWatcherSuppression.shared.isSuppressed(id) {
+        if suppression.isSuppressed(id) {
             dropPending(watcherId: id)
             return
         }
-        let generation = FolderWatcherSuppression.shared.currentGeneration(id)
+        let generation = suppression.currentGeneration(id)
         let count = (convergenceCounts[id] ?? 0) + 1
         convergenceCounts[id] = count
         if count < max(1, watcher.maxConvergence) {
@@ -488,8 +500,8 @@ public actor FolderWatcherService {
         }
         convergenceCounts[id] = 0
         let paths = pendingChangedPaths.removeValue(forKey: id) ?? []
-        if FolderWatcherSuppression.shared.isSuppressed(id)
-            || FolderWatcherSuppression.shared.currentGeneration(id) != generation
+        if suppression.isSuppressed(id)
+            || suppression.currentGeneration(id) != generation
         {
             return
         }
@@ -564,7 +576,14 @@ public struct StoreFolderWatcherRunner: FolderWatcherRunning {
 
 private final class WatcherCallbackBox: @unchecked Sendable {
     let watcherId: String
-    init(watcherId: String) { self.watcherId = watcherId }
+    /// The service that opened this stream. Carried through the FSEvents info
+    /// pointer so an event reaches the instance that asked for it — with a
+    /// global, every stream in the process fed the same one.
+    let service: FolderWatcherService
+    init(watcherId: String, service: FolderWatcherService) {
+        self.watcherId = watcherId
+        self.service = service
+    }
 }
 
 private func grizzyBotFolderWatcherCallback(
@@ -578,10 +597,7 @@ private func grizzyBotFolderWatcherCallback(
     guard let info = clientCallBackInfo else { return }
     let box = Unmanaged<WatcherCallbackBox>.fromOpaque(info).takeUnretainedValue()
     let pathsArray = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] ?? []
-    Task {
-        await FolderWatcherService.shared.handleFSEvent(
-            watcherId: box.watcherId,
-            changedPaths: pathsArray
-        )
+    Task { [service = box.service, watcherId = box.watcherId] in
+        await service.handleFSEvent(watcherId: watcherId, changedPaths: pathsArray)
     }
 }

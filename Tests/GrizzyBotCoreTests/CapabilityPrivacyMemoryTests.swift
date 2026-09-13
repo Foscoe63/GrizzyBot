@@ -259,15 +259,40 @@ struct FolderWatcherFirePolicyTests {
 
     @Test("suppress bumps generation so in-flight timers cannot fire")
     func generationBumps() {
-        let id = UUID().uuidString
-        #expect(!FolderWatcherSuppression.shared.isSuppressed(id))
-        let first = FolderWatcherSuppression.shared.suppress(id)
-        #expect(FolderWatcherSuppression.shared.isSuppressed(id))
-        let second = FolderWatcherSuppression.shared.suppress(id)
+        // A plain id, not a UUID: suppression is per-instance now, so a test no
+        // longer has to invent a unique key to avoid colliding with its peers.
+        let suppression = FolderWatcherSuppression()
+        let id = "organize-downloads"
+        #expect(!suppression.isSuppressed(id))
+        let first = suppression.suppress(id)
+        #expect(suppression.isSuppressed(id))
+        let second = suppression.suppress(id)
         #expect(second != first)
-        FolderWatcherSuppression.shared.release(id)
-        #expect(!FolderWatcherSuppression.shared.isSuppressed(id))
-        #expect(FolderWatcherSuppression.shared.currentGeneration(id) == second)
+        suppression.release(id)
+        #expect(!suppression.isSuppressed(id))
+        #expect(suppression.currentGeneration(id) == second)
+    }
+
+    @Test("two suppressions do not see each other's watchers")
+    func suppressionIsPerInstance() {
+        let a = FolderWatcherSuppression()
+        let b = FolderWatcherSuppression()
+        let id = "organize-downloads"
+        a.suppress(id)
+        #expect(a.isSuppressed(id))
+        // The whole point of the refactor: same id, different owner, no bleed.
+        #expect(!b.isSuppressed(id))
+        #expect(b.currentGeneration(id) == 0)
+    }
+
+    @Test("a service carries the suppression it was given")
+    func serviceOwnsItsSuppression() async {
+        let suppression = FolderWatcherSuppression()
+        let service = FolderWatcherService(suppression: suppression)
+        // Identity, not equality: the store reads this very object while the
+        // actor consults it, and two copies would disagree.
+        #expect(service.suppression === suppression)
+        #expect(FolderWatcherService(suppression: FolderWatcherSuppression()).suppression !== suppression)
     }
 }
 

@@ -212,6 +212,14 @@ public final class AppStore {
     private var runWorkingFolderOverride: [String: String] = [:]
     /// Bot currently executing a watcher-triggered run (for echo suppression).
     private var watcherRunByBotId: [String: String] = [:]
+    /// This store's own watchers. Not a singleton: two stores — two tests, or
+    /// two workspaces — would otherwise share FSEvent streams and suppression
+    /// state for directories that have nothing to do with each other.
+    ///
+    /// ObservationIgnored because this is machinery, not state a view renders;
+    /// the @Observable macro rewrites stored properties and does not accept it
+    /// otherwise.
+    @ObservationIgnored private let folderWatcherService = FolderWatcherService()
     /// Injected chat client (tests). Production picks one per provider — see
     /// `defaultClient(for:)`.
     public var chatCompleter: (any ChatCompleting)?
@@ -6334,7 +6342,7 @@ public final class AppStore {
     }
 
     public func deleteFolderWatcher(id: String) throws {
-        FolderWatcherSuppression.shared.release(id)
+        folderWatcherService.suppression.release(id)
         try FolderWatcherPersistence.delete(id: id, root: userPersistence.root)
         reloadFolderWatchers()
         refreshLocalIntegrations()
@@ -6391,12 +6399,12 @@ public final class AppStore {
                 self.fireFolderWatcher(watcher, changedPaths: paths, manual: manual)
             }
         }
-        await FolderWatcherService.shared.configure(root: root, runner: runner)
+        await folderWatcherService.configure(root: root, runner: runner)
         if appConfig.enableFolderWatchers {
-            await FolderWatcherService.shared.start()
-            await FolderWatcherService.shared.reloadNow()
+            await folderWatcherService.start()
+            await folderWatcherService.reloadNow()
         } else {
-            await FolderWatcherService.shared.stop()
+            await folderWatcherService.stop()
         }
     }
 
@@ -6418,14 +6426,14 @@ public final class AppStore {
         guard let botId else { return "No bot configured for watcher." }
         if let skip = FolderWatcherFirePolicy.skipReason(
             botBusy: isRunActive(botId: botId),
-            suppressed: FolderWatcherSuppression.shared.isSuppressed(watcher.id),
+            suppressed: folderWatcherService.suppression.isSuppressed(watcher.id),
             manual: manual
         ) {
             return skip
         }
-        FolderWatcherSuppression.shared.suppress(watcher.id)
+        folderWatcherService.suppression.suppress(watcher.id)
         watcherRunByBotId[botId] = watcher.id
-        Task { await FolderWatcherService.shared.dropPending(watcherId: watcher.id) }
+        Task { await folderWatcherService.dropPending(watcherId: watcher.id) }
         let prompt = FolderWatcherPromptBuilder.userMessage(
             watcher: watcher,
             changedPaths: changedPaths,
@@ -6462,8 +6470,8 @@ public final class AppStore {
         let cooldown = watcherEchoCooldown(for: watcherId)
         Task {
             try? await Task.sleep(for: .seconds(cooldown))
-            FolderWatcherSuppression.shared.release(watcherId)
-            await FolderWatcherService.shared.dropPending(watcherId: watcherId)
+            folderWatcherService.suppression.release(watcherId)
+            await folderWatcherService.dropPending(watcherId: watcherId)
         }
     }
 
