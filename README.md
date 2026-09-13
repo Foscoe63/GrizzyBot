@@ -507,6 +507,7 @@ Fallback when nothing is promoted yet: search once → `mcp_call` with the exact
 | 📋 | **Sidebar** | Bots, rooms, routines, plugins, skills, weekly usage (Chief of Staff highlighted on the roster) |
 | 🔝 | **Chat header** | Session menu (chat export/import/transcript), task picker, search (⌘F), **monitor** (Computer panel), **artifacts** (⇧⌘A), canvas, edit |
 | 📐 | **Right panel** | Resizable computer preview + Take control / Release, routines, bot files, settings, shared canvas editor, memory; share-safe **redacted** chat export |
+| ✏️ | **Prose fields** | Description, Instructions, Memory, a routine's Instruction, skill bodies, and the MCP Env / Headers boxes are real multi-line editors — Return breaks the line, selection and undo behave, and the box scrolls at a fixed height rather than growing and shoving the Save button down the panel. |
 | ⚙️ | **Settings** | General (profile, shared memory, token counters, **Session** snapshots / export / iCloud backup+restore / wipe), Connections (Google Client ID/Secret + redirect URI Copy + setup guide), Computer, Voice, **Tools** (MCP first), Themes, Privacy, Watchers, Diagnostics, **Governance**, **Knowledge**, **Components** |
 | 🧬 | **Model Connect** | Cloud keys, subscriptions, local/LAN OpenAI-compatible servers, and **Local MLX** (Rescan, HF/LM Studio folders, optional Hub download) |
 | 🎨 | **Themes** | Grizzy (default), system, light, dark, and the built-in gallery |

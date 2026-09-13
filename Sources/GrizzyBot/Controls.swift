@@ -134,9 +134,17 @@ struct GrizzyField: View {
             Group {
                 if secure {
                     SecureField(placeholder, text: $text)
-                } else if let lineLimit, axis == .vertical {
-                    TextField(placeholder, text: $text, axis: .vertical)
-                        .lineLimit(lineLimit)
+                } else if axis == .vertical {
+                    // A TextField, even `axis: .vertical`, is a one-line control that
+                    // grows: Return commits the edit and reselects instead of breaking
+                    // the line, and there is no scroller. Prose fields get a real editor.
+                    GrizzyTextEditor(
+                        placeholder: placeholder,
+                        text: $text,
+                        fontSize: style == .auth ? 17 : 15,
+                        textColor: style == .auth ? Theme.textAuthTitle : Theme.textBright,
+                        lines: lineLimit ?? 4...10
+                    )
                 } else {
                     TextField(placeholder, text: $text)
                 }
@@ -153,6 +161,53 @@ struct GrizzyField: View {
                     .stroke(style == .auth ? Theme.borderAuth : Theme.borderInputsDark, lineWidth: 1)
             }
         }
+    }
+}
+
+/// Multi-line text box with the editing a prose field is expected to have:
+/// Return breaks the line, selection and undo behave, and it scrolls once the
+/// text outgrows `lines` instead of pushing the rest of the form down the panel.
+struct GrizzyTextEditor: View {
+    var placeholder: String
+    @Binding var text: String
+    var fontSize: CGFloat
+    var textColor: Color
+    var lines: ClosedRange<Int>
+
+    private var lineHeight: CGFloat { ceil(fontSize * 1.35) }
+
+    /// A TextEditor is greedy, so a min/max frame would render every box at its
+    /// maximum. The box is a fixed size that scrolls instead — the midpoint of
+    /// the range the caller asked for, so a field that wanted room gets it and a
+    /// compact one stays compact, and neither shoves the Save button around as
+    /// you type.
+    private var boxHeight: CGFloat {
+        let lineCount = max(lines.lowerBound, (lines.lowerBound + lines.upperBound + 1) / 2)
+        return CGFloat(lineCount) * lineHeight
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if text.isEmpty {
+                // No inset of its own: measured on screen, TextEditor draws its
+                // text flush with where a single-line TextField draws, so any
+                // padding here makes the placeholder jump left on the first
+                // keystroke.
+                Text(placeholder)
+                    .font(.system(size: fontSize))
+                    .foregroundStyle(Theme.textMuted)
+                    .allowsHitTesting(false)
+            }
+            // foregroundColor, not foregroundStyle: TextEditor does not reliably
+            // pick the style up from the environment, and getting it wrong means
+            // black text on a dark field.
+            TextEditor(text: $text)
+                .font(.system(size: fontSize))
+                .foregroundColor(textColor)
+                .scrollContentBackground(.hidden)
+                .scrollIndicators(.visible)
+        }
+        .frame(height: boxHeight, alignment: .topLeading)
     }
 }
 

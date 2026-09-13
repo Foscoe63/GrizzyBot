@@ -942,29 +942,17 @@ struct RightPanelView: View {
             )
             .padding(.top, 20)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Instruction")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.textSecondary)
-                TextField(
-                    "Instruction",
-                    text: Binding(
-                        get: { store.routineDraft.prompt },
-                        set: { store.routineDraft.prompt = $0 }
-                    ),
-                    axis: .vertical
-                )
-                .lineLimit(6...)
-                .font(.system(size: 15))
-                .foregroundStyle(Theme.textBright)
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(Theme.borderInputsDark, lineWidth: 1)
-                }
-            }
+            GrizzyField(
+                label: "Instruction",
+                labelSize: 14,
+                placeholder: "What this routine should do on every run",
+                text: Binding(
+                    get: { store.routineDraft.prompt },
+                    set: { store.routineDraft.prompt = $0 }
+                ),
+                axis: .vertical,
+                lineLimit: 6...18
+            )
             .padding(.top, 12)
 
             Text("Assign to bot")
