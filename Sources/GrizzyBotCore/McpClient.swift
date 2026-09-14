@@ -133,10 +133,16 @@ struct SendableJSON: @unchecked Sendable {
 
 // MARK: - Transport protocol
 
-protocol McpSession: AnyObject {
+protocol McpSession: AnyObject, Sendable {
     func sendRequest(method: String, params: [String: Any]?) async throws -> Any
     func sendNotification(method: String, params: [String: Any]?) async throws
     func close() async
+    /// False once the transport is gone, so a pooled session is not handed out after its
+    /// process has exited.
+    var isAlive: Bool { get }
+    /// Pooled sessions outlive the call that opened them, and callers use different deadlines
+    /// (45s for a tool call, 30s for a listing), so the deadline is set per use.
+    func setRequestTimeout(_ seconds: TimeInterval)
 }
 
 // MARK: - Client
@@ -146,54 +152,68 @@ public enum McpClient {
     public static let clientName = "GrizzyBot"
     public static let clientVersion = "1.0.0"
 
-    /// Connect, initialize, list tools, call the best matching tool, return text.
+    /// List tools, call the best matching one, return text.
     public static func invoke(
         server: McpServer,
         prompt: String,
         timeout: TimeInterval = 45
     ) async throws -> McpCallResult {
-        let session = try await openSession(server: server, timeout: timeout)
-        do {
-            let result = try await runToolFlow(session: session, prompt: prompt)
-            await session.close()
-            return result
-        } catch {
-            await session.close()
-            throw error
+        try await pooled(server: server, timeout: timeout) { session in
+            let tools = try await toolsList(session: session)
+            guard !tools.isEmpty else { throw McpError.noTools }
+            let tool = selectTool(from: tools, prompt: prompt)
+            let args = buildArguments(for: tool, prompt: prompt)
+            let (text, isError) = try await toolsCall(session: session, name: tool.name, arguments: args)
+            return McpCallResult(toolName: tool.name, text: text, isError: isError, listedTools: tools)
         }
     }
 
-    /// Connect, initialize, and call a named tool with explicit arguments.
+    /// Call a named tool with explicit arguments.
     public static func call(
         server: McpServer,
         toolName: String,
         arguments: [String: JSONValue] = [:],
         timeout: TimeInterval = 45
     ) async throws -> McpCallResult {
-        let session = try await openSession(server: server, timeout: timeout)
-        do {
-            _ = try await initialize(session: session)
-            let anyArgs = arguments.mapValues(\.any)
-            let (text, isError) = try await toolsCall(session: session, name: toolName, arguments: anyArgs)
-            await session.close()
+        // Unwrapped inside the closure: `[String: Any]` is not Sendable, `[String: JSONValue` is.
+        try await pooled(server: server, timeout: timeout) { session in
+            let (text, isError) = try await toolsCall(
+                session: session,
+                name: toolName,
+                arguments: arguments.mapValues(\.any)
+            )
             return McpCallResult(toolName: toolName, text: text, isError: isError)
-        } catch {
-            await session.close()
-            throw error
         }
     }
 
     /// List tools only (useful for diagnostics).
     public static func listTools(server: McpServer, timeout: TimeInterval = 30) async throws -> [McpToolInfo] {
-        let session = try await openSession(server: server, timeout: timeout)
+        try await pooled(server: server, timeout: timeout) { session in
+            try await toolsList(session: session)
+        }
+    }
+
+    /// Run `work` on a pooled, already-initialized session.
+    ///
+    /// A pooled session can die between calls — the process exits, the server restarts — and the
+    /// caller only finds out when a request fails. Transport-level failures therefore discard the
+    /// session and retry once on a fresh one; anything the server actually answered is returned
+    /// as-is. Sessions are not closed on success: that is the entire point of pooling.
+    static func pooled<T: Sendable>(
+        server: McpServer,
+        timeout: TimeInterval,
+        _ work: @Sendable (any McpSession) async throws -> T
+    ) async throws -> T {
+        let session = try await McpSessionPool.shared.session(for: server, timeout: timeout)
         do {
-            _ = try await initialize(session: session)
-            let tools = try await toolsList(session: session)
-            await session.close()
-            return tools
-        } catch {
-            await session.close()
-            throw error
+            return try await work(session)
+        } catch let error as McpError {
+            if error.invalidatesSession {
+                await McpSessionPool.shared.invalidate(server)
+            }
+            guard error.deservesFreshSessionRetry else { throw error }
+            let fresh = try await McpSessionPool.shared.session(for: server, timeout: timeout)
+            return try await work(fresh)
         }
     }
 
@@ -631,7 +651,8 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
     private var didFail = false
     private var lastError: Error?
     private var exitStatus: Int?
-    private let timeout: TimeInterval
+    /// Mutable: a pooled session serves callers with different deadlines.
+    private var timeout: TimeInterval
 
     static func open(server: McpServer, timeout: TimeInterval) async throws -> McpStdioSession {
         let command = server.command.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -831,6 +852,14 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
         }
     }
 
+    var isAlive: Bool {
+        queue.sync { !closed && !didFail && process.isRunning }
+    }
+
+    func setRequestTimeout(_ seconds: TimeInterval) {
+        queue.sync { timeout = seconds }
+    }
+
     func close() async {
         queue.sync {
             closed = true
@@ -876,6 +905,7 @@ final class McpHTTPSession: McpSession, @unchecked Sendable {
     /// Legacy SSE: POST messages here after reading `endpoint` event.
     private var messageURL: URL?
     private var forceLegacy = false
+    private var invalidated = false
 
     static func open(server: McpServer, mode: McpHTTPMode, timeout: TimeInterval) async throws -> McpHTTPSession {
         let raw = server.url.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1139,7 +1169,23 @@ final class McpHTTPSession: McpSession, @unchecked Sendable {
         }
     }
 
+    var isAlive: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return !invalidated
+    }
+
+    /// No-op: URLSession fixes its timeouts at construction, and HTTP has no process to
+    /// wedge the way stdio does, so the open-time value stands.
+    func setRequestTimeout(_ seconds: TimeInterval) {}
+
+    private func markInvalidated() {
+        lock.lock()
+        invalidated = true
+        lock.unlock()
+    }
+
     func close() async {
+        markInvalidated()
         session.invalidateAndCancel()
         if let mcpSessionId {
             var request = URLRequest(url: endpoint)

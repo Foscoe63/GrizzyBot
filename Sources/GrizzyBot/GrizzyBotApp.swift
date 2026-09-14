@@ -42,6 +42,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        // Pooled MCP sessions hold stdio child processes. They used to die with the call that
+        // opened them; now they are reused, so quitting has to reap them or they outlive the app.
+        let finished = DispatchSemaphore(value: 0)
+        Task.detached {
+            await McpSessionPool.shared.shutdown()
+            finished.signal()
+        }
+        // Capped: a wedged server must not stop the app from quitting.
+        _ = finished.wait(timeout: .now() + 2)
+    }
+
     private func registerRoutineTickListener() {
         tickObserver = DistributedNotificationCenter.default().addObserver(
             forName: RoutineTickIPC.notification,
