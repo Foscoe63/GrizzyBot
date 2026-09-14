@@ -780,45 +780,46 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
         let req = McpJSONRPCRequest(id: id, method: method, params: encodableParams)
         let data = try McpClient.encodeJSONRPC(req) + Data([0x0A])
 
-        return try await withThrowingTaskGroup(of: SendableJSON.self) { group in
-            group.addTask {
-                try await withCheckedThrowingContinuation { (cont: CheckedContinuation<SendableJSON, Error>) in
-                    self.queue.async {
-                        if self.didFail {
-                            cont.resume(throwing: self.lastError ?? McpError.cancelled)
-                            return
-                        }
-                        if self.closed {
-                            cont.resume(throwing: McpError.cancelled)
-                            return
-                        }
-                        self.pending[id] = cont
-                        do {
-                            try self.stdin.write(contentsOf: data)
-                        } catch {
-                            self.queue.asyncAfter(deadline: .now() + 0.12) {
-                                guard !self.didFail else { return }
-                                self.pending.removeValue(forKey: id)
-                                let err = String(data: self.stderrBytes, encoding: .utf8)?
-                                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                                if !err.isEmpty {
-                                    cont.resume(throwing: McpError.transport(err))
-                                } else {
-                                    cont.resume(throwing: McpError.transport(error.localizedDescription))
-                                }
-                            }
+        // The deadline resumes the pending continuation itself rather than racing it in a task
+        // group. A group waits for every child before it returns, and cancelling a task suspended
+        // on a CheckedContinuation does not resume it — so a group-based timeout blocked until the
+        // server happened to answer or die, turning a 2s timeout into an unbounded hang.
+        //
+        // Every exit path goes through `pending.removeValue(forKey:)` on `queue`, so the
+        // continuation is resumed exactly once: by a reply, by `failAll`, or by this deadline.
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<SendableJSON, Error>) in
+            self.queue.async {
+                if self.didFail {
+                    cont.resume(throwing: self.lastError ?? McpError.cancelled)
+                    return
+                }
+                if self.closed {
+                    cont.resume(throwing: McpError.cancelled)
+                    return
+                }
+                self.pending[id] = cont
+
+                self.queue.asyncAfter(deadline: .now() + self.timeout) {
+                    guard let timedOut = self.pending.removeValue(forKey: id) else { return }
+                    timedOut.resume(throwing: McpError.timeout)
+                }
+
+                do {
+                    try self.stdin.write(contentsOf: data)
+                } catch {
+                    self.queue.asyncAfter(deadline: .now() + 0.12) {
+                        guard !self.didFail, let failed = self.pending.removeValue(forKey: id) else { return }
+                        let err = String(data: self.stderrBytes, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        if !err.isEmpty {
+                            failed.resume(throwing: McpError.transport(err))
+                        } else {
+                            failed.resume(throwing: McpError.transport(error.localizedDescription))
                         }
                     }
                 }
             }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(self.timeout * 1_000_000_000))
-                throw McpError.timeout
-            }
-            let value = try await group.next()!
-            group.cancelAll()
-            return value.value
-        }
+        }.value
     }
 
     func sendNotification(method: String, params: [String: Any]?) async throws {
