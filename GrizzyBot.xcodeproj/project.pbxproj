@@ -36,6 +36,7 @@
 		207EDEFAD0CC1E60D46035B4 /* CapabilitySearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6506263D6C09979D7A3B5616 /* CapabilitySearch.swift */; };
 		20D3AE5205B6CF13DE7C7947 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = D9CE21B2FEE4DE4CF2AF17F9 /* MLXLLM */; };
 		21390CC60909F7CF03C5DBFE /* GoogleRequests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E709F81FAFD62A79D61F83E0 /* GoogleRequests.swift */; };
+		24B6783D982875017DD5C21C /* McpSessionPoolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFC55BFA06E6A3A173425561 /* McpSessionPoolTests.swift */; };
 		24CE7D662DE3B77336F50071 /* AgentSessionTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F0E652E1C21178CEE2A005 /* AgentSessionTools.swift */; };
 		24D6710085EB943440D0877F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 866AEEBA7A19C592C6896E1A /* Assets.xcassets */; };
 		28103C4B01854C8DB11DEC09 /* GrizzyBotRoutineAgent in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 9C750D138D23879DD11BF364 /* GrizzyBotRoutineAgent */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -99,6 +100,7 @@
 		71ED8102BA5EE663BB6F0CAD /* SyntaxHighlighterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9639CA89776B1C3FBD06A81 /* SyntaxHighlighterTests.swift */; };
 		740C1B71C1BE12ACA3E111A2 /* ThemePresetsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 799F8F3268F4DA07E922B34D /* ThemePresetsTests.swift */; };
 		74EF7052A5D73F0080832887 /* AgentEvalCISuite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 537A504870B6B55703340CCC /* AgentEvalCISuite.swift */; };
+		75ACA5ECF65DBCE77A2E6628 /* McpSessionPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DB4D81C7F030B591A539180 /* McpSessionPool.swift */; };
 		7653A0FB5E882BC9CB7E2F79 /* OverlaySnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2CC9EE8BD0597819A0089C /* OverlaySnapshotTests.swift */; };
 		7A0B1C08071FF7138CCFB226 /* OverlayUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39799E47CE1EEBF60A81AFDA /* OverlayUITests.swift */; };
 		7A47A824E892D5E4EEFE347B /* GrizzyBotCore.h in Headers */ = {isa = PBXBuildFile; fileRef = 4DEFC3AC1708501881B04ADD /* GrizzyBotCore.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -179,6 +181,7 @@
 		DE848EAF046B92F031EE11FD /* GrizzyBotCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 426B4B37E7B9E890A947CF9F /* GrizzyBotCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E00627B414708FA9623A3199 /* LoginItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31AAC2F56EC52FC99A5DC171 /* LoginItem.swift */; };
 		E06758F1CD11E18D1E5496C2 /* LocalProvidersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90E608627E9ED8C81E3D90D8 /* LocalProvidersTests.swift */; };
+		E17F1AF61B7E088741C0A355 /* McpTimeoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C32D41A012DB909866A195E /* McpTimeoutTests.swift */; };
 		E2B81E40625292AF3E08E2CF /* MemoryLean.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6861A66B06A6E2D79FA220E6 /* MemoryLean.swift */; };
 		E3F81CC77AD08D04BDDD7148 /* plugins-overlay.png in Resources */ = {isa = PBXBuildFile; fileRef = E8B5913CB3FC2BF2CC9408E5 /* plugins-overlay.png */; };
 		E6BC9B9A51A19A1E76DC8DBC /* model-overlay.png in Resources */ = {isa = PBXBuildFile; fileRef = 581EE7F90D527E74D749DB18 /* model-overlay.png */; };
@@ -360,6 +363,7 @@
 		4A85334AF1F9675C5C0A168E /* GrizzyBotMLX.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GrizzyBotMLX.h; sourceTree = "<group>"; };
 		4B702235E880FE29D8EFBD0D /* ArtifactViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactViews.swift; sourceTree = "<group>"; };
 		4C056F8276A70A11729EAE82 /* McpCatalogPromote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpCatalogPromote.swift; sourceTree = "<group>"; };
+		4C32D41A012DB909866A195E /* McpTimeoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpTimeoutTests.swift; sourceTree = "<group>"; };
 		4D3D9E11310BF773509A2486 /* MLXRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXRuntime.swift; sourceTree = "<group>"; };
 		4DEFC3AC1708501881B04ADD /* GrizzyBotCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GrizzyBotCore.h; sourceTree = "<group>"; };
 		4E68757C80AA3F6C31769048 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -395,6 +399,7 @@
 		895CB54DF308C252E7F0408F /* AgentLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLoop.swift; sourceTree = "<group>"; };
 		8A99E87B9C17655D22331DDC /* PluginsOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsOverlayView.swift; sourceTree = "<group>"; };
 		8B5AF27C0B0A01037267D8C6 /* CanvasBoardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasBoardTests.swift; sourceTree = "<group>"; };
+		8DB4D81C7F030B591A539180 /* McpSessionPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpSessionPool.swift; sourceTree = "<group>"; };
 		8E2CC9EE8BD0597819A0089C /* OverlaySnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlaySnapshotTests.swift; sourceTree = "<group>"; };
 		8E31C4FBEF5A687BD0E8757D /* AgentTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTools.swift; sourceTree = "<group>"; };
 		9073EF84B672BC0253421319 /* ProductSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductSurface.swift; sourceTree = "<group>"; };
@@ -487,6 +492,7 @@
 		FAAAF7AB908DE6EBB68D5394 /* McpGatewayCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpGatewayCall.swift; sourceTree = "<group>"; };
 		FB44D631A1BFEC6A49332CEF /* CronTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronTests.swift; sourceTree = "<group>"; };
 		FBB065DE9073A8C4BC8BDAA7 /* MLXChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXChatClient.swift; sourceTree = "<group>"; };
+		FFC55BFA06E6A3A173425561 /* McpSessionPoolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpSessionPoolTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -564,6 +570,8 @@
 				90E608627E9ED8C81E3D90D8 /* LocalProvidersTests.swift */,
 				38404F696EB8978F298A22AA /* McpCatalogPromoteTests.swift */,
 				CC7102D998178BBA84298757 /* McpClientTests.swift */,
+				FFC55BFA06E6A3A173425561 /* McpSessionPoolTests.swift */,
+				4C32D41A012DB909866A195E /* McpTimeoutTests.swift */,
 				3FBF69FD6337797E70B66E27 /* McpToolGateTests.swift */,
 				ECD970D5D9577451E2A725C9 /* McpToolRoutingTests.swift */,
 				F00BA61D03E0F2FE86BFED60 /* ModelProviderProfileTests.swift */,
@@ -786,6 +794,7 @@
 				4C056F8276A70A11729EAE82 /* McpCatalogPromote.swift */,
 				1EAA172FAC1AB99A08E6AC55 /* McpClient.swift */,
 				FAAAF7AB908DE6EBB68D5394 /* McpGatewayCall.swift */,
+				8DB4D81C7F030B591A539180 /* McpSessionPool.swift */,
 				D2F98EB9BD8E7B414D17F5FF /* McpToolGate.swift */,
 				54D0BC9641DCCE35A309E36E /* McpToolRouting.swift */,
 				9400EAF466ADEFC2406D5BC5 /* MemoryEmbedding.swift */,
@@ -1156,6 +1165,7 @@
 				A1752ECC2E09E44F7174B4D6 /* McpCatalogPromote.swift in Sources */,
 				8ABB3A13219B3D5D73205E6D /* McpClient.swift in Sources */,
 				972DF04DE576CF2FEBC3C6C0 /* McpGatewayCall.swift in Sources */,
+				75ACA5ECF65DBCE77A2E6628 /* McpSessionPool.swift in Sources */,
 				42E69FF955364D66884E8322 /* McpToolGate.swift in Sources */,
 				69BCFEDA49356BA041DE8D31 /* McpToolRouting.swift in Sources */,
 				7DA0B481E8EAEE9E22C11108 /* MemoryEmbedding.swift in Sources */,
@@ -1211,6 +1221,8 @@
 				E06758F1CD11E18D1E5496C2 /* LocalProvidersTests.swift in Sources */,
 				B8D670CD267FCA1B92942DA4 /* McpCatalogPromoteTests.swift in Sources */,
 				1BDD175C76D18C304B93A79F /* McpClientTests.swift in Sources */,
+				24B6783D982875017DD5C21C /* McpSessionPoolTests.swift in Sources */,
+				E17F1AF61B7E088741C0A355 /* McpTimeoutTests.swift in Sources */,
 				2AEE356C81F8B4EB09783D8F /* McpToolGateTests.swift in Sources */,
 				33D25C57AC0B57F57AF1818F /* McpToolRoutingTests.swift in Sources */,
 				A86F4CC025889FC2B4F69BFD /* ModelProviderProfileTests.swift in Sources */,
