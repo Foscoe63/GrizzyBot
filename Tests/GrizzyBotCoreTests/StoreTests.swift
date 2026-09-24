@@ -181,6 +181,73 @@ struct StoreTests {
         #expect(store.bots.filter { $0.name == "Researcher" }.count == 1)
     }
 
+    @Test("message_bot is logged to Bot Chat and attributed in the peer's thread")
+    func messageBotIsLogged() async {
+        let (store, chief, researcher) = rosterStore(email: "roster-log@b.com")
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"researcher\",\"task\":\"Brief me on the filing\"}"),
+            ChatCompletionResponse(text: "The filing closes on the 30th."),
+            ChatCompletionResponse(text: "Done."),
+        ])
+        store.send(botId: chief.id, text: "get me a brief")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+
+        #expect(store.botChat.count == 1)
+        let entry = store.botChat[0]
+        #expect(entry.fromBotId == chief.id && entry.toBotId == researcher.id)
+        #expect(entry.text == "Brief me on the filing")
+        #expect(entry.reply == "The filing closes on the 30th.")
+        #expect(entry.outcome == .answered)
+        #expect(store.messages(for: researcher.id).contains {
+            $0.role == .user && $0.firstText.hasPrefix("Message from GrizzyBot")
+        })
+    }
+
+    @Test("a room @mention picks the responder; its reply @mentioning a peer pulls that peer in")
+    func roomMentionsChain() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "room@b.com", password: "password1") == nil)
+        let ada = store.createBot(name: "Ada", title: "")
+        let grace = store.createBot(name: "Grace", title: "")
+        let linus = store.createBot(name: "Linus", title: "")
+        let room = store.createGroup(name: "Team", memberIds: [ada.id, grace.id, linus.id])
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(text: "On it. @Linus can you check the build?"),
+            ChatCompletionResponse(text: "Build is green."),
+        ])
+        store.sendGroupMessage(groupId: room.id, text: "@ada please look at this")
+
+        var authors: [String] = []
+        for _ in 0..<400 {
+            authors = (store.threads[room.id]?.messages ?? []).filter { $0.role == .bot }.compactMap(\.authorBotId)
+            if authors.count == 2, store.threads[room.id]?.run?.status == .completed { break }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        // Ada (mentioned) answered first, then Linus (pulled in by Ada). Grace never spoke.
+        #expect(authors == [ada.id, linus.id])
+    }
+
+    @Test("a reply that only echoes the room roster does not pull other members in")
+    func roomRosterEchoDoesNotEscalate() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "room-echo@b.com", password: "password1") == nil)
+        let ada = store.createBot(name: "Ada", title: "")
+        let grace = store.createBot(name: "Grace", title: "")
+        let room = store.createGroup(name: "Team", memberIds: [ada.id, grace.id])
+        store.chatCompleter = QueueChatClient([
+            ChatCompletionResponse(text: "Room members: Ada, Grace. Hello."),
+            ChatCompletionResponse(text: "should never be consumed"),
+        ])
+        store.sendGroupMessage(groupId: room.id, text: "@ada hi")
+        for _ in 0..<400 {
+            if store.threads[room.id]?.run?.status == .completed { break }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        try? await Task.sleep(for: .milliseconds(200))
+        let authors = (store.threads[room.id]?.messages ?? []).filter { $0.role == .bot }.compactMap(\.authorBotId)
+        #expect(authors == [ada.id])
+    }
+
     @Test("wait:false dispatches without holding the turn open")
     func messageBotDispatches() async {
         let (store, chief, researcher) = rosterStore(email: "roster-async@b.com")

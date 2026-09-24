@@ -45,7 +45,8 @@ struct RoutinesPageView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 10) {
-                        Text("◷")
+                        Image(systemName: "clock")
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(Theme.orange)
                         Text("Routines")
                             .font(.system(size: 20, weight: .semibold))

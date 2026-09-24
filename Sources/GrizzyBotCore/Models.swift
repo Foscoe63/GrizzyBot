@@ -54,6 +54,10 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var enabledComponents: [String]
     /// Optional host folder; relative file tool paths resolve here.
     public var workingFolder: String?
+    /// `BotAvatarShape` raw value; nil is the default circle.
+    public var avatarShape: String?
+    /// Bumped whenever an uploaded avatar image changes; nil means no image.
+    public var avatarImageRev: Int?
 
     public init(
         id: String,
@@ -88,7 +92,9 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         runtime: BotRuntime = .local,
         aguiURL: String? = nil,
         enabledComponents: [String] = AgentComponentCatalog.allIds,
-        workingFolder: String? = nil
+        workingFolder: String? = nil,
+        avatarShape: String? = nil,
+        avatarImageRev: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -123,9 +129,12 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.aguiURL = aguiURL
         self.enabledComponents = enabledComponents
         self.workingFolder = workingFolder
+        self.avatarShape = avatarShape
+        self.avatarImageRev = avatarImageRev
     }
 
     enum CodingKeys: String, CodingKey {
+        case avatarShape, avatarImageRev
         case id, name, title, description, instructions, color, notifyOnFinish, parentBotId
         case threadId, preview, status, updatedAt, createdAt
         case pinned, hidden, unread, autoApprove, speakReplies, notifications, chiefOfStaff
@@ -168,6 +177,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         aguiURL = try c.decodeIfPresent(String.self, forKey: .aguiURL)
         enabledComponents = try c.decodeIfPresent([String].self, forKey: .enabledComponents) ?? AgentComponentCatalog.allIds
         workingFolder = try c.decodeIfPresent(String.self, forKey: .workingFolder)
+        avatarShape = try c.decodeIfPresent(String.self, forKey: .avatarShape)
+        avatarImageRev = try c.decodeIfPresent(Int.self, forKey: .avatarImageRev)
     }
 }
 
@@ -265,6 +276,8 @@ public struct ThreadMessage: Codable, Sendable, Hashable, Identifiable {
     public var runId: String?
     public var createdAt: Date
     public var reactions: [MessageReaction]
+    /// Which bot wrote this message. Set for room replies, where several bots share one thread.
+    public var authorBotId: String?
 
     public init(
         id: String,
@@ -274,7 +287,8 @@ public struct ThreadMessage: Codable, Sendable, Hashable, Identifiable {
         blocks: [MessageBlock],
         runId: String? = nil,
         createdAt: Date = .now,
-        reactions: [MessageReaction] = []
+        reactions: [MessageReaction] = [],
+        authorBotId: String? = nil
     ) {
         self.id = id
         self.threadId = threadId
@@ -284,10 +298,11 @@ public struct ThreadMessage: Codable, Sendable, Hashable, Identifiable {
         self.runId = runId
         self.createdAt = createdAt
         self.reactions = reactions
+        self.authorBotId = authorBotId
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, threadId, seq, role, blocks, runId, createdAt, reactions
+        case id, threadId, seq, role, blocks, runId, createdAt, reactions, authorBotId
     }
 
     public init(from decoder: Decoder) throws {
@@ -300,6 +315,7 @@ public struct ThreadMessage: Codable, Sendable, Hashable, Identifiable {
         runId = try c.decodeIfPresent(String.self, forKey: .runId)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? .now
         reactions = try c.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
+        authorBotId = try c.decodeIfPresent(String.self, forKey: .authorBotId)
     }
 
     /// First plain-text content, used for the sidebar preview.

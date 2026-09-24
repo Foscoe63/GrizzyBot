@@ -14,6 +14,14 @@ struct MessageView: View {
 
     var body: some View {
         VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
+            if message.role == .bot, let author = store.bots.first(where: { $0.id == message.authorBotId }) {
+                HStack(spacing: 6) {
+                    BotAvatarView(bot: author, size: 16)
+                    Text(author.name)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(Theme.textMuted)
+                }
+            }
             HStack(alignment: .bottom, spacing: 8) {
                 if message.role == .user {
                     Spacer(minLength: 48)
@@ -96,7 +104,8 @@ struct MessageView: View {
         switch block {
         case .meta(let text):
             HStack(spacing: 8) {
-                Text("◷")
+                Image(systemName: "clock")
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Theme.orange)
                 Text(text)
                     .font(.system(size: 13.5))

@@ -85,8 +85,8 @@ struct SidebarView: View {
             .padding(.bottom, 12)
 
             HStack(spacing: 8) {
-                Text("⌕")
-                    .font(.system(size: 14))
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.textMuted)
                 TextField("Search", text: $search)
                     .font(.system(size: 14))
@@ -129,6 +129,10 @@ struct SidebarView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 2)
 
+            botChatButton
+                .padding(.horizontal, 12)
+                .padding(.bottom, 2)
+
             pluginsButton
                 .padding(.horizontal, 12)
                 .padding(.bottom, 2)
@@ -167,12 +171,12 @@ struct SidebarView: View {
             store.selectBot(bot.id)
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                BotAvatarView(color: bot.color, size: 38)
+                BotAvatarView(bot: bot, size: 38)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline) {
                         if bot.pinned {
-                            Text("⌖")
-                                .font(.system(size: 10))
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 9))
                                 .foregroundStyle(Theme.textMuted)
                         }
                         Text(bot.name)
@@ -264,7 +268,8 @@ struct SidebarView: View {
                     Circle()
                         .fill(Theme.bgLetterBadge)
                         .frame(width: 38, height: 38)
-                    Text("◇")
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 14))
                         .foregroundStyle(Theme.textLetter)
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -307,8 +312,8 @@ struct SidebarView: View {
                     Circle()
                         .fill(Theme.bgCard)
                         .frame(width: 30, height: 30)
-                    Text("◷")
-                        .font(.system(size: 13))
+                    Image(systemName: "clock")
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(store.mainView == .routines ? Theme.orange : Theme.textLetter)
                 }
                 Text("Routines")
@@ -330,6 +335,33 @@ struct SidebarView: View {
         .buttonStyle(.plain)
     }
 
+    private var botChatButton: some View {
+        Button {
+            store.showBotChatPage()
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.bgCard)
+                        .frame(width: 30, height: 30)
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(store.mainView == .botChat ? Theme.orange : Theme.textLetter)
+                }
+                Text("Bot Chat")
+                    .font(.system(size: 14.5))
+                    .foregroundStyle(Theme.textGhost)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(store.mainView == .botChat ? Theme.bgHoverRow : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var pluginsButton: some View {
         Button {
             store.openPlugins()
@@ -339,9 +371,9 @@ struct SidebarView: View {
                     Circle()
                         .fill(Theme.bgCard)
                         .frame(width: 30, height: 30)
-                    PuzzleIcon()
-                        .stroke(Theme.textLetter, style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
-                        .frame(width: 15, height: 15)
+                    Image(systemName: "puzzlepiece.extension")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.textLetter)
                 }
                 Text("Plugins")
                     .font(.system(size: 14.5))
@@ -367,8 +399,8 @@ struct SidebarView: View {
                     Circle()
                         .fill(Theme.bgCard)
                         .frame(width: 30, height: 30)
-                    Text("✦")
-                        .font(.system(size: 13))
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Theme.textLetter)
                 }
                 Text("Skills")
@@ -425,7 +457,8 @@ struct SidebarView: View {
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 10) {
-                        Text("◔")
+                        Image(systemName: "gauge.with.dots.needle.33percent")
+                            .font(.system(size: 13))
                             .foregroundStyle(Theme.textLetter)
                         Text("Weekly usage")
                             .font(.system(size: 14.5))
@@ -542,40 +575,5 @@ struct SidebarView: View {
         .padding(24)
         .frame(width: 360)
         .background(Theme.bgRightPanel)
-    }
-}
-
-/// Puzzle piece path from HANDOFF §8 (24×24 viewBox, drawn in unit space).
-struct PuzzleIcon: Shape {
-    func path(in rect: CGRect) -> Path {
-        let sx = rect.width / 24
-        let sy = rect.height / 24
-        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-            CGPoint(x: rect.minX + x * sx, y: rect.minY + y * sy)
-        }
-        var path = Path()
-        path.move(to: p(4, 7))
-        path.addLine(to: p(7, 7))
-        path.addQuadCurve(to: p(8, 6), control: p(8, 7))
-        path.addCurve(to: p(11, 6), control1: p(8, 4.5), control2: p(11, 4.5))
-        path.addQuadCurve(to: p(12, 7), control: p(12, 6))
-        path.addLine(to: p(15, 7))
-        path.addLine(to: p(15, 10))
-        path.addQuadCurve(to: p(16, 11), control: p(15, 11))
-        path.addCurve(to: p(16, 14), control1: p(17.5, 11), control2: p(17.5, 14))
-        path.addQuadCurve(to: p(15, 15), control: p(16, 15))
-        path.addLine(to: p(15, 18))
-        path.addLine(to: p(12, 18))
-        path.addQuadCurve(to: p(11, 19), control: p(11, 18))
-        path.addCurve(to: p(8, 19), control1: p(11, 20.5), control2: p(8, 20.5))
-        path.addQuadCurve(to: p(7, 18), control: p(7, 19))
-        path.addLine(to: p(4, 18))
-        path.addLine(to: p(4, 15))
-        path.addQuadCurve(to: p(3, 14), control: p(3, 15))
-        path.addCurve(to: p(3, 11), control1: p(1.5, 14), control2: p(1.5, 11))
-        path.addQuadCurve(to: p(4, 10), control: p(3, 10))
-        path.addLine(to: p(4, 7))
-        path.closeSubpath()
-        return path
     }
 }

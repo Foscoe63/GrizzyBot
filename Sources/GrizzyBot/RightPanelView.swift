@@ -154,7 +154,8 @@ struct RightPanelView: View {
                             store.openRoutine(routine)
                         } label: {
                             HStack(spacing: 8) {
-                                Text("◷")
+                                Image(systemName: "clock")
+                                    .font(.system(size: 13, weight: .medium))
                                     .foregroundStyle(Theme.orange)
                                 Text(routine.name)
                                     .font(.system(size: 14.5))
@@ -371,6 +372,49 @@ struct RightPanelView: View {
 
     // MARK: - Settings
 
+    private func avatarControls(_ bot: Bot) -> some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                ForEach(BotAvatarShape.allCases) { shape in
+                    let selected = BotAvatarShape.resolve(bot.avatarShape) == shape
+                    Button {
+                        store.setAvatarShape(botId: bot.id, shape: shape)
+                    } label: {
+                        AvatarBodyShape(shape)
+                            .fill(Color(hex: bot.color))
+                            .frame(width: 22, height: 22)
+                            .padding(5)
+                            .background(selected ? Theme.bgHoverRow : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .help(shape.label)
+                }
+            }
+            HStack(spacing: 14) {
+                Button("Upload picture…") { pickAvatarImage(for: bot) }
+                if bot.avatarImageRev != nil {
+                    Button("Remove") { store.clearAvatarImage(botId: bot.id) }
+                }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 12))
+            .foregroundStyle(Theme.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func pickAvatarImage(for bot: Bot) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a picture for \(bot.name)"
+        guard panel.runModal() == .OK, let url = panel.url,
+              let png = AvatarImageCache.normalizedPNG(from: url)
+        else { return }
+        store.setAvatarImage(botId: bot.id, png: png)
+    }
+
     private var settingsPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
             panelHeader(left: computer?.state.rawValue ?? bot?.status ?? "", showGear: false)
@@ -378,8 +422,10 @@ struct RightPanelView: View {
                 .onChange(of: bot?.id) { _, _ in syncSettings() }
 
             if let bot {
-                BotAvatarView(color: bot.color, size: 64)
+                BotAvatarView(bot: bot, size: 64)
                     .frame(maxWidth: .infinity)
+                avatarControls(bot)
+                    .padding(.top, 12)
 
                 GrizzyField(label: "Name", placeholder: "Name", text: $settingsName)
                     .padding(.top, 24)

@@ -45,6 +45,8 @@ public final class AppStore {
     public var providerProfiles: [String: ModelProviderProfile] = [:]
     public var modelSettingsOpen: Bool = false
     public var groups: [GroupRoom] = []
+    /// Bot-to-bot handoffs made with `message_bot`, oldest first.
+    public var botChat: [BotChatEntry] = []
     public var appConfig: AppConfig = AppConfig()
     public var customTools: [CustomAgentTool] = []
     public var mcpServers: [McpServer] = []
@@ -393,6 +395,7 @@ public final class AppStore {
         providerProfiles = [:]
         providerCredentials = [:]
         groups = []
+        botChat = []
         customTools = []
         mcpServers = []
         folderWatchers = []
@@ -436,6 +439,7 @@ public final class AppStore {
         fetchedModels = ws.fetchedModels
         providerProfiles = ModelProviderProfiles.migrateProfiles(from: ws)
         groups = ws.groups
+        botChat = ws.botChat
         appConfig = ws.appConfig
         customTools = ws.customTools
         mcpServers = ws.mcpServers.map { server in
@@ -521,7 +525,8 @@ public final class AppStore {
             knowledgeSources: knowledgeSources,
             pluginGrants: pluginGrants,
             sandboxComponents: sandboxComponents,
-            mcpAdvertisedTools: mcpAdvertisedTools
+            mcpAdvertisedTools: mcpAdvertisedTools,
+            botChat: botChat
         )
     }
 
@@ -2864,7 +2869,9 @@ public final class AppStore {
             // Default to waiting: the user asked *this* bot, so "go read the other
             // thread" is a non-answer. `wait: false` stays for long background jobs.
             let wait = s("wait").lowercased() != "false"
-            send(botId: peer.id, text: task)
+            let senderName = bots.first(where: { $0.id == botId })?.name ?? "another bot"
+            let chatId = logBotChat(from: botId, to: peer.id, text: task)
+            send(botId: peer.id, text: "Message from \(senderName) (a bot on this Mac):\n\n\(task)")
             activeBotId = botId
 
             func dispatched(_ note: String) -> AgentToolCallResult {
@@ -2884,6 +2891,7 @@ public final class AppStore {
             switch settled {
             case .completed:
                 let reply = threads[peerKey]?.messages.last(where: { $0.role == .bot })?.firstText ?? ""
+                updateBotChat(chatId, reply: reply, outcome: .answered)
                 guard !reply.isEmpty else {
                     return dispatched("\(peer.name) finished but said nothing. Its thread has the detail.")
                 }
@@ -2894,11 +2902,13 @@ public final class AppStore {
             case .waitingInput, .waitingTakeover:
                 let pending = threads[peerKey]?.pendingTool
                 let what = pending.map { " on \($0.tool)\($0.detail.isEmpty ? "" : " (\($0.detail))")" } ?? ""
+                updateBotChat(chatId, reply: nil, outcome: .needsUser)
                 return dispatched(
                     "\(peer.name) stopped and needs the user\(what). Tell them to answer it in \(peer.name)'s thread — do not claim the task is done."
                 )
             case .failed, .cancelled:
                 let why = threads[peerKey]?.run?.error ?? "no reason recorded"
+                updateBotChat(chatId, reply: nil, outcome: .failed)
                 return dispatched("\(peer.name) did not finish: \(why). Its thread has the detail.")
             case .queued, .leased, .running, .none:
                 // Still going. This is the fire-and-forget outcome, reached honestly.
@@ -7030,35 +7040,158 @@ public final class AppStore {
         groups[gIdx].preview = trimmed
         save()
 
-        let responderId: String? = {
+        let members = groups[gIdx].memberIds.compactMap { id in bots.first(where: { $0.id == id }) }
+        // @mentions pick the responders; without one the room's default applies.
+        let queue: [String] = {
+            if let mentioned = GroupMentions.responders(for: trimmed, members: members) { return mentioned }
             switch groups[gIdx].defaultResponder {
-            case .member(let id): return id
+            case .member(let id):
+                return bots.contains(where: { $0.id == id }) ? [id] : []
             case .everyone, .mentions:
-                return groups[gIdx].memberIds.first
+                return members.first.map { [$0.id] } ?? []
             }
         }()
-        guard let responderId, bots.contains(where: { $0.id == responderId }) else { return }
+        guard !queue.isEmpty else { return }
 
-        var t2 = threads[groupId] ?? thread
-        let run = Run(
-            id: Ids.new(),
-            botId: responderId,
-            threadId: t2.threadId,
-            status: .running,
-            trigger: "group"
-        )
-        t2.run = run
-        threads[groupId] = t2
-        if let idx = bots.firstIndex(where: { $0.id == responderId }) {
-            bots[idx].status = "working"
+        let room = groups[gIdx].name
+        Task { [weak self] in
+            await self?.runGroupTurns(groupId: groupId, roomName: room, members: members, initial: queue, userText: trimmed)
+        }
+    }
+
+    /// Runs the room's bots one after another. A reply that @mentions another
+    /// member pulls that member in next, up to `GroupMentions.maxTurns` turns
+    /// per user message, and no bot speaks twice in one chain.
+    private func runGroupTurns(
+        groupId: String,
+        roomName: String,
+        members: [Bot],
+        initial: [String],
+        userText: String
+    ) async {
+        var queue = initial
+        var spoken: Set<String> = []
+        var handoffs: [String: (from: String, text: String)] = [:]
+        // Plain names, no "@": a bot that echoes this line must not count as mentioning everyone.
+        let roster = members.map(\.name).joined(separator: ", ")
+
+        while !queue.isEmpty, spoken.count < GroupMentions.maxTurns {
+            let botId = queue.removeFirst()
+            guard spoken.insert(botId).inserted,
+                  let bot = bots.first(where: { $0.id == botId }),
+                  var thread = threads[groupId]
+            else { continue }
+
+            let run = Run(id: Ids.new(), botId: botId, threadId: thread.threadId, status: .running, trigger: "group")
+            let startSeq = thread.nextSeq
+            thread.run = run
+            threads[groupId] = thread
+            if let idx = bots.firstIndex(where: { $0.id == botId }) { bots[idx].status = "working" }
+            save()
+
+            let source = handoffs[botId].map { "\($0.from) said:\n\n\($0.text)" } ?? "The user said:\n\n\(userText)"
+            let prompt = """
+                [Room "\(roomName)" — members: \(roster) and the user] You are \(bot.name).
+                \(source)
+
+                Answer as yourself. To pull a teammate in, write @ followed by their name.
+                """
+            let runId = run.id
+            let inner = Task { [weak self] in
+                guard let self else { return }
+                await self.runAgent(botId: botId, threadKey: groupId, runId: runId, prompt: prompt)
+            }
+            runTasks[runId] = inner
+            await inner.value
+
+            // Attribute this turn's replies: room threads hold several bots' messages.
+            guard var after = threads[groupId] else { return }
+            for i in after.messages.indices where after.messages[i].seq >= startSeq
+                && after.messages[i].role == .bot && after.messages[i].authorBotId == nil {
+                after.messages[i].authorBotId = botId
+            }
+            threads[groupId] = after
+            save()
+
+            guard after.run?.id == runId, after.run?.status == .completed else { break }
+            let reply = after.messages.last(where: { $0.role == .bot && $0.seq >= startSeq })?.firstText ?? ""
+            let pulled = GroupMentions.parse(reply, members: members).botIds
+            for id in pulled where id != botId && !spoken.contains(id) && !queue.contains(id) {
+                queue.append(id)
+                handoffs[id] = (from: bot.name, text: reply)
+            }
+        }
+    }
+
+    // MARK: - Bot Chat log
+
+    @discardableResult
+    private func logBotChat(from: String, to: String, text: String) -> String {
+        let entry = BotChatEntry(fromBotId: from, toBotId: to, text: text)
+        botChat.append(entry)
+        if botChat.count > BotChatEntry.retentionLimit {
+            botChat.removeFirst(botChat.count - BotChatEntry.retentionLimit)
         }
         save()
-        let runId = run.id
-        let task = Task { [weak self] in
-            guard let self else { return }
-            await self.runAgent(botId: responderId, threadKey: groupId, runId: runId, prompt: trimmed)
+        return entry.id
+    }
+
+    private func updateBotChat(_ id: String, reply: String?, outcome: BotChatEntry.Outcome) {
+        guard let idx = botChat.firstIndex(where: { $0.id == id }) else { return }
+        if let reply, !reply.isEmpty { botChat[idx].reply = reply }
+        botChat[idx].outcome = outcome
+        save()
+    }
+
+    public func showBotChatPage() {
+        mainView = .botChat
+        panel = nil
+        activeGroupId = nil
+    }
+
+    public func clearBotChat() {
+        botChat = []
+        save()
+    }
+
+    // MARK: - Avatars
+
+    private static let avatarFileName = ".avatar.png"
+
+    /// File holding a bot's uploaded avatar, when it has one.
+    public func avatarImageURL(for bot: Bot) -> URL? {
+        guard bot.avatarImageRev != nil,
+              let dir = try? botHome.homeURL(botId: bot.id)
+        else { return nil }
+        let url = dir.appendingPathComponent(Self.avatarFileName)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    public func setAvatarShape(botId: String, shape: BotAvatarShape) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
+        bots[idx].avatarShape = shape == .circle ? nil : shape.rawValue
+        save()
+    }
+
+    /// `png` is already normalised (square, small) by the caller.
+    public func setAvatarImage(botId: String, png: Data) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }),
+              let dir = try? botHome.homeURL(botId: botId)
+        else { return }
+        do {
+            try png.write(to: dir.appendingPathComponent(Self.avatarFileName), options: .atomic)
+        } catch { return }
+        bots[idx].avatarImageRev = (bots[idx].avatarImageRev ?? 0) + 1
+        save()
+    }
+
+    public func clearAvatarImage(botId: String) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
+        if let dir = try? botHome.homeURL(botId: botId) {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(Self.avatarFileName))
         }
-        runTasks[runId] = task
+        bots[idx].avatarImageRev = nil
+        save()
     }
 
     @discardableResult

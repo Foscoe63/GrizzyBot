@@ -30,6 +30,8 @@ struct ShellView: View {
                 Group {
                     if store.mainView == .routines {
                         RoutinesPageView()
+                    } else if store.mainView == .botChat {
+                        BotChatView()
                     } else {
                         ChatView()
                     }
@@ -103,7 +105,7 @@ struct ShellView: View {
                 store.skillsOpen = false
                 return .handled
             }
-            if store.mainView == .routines {
+            if store.mainView == .routines || store.mainView == .botChat {
                 store.showChat()
                 return .handled
             }
@@ -298,7 +300,7 @@ private struct ComputerFullWindowOverlay: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 if let bot {
-                    BotAvatarView(color: bot.color, size: 28)
+                    BotAvatarView(bot: bot, size: 28)
                     Text("\(bot.name)'s computer")
                         .font(.system(size: 15.5, weight: .medium))
                         .foregroundStyle(Theme.textBright)

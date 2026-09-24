@@ -52,6 +52,7 @@ extension ComputerMode: Codable {
 public enum ShellMainView: String, Codable, Sendable, Equatable {
     case chat
     case routines
+    case botChat
 }
 
 public enum ThemeAppearanceMode: String, Codable, Sendable, CaseIterable, Identifiable {

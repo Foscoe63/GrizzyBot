@@ -191,8 +191,8 @@ struct AppSettingsOverlayView: View {
                     store.appSettingsSection = section
                 } label: {
                     HStack(spacing: 10) {
-                        Text(sectionIcon(section))
-                            .font(.system(size: 13))
+                        Image(systemName: sectionIcon(section))
+                            .font(.system(size: 12.5, weight: .medium))
                             .foregroundStyle(Theme.textLetter)
                             .frame(width: 16)
                         Text(section.label)
@@ -1125,18 +1125,18 @@ struct AppSettingsOverlayView: View {
 
     private func sectionIcon(_ section: AppStore.AppSettingsSection) -> String {
         switch section {
-        case .general: return "☺"
-        case .connections: return "⌘"
-        case .computer: return "▣"
-        case .voice: return "♪"
-        case .tools: return "⚒"
-        case .themes: return "◑"
-        case .privacy: return "⚑"
-        case .watchers: return "◷"
-        case .diagnostics: return "☰"
-        case .governance: return "⚖"
-        case .knowledge: return "▤"
-        case .components: return "▣"
+        case .general: return "person.crop.circle"
+        case .connections: return "link"
+        case .computer: return "desktopcomputer"
+        case .voice: return "waveform"
+        case .tools: return "wrench.and.screwdriver"
+        case .themes: return "paintpalette"
+        case .privacy: return "hand.raised"
+        case .watchers: return "clock"
+        case .diagnostics: return "list.bullet.rectangle"
+        case .governance: return "checkmark.shield"
+        case .knowledge: return "books.vertical"
+        case .components: return "desktopcomputer"
         }
     }
 

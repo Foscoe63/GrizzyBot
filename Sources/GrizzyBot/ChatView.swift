@@ -75,7 +75,8 @@ struct ChatView: View {
         HStack {
             if let group {
                 HStack(spacing: 10) {
-                    Text("◇")
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 13))
                         .foregroundStyle(Theme.textLetter)
                     Text(group.name)
                         .font(.system(size: 16, weight: .medium))
@@ -87,7 +88,7 @@ struct ChatView: View {
                     store.openPanel(.settings)
                 } label: {
                     HStack(spacing: 8) {
-                        BotAvatarView(color: bot.color, size: 26)
+                        BotAvatarView(bot: bot, size: 26)
                         Text(bot.name)
                             .font(.system(size: 16, weight: .medium))
                             .foregroundStyle(Theme.textBright)

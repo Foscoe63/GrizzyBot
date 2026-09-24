@@ -30,6 +30,7 @@ public struct UserWorkspace: Codable, Sendable {
     public var pluginGrants: [PluginGrant]
     public var sandboxComponents: [SandboxComponent]
     public var mcpAdvertisedTools: [String: [String]]
+    public var botChat: [BotChatEntry]
 
     public init(
         bots: [Bot] = [],
@@ -57,7 +58,8 @@ public struct UserWorkspace: Codable, Sendable {
         knowledgeSources: [KnowledgeSource] = [],
         pluginGrants: [PluginGrant] = [],
         sandboxComponents: [SandboxComponent] = [],
-        mcpAdvertisedTools: [String: [String]] = [:]
+        mcpAdvertisedTools: [String: [String]] = [:],
+        botChat: [BotChatEntry] = []
     ) {
         self.bots = bots
         self.threads = threads
@@ -85,13 +87,14 @@ public struct UserWorkspace: Codable, Sendable {
         self.pluginGrants = pluginGrants
         self.sandboxComponents = sandboxComponents
         self.mcpAdvertisedTools = mcpAdvertisedTools
+        self.botChat = botChat
     }
 
     enum CodingKeys: String, CodingKey {
         case bots, threads, routines, computers, connections, usage, memory, files
         case deployment, modelProvider, modelId, apiKey, modelBaseUrl, fetchedModels, providerProfiles
         case groups, appConfig, customTools, mcpServers, oauthJSON, connectionSecrets
-        case actionPolicy, knowledgeSources, pluginGrants, sandboxComponents, mcpAdvertisedTools
+        case actionPolicy, knowledgeSources, pluginGrants, sandboxComponents, mcpAdvertisedTools, botChat
     }
 
     public init(from decoder: Decoder) throws {
@@ -122,6 +125,7 @@ public struct UserWorkspace: Codable, Sendable {
         pluginGrants = try c.decodeIfPresent([PluginGrant].self, forKey: .pluginGrants) ?? []
         sandboxComponents = try c.decodeIfPresent([SandboxComponent].self, forKey: .sandboxComponents) ?? []
         mcpAdvertisedTools = try c.decodeIfPresent([String: [String]].self, forKey: .mcpAdvertisedTools) ?? [:]
+        botChat = try c.decodeIfPresent([BotChatEntry].self, forKey: .botChat) ?? []
     }
 }
 
