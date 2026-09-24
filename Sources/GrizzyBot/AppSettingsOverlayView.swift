@@ -1136,7 +1136,7 @@ struct AppSettingsOverlayView: View {
         case .diagnostics: return "list.bullet.rectangle"
         case .governance: return "checkmark.shield"
         case .knowledge: return "books.vertical"
-        case .components: return "desktopcomputer"
+        case .components: return "puzzlepiece.extension"
         }
     }
 
