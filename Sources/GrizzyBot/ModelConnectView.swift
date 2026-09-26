@@ -28,11 +28,15 @@ struct ModelConnectView: View {
     @State private var waitingSignIn = false
     @State private var deviceURI: String?
     @State private var refreshTask: Task<Void, Never>?
+    /// Splash models found on disk; kept apart from `customModels` so a refresh
+    /// from the server does not drop them.
+    @State private var splashDiskModels: [LocalModelRef] = []
 
     private var isLocal: Bool { LocalProviders.isLocal(selectedProvider) }
     private var isCompatible: Bool { selectedProvider == ModelCatalog.openaiCompatibleProvider }
     /// Local MLX runs in-process: no base URL, no API key, and its own picker.
     private var isMLX: Bool { MLXProvider.isMLX(selectedProvider) }
+    private var isSplash: Bool { selectedProvider == LocalProviderId.splash.rawValue }
     private var usesCustomBase: Bool { ModelCatalog.usesCustomBase(selectedProvider) }
 
     private var filteredProviders: [CatalogEntry] {
@@ -124,6 +128,14 @@ struct ModelConnectView: View {
                 if isLocal || isCompatible || providerEntry?.supportsBaseUrl == true || providerEntry?.kind == .local {
                     localConfig
                         .padding(.top, 16)
+                }
+
+                if isSplash {
+                    LocalSplashView(
+                        selectedModelId: $selectedModelId,
+                        onModelsChanged: { mergeSplashDiskModels($0) }
+                    )
+                    .padding(.top, 16)
                 }
 
                 modelPicker
@@ -578,6 +590,14 @@ struct ModelConnectView: View {
         applyProviderSettings(store.modelProviderSettings(for: entry.provider))
     }
 
+    /// Show what is on disk alongside what the running server lists. The server
+    /// is authoritative for names, so its entries win on a clash.
+    private func mergeSplashDiskModels(_ disk: [LocalModelRef]) {
+        splashDiskModels = disk
+        let known = Set(customModels.map(\.id))
+        customModels += disk.filter { !known.contains($0.id) }
+    }
+
     private func addManualModel() {
         let id = manualModel.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !id.isEmpty else { return }
@@ -614,12 +634,13 @@ struct ModelConnectView: View {
             baseUrl = result.baseUrl
             let previous = selectedModelId
             customModels = result.models
+            if isSplash { mergeSplashDiskModels(splashDiskModels) }
             if result.models.contains(where: { $0.id == previous }) {
                 selectedModelId = previous
             } else if let first = result.models.first {
                 selectedModelId = first.id
             } else {
-                modelError = "Reachable, but no models were listed. Add a model id below."
+                modelError = "Reachable, but no models were listed.\(isSplash ? " Splash lists only the model it was started with — start it with the command above." : " Add a model id below.")"
             }
             stashCurrentProviderDraft()
         } catch {

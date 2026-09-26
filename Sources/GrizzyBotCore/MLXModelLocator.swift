@@ -107,6 +107,24 @@ public enum MLXModelLocator {
             .appendingPathComponent(".cache/huggingface/hub", isDirectory: true)
     }
 
+    /// The models folder LM Studio is configured to use. LM Studio lets the
+    /// user move it (this is `downloadsFolder` in its `settings.json`), so the
+    /// default `~/.lmstudio/models` is only right until they do.
+    public static func lmStudioConfiguredModelsDirectory(home: URL? = nil) -> URL? {
+        let home = home ?? FileManager.default.homeDirectoryForCurrentUser
+        for relative in [".lmstudio/settings.json", ".cache/lm-studio/settings.json"] {
+            let file = home.appendingPathComponent(relative)
+            guard let data = try? Data(contentsOf: file),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let folder = (json["downloadsFolder"] as? String)?
+                      .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !folder.isEmpty
+            else { continue }
+            return URL(fileURLWithPath: (folder as NSString).expandingTildeInPath, isDirectory: true)
+        }
+        return nil
+    }
+
     /// The roots scanned by default, plus any folders the user added.
     public static func defaultRoots(customFolders: [String] = []) -> [MLXScanRoot] {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -124,6 +142,9 @@ public enum MLXModelLocator {
                 layout: .nested
             ),
         ]
+        if let configured = lmStudioConfiguredModelsDirectory() {
+            roots.append(MLXScanRoot(url: configured, source: "LM Studio", layout: .nested))
+        }
         for folder in customFolders {
             let trimmed = folder.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }

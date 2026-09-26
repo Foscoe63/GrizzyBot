@@ -106,7 +106,7 @@ This Mac preview or in-app browser. Resizable side panel (monitor icon). Screens
 CEL policy, MCP grant matrix, knowledge ACLs, published components, owner/operator roles, searchable audit with a boot boundary.
 
 ### 🔌 Connect
-OpenRouter, OpenAI, Anthropic, Ollama / LM Studio / vMLX / oMLX / **Splash**, **Local MLX**, Composio plugins, direct Google OAuth, MCP / Toolport, AG-UI coworkers.
+OpenRouter, OpenAI, Anthropic, Ollama / LM Studio / vMLX / oMLX / **Splash**, **Local MLX** (Local MLX and Splash both scan the Hugging Face cache, LM Studio's models folder — wherever its settings put it — and any folder you add), Composio plugins, direct Google OAuth, MCP / Toolport, AG-UI coworkers.
 
 </td>
 <td width="33%" valign="top">

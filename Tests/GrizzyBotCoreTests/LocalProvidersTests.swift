@@ -65,3 +65,34 @@ struct LocalProvidersTests {
         #expect(nativeModels[0].label == "Gemma")
     }
 }
+
+@Suite("SplashModelLocator")
+struct SplashModelLocatorTests {
+    @Test("reads the quantization out of a GGUF file name")
+    func variants() {
+        #expect(SplashModelLocator.ggufVariant(fromFileName: "Qwen3.8-27B-UD-Q4_K_M.gguf") == "UD-Q4_K_M")
+        #expect(SplashModelLocator.ggufVariant(fromFileName: "Qwen3.8-27B-Q8_0.gguf") == "Q8_0")
+        #expect(SplashModelLocator.ggufVariant(fromFileName: "Qwen3.8-27B-UD-Q4_K_M-00001-of-00002.gguf") == "UD-Q4_K_M")
+        #expect(SplashModelLocator.ggufVariant(fromFileName: "mmproj-F16.gguf") == nil)
+        #expect(SplashModelLocator.ggufVariant(fromFileName: "notes.txt") == nil)
+    }
+
+    @Test("finds Splash models in an LM Studio style folder and ignores others")
+    func scan() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("splash-scan-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        func make(_ path: String, _ files: [String]) throws {
+            let dir = root.appendingPathComponent(path, isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            for f in files { try Data("x".utf8).write(to: dir.appendingPathComponent(f)) }
+        }
+        try make("incoai/Qwen3.8-27B-Splash", ["config.json", "model.safetensors"])
+        try make("unsloth/Qwen3.8-27B-GGUF", ["Qwen3.8-27B-UD-Q4_K_M.gguf", "mmproj-F16.gguf"])
+        try make("meta/llama-3", ["config.json", "model.safetensors"])
+
+        let report = SplashModelLocator.scan(roots: [MLXScanRoot(url: root, source: "LM Studio", layout: .nested)])
+        #expect(report.models.map(\.id) == ["incoai/Qwen3.8-27B-Splash", "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M"])
+        #expect(report.models.map(\.format) == [.splashPackage, .gguf])
+    }
+}
