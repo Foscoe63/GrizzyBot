@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-1.1-3B82F6?style=for-the-badge" alt="Version 1.1">
+  <img src="https://img.shields.io/badge/version-0.7-3B82F6?style=for-the-badge" alt="Version 0.7">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,7 +49,7 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.6** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.7** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
@@ -106,7 +106,7 @@ This Mac preview or in-app browser. Resizable side panel (monitor icon). Screens
 CEL policy, MCP grant matrix, knowledge ACLs, published components, owner/operator roles, searchable audit with a boot boundary.
 
 ### 🔌 Connect
-OpenRouter, OpenAI, Anthropic, Ollama / LM Studio, **Local MLX**, Composio plugins, direct Google OAuth, MCP / Toolport, AG-UI coworkers.
+OpenRouter, OpenAI, Anthropic, Ollama / LM Studio / vMLX / oMLX / **Splash**, **Local MLX**, Composio plugins, direct Google OAuth, MCP / Toolport, AG-UI coworkers.
 
 </td>
 <td width="33%" valign="top">
@@ -162,7 +162,7 @@ Create from a template or from scratch.
 | 💻 | **Coder** | Read, edit, and run code in the bot home |
 | 🕹️ | **Operator** | Drive the in-app browser or this Mac |
 
-Each bot has a **name**, **title**, description, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), a private **home** folder, and an optional **working folder**. Toggles cover auto-approve, speak replies, notifications, and **Chief of Staff** (roster badge / highlight; that bot cannot be hidden or deleted). Every bot's prompt lists the other bots on this Mac and their roles, and the Chief of Staff is additionally told it owns coordination across them — it still does **not** auto-delegate; it delegates only when it decides to call `message_bot`. Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation.
+Each bot has a **name**, **title**, description, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), a private **home** folder, and an optional **working folder**. Toggles cover auto-approve, speak replies, notifications, and **Chief of Staff** (roster badge / highlight; that bot cannot be hidden or deleted). Every bot's prompt lists the other bots on this Mac and their roles, and the Chief of Staff is additionally told it owns coordination across them — it still does **not** auto-delegate; it delegates only when it decides to call `message_bot`. Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation: **@mention** a member to route a message to it (`@everyone` for all), and a reply that @mentions another member pulls that member in — capped at six turns, with no bot speaking twice. Every `message_bot` handoff is logged with its reply and outcome on the **Bot Chat** page. Each bot gets one of six avatar shapes or an uploaded picture.
 
 <details>
 <summary><strong>📁 Home vs working folder</strong></summary>
