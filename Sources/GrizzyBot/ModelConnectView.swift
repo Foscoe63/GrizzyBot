@@ -2,7 +2,7 @@ import AppKit
 import GrizzyBotCore
 import SwiftUI
 
-/// Shared model picker: cloud providers + local/LAN (Ollama, LM Studio, vMLX, oMLX).
+/// Shared model picker: cloud providers + local/LAN (Ollama, LM Studio, vMLX, oMLX, Splash).
 struct ModelConnectView: View {
     var onContinue: (() -> Void)?
     var onSkip: (() -> Void)?

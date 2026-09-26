@@ -414,7 +414,7 @@ GrizzyBot does not pay for usage. You bring a key, a subscription, or a local se
 |:--:|---|---|
 | ☁️ | **Cloud (API key)** | OpenRouter (default), OpenAI, Anthropic, Google, Mistral, Groq, DeepSeek, xAI |
 | 🎟️ | **Subscriptions** | ChatGPT Plus/Pro (OpenAI Codex), GitHub Copilot, SuperGrok / X Premium — device-code sign-in |
-| 💻 | **Local / on-device** | **Local MLX** (Apple Silicon only — runs inside GrizzyBot; no API base URL); Ollama, LM Studio, vMLX, oMLX (discovery + live model list); any OpenAI-compatible base URL |
+| 💻 | **Local / on-device** | **Local MLX** (Apple Silicon only — runs inside GrizzyBot; no API base URL); Ollama, LM Studio, vMLX, oMLX, Splash (discovery + live model list); any OpenAI-compatible base URL |
 
 Each provider keeps its own profile. A bot can use the workspace default or a catalog model. Vision images are sent only to models that can take them (text-only IDs such as DeepSeek chat or Groq Llama 3 are not stuffed with screenshots). Local MLX shows as **Runs in app** in the model picker; on Intel Macs it stays disabled with an explanation.
 

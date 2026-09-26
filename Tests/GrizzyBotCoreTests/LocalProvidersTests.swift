@@ -4,10 +4,10 @@ import Testing
 
 @Suite("LocalProviders")
 struct LocalProvidersTests {
-    @Test("exposes Ollama, LM Studio, vMLX, and oMLX")
+    @Test("exposes Ollama, LM Studio, vMLX, oMLX, and Splash")
     func catalog() {
         let ids = LocalProviders.catalogEntries().map(\.provider)
-        #expect(ids == ["ollama", "lmstudio", "vmlx", "omlx"])
+        #expect(ids == ["ollama", "lmstudio", "vmlx", "omlx", "splash"])
         #expect(LocalProviders.isLocal("ollama"))
         #expect(!LocalProviders.isLocal("openrouter"))
         #expect(ModelCatalog.providers.first?.kind == .local)

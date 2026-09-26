@@ -8,6 +8,7 @@ public enum LocalProviderId: String, Codable, Sendable, CaseIterable, Identifiab
     case lmstudio
     case vmlx
     case omlx
+    case splash
 
     public var id: String { rawValue }
 }
@@ -40,7 +41,7 @@ public struct DiscoveredLocalProvider: Sendable, Hashable {
     public var error: String?
 }
 
-/// Ollama, LM Studio, vMLX, and oMLX — OpenAI-compatible local / LAN endpoints.
+/// Ollama, LM Studio, vMLX, oMLX, and Splash — OpenAI-compatible local / LAN endpoints.
 public enum LocalProviders {
     public static let all: [LocalProviderDef] = [
         LocalProviderDef(
@@ -70,6 +71,13 @@ public enum LocalProviders {
             defaultBaseUrl: "http://127.0.0.1:8000/v1",
             defaultPort: 8000,
             billing: "Apple Silicon MLX server on this Mac or LAN. No cloud model charges."
+        ),
+        LocalProviderDef(
+            id: .splash,
+            name: "Splash",
+            defaultBaseUrl: "http://127.0.0.1:8000/v1",
+            defaultPort: 8000,
+            billing: "Inco AI's Apple Silicon engine (`splash serve`) on this Mac or LAN. No cloud model charges."
         ),
     ]
 

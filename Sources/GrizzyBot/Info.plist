@@ -36,7 +36,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>GrizzyBot talks to local and LAN model servers (Ollama, LM Studio, vMLX, oMLX) on this network.</string>
+	<string>GrizzyBot talks to local and LAN model servers (Ollama, LM Studio, vMLX, oMLX, Splash) on this network.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>GrizzyBot uses the microphone so you can dictate messages to a bot.</string>
 	<key>NSPrincipalClass</key>
