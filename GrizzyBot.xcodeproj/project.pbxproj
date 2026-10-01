@@ -41,6 +41,7 @@
 		24CE7D662DE3B77336F50071 /* AgentSessionTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F0E652E1C21178CEE2A005 /* AgentSessionTools.swift */; };
 		24D6710085EB943440D0877F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 866AEEBA7A19C592C6896E1A /* Assets.xcassets */; };
 		28103C4B01854C8DB11DEC09 /* GrizzyBotRoutineAgent in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 9C750D138D23879DD11BF364 /* GrizzyBotRoutineAgent */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		284FAC467A4B79B844C4027B /* AiMemoryBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA525FD184B1F51F3E038F4C /* AiMemoryBridgeTests.swift */; };
 		2A6E1CFBB8A6DDCD21268F69 /* MLXHuggingFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DC9DBFE512821349A9CC5AA /* MLXHuggingFace.swift */; };
 		2ACD1183A80FB2BE5F6D54E3 /* AgentToolsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9628297E2F6AB290976547 /* AgentToolsTests.swift */; };
 		2AEE356C81F8B4EB09783D8F /* McpToolGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBF69FD6337797E70B66E27 /* McpToolGateTests.swift */; };
@@ -192,6 +193,7 @@
 		E716CEA12AE576FE9B7B3BF4 /* CanvasBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74469DB8A73C4588AD8F90B6 /* CanvasBoard.swift */; };
 		EC67741901A159D8D707CB5E /* BotAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08FA8FC9AEC1C43764D5736E /* BotAvatarView.swift */; };
 		ED3F9E07FBEBDC5546E94798 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6858080F8B3B961CCD1E9226 /* main.swift */; };
+		ED5BC331FE745231AE1ACFD9 /* AiMemoryBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0A898F588ED5E1ED779116 /* AiMemoryBridge.swift */; };
 		EF1228A3A1B9E3E29CB2620A /* ComposerImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD3D2E3E81F0E6C6E3CE7C31 /* ComposerImage.swift */; };
 		EF1A36BA780C888B7513C2E9 /* KnowledgePlane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D5E4F9D55C5ADB319D3097E /* KnowledgePlane.swift */; };
 		EF7C483E6C5D471929194F14 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E68757C80AA3F6C31769048 /* Models.swift */; };
@@ -406,6 +408,7 @@
 		895CB54DF308C252E7F0408F /* AgentLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLoop.swift; sourceTree = "<group>"; };
 		8A99E87B9C17655D22331DDC /* PluginsOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsOverlayView.swift; sourceTree = "<group>"; };
 		8B5AF27C0B0A01037267D8C6 /* CanvasBoardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasBoardTests.swift; sourceTree = "<group>"; };
+		8D0A898F588ED5E1ED779116 /* AiMemoryBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiMemoryBridge.swift; sourceTree = "<group>"; };
 		8DB4D81C7F030B591A539180 /* McpSessionPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpSessionPool.swift; sourceTree = "<group>"; };
 		8E2CC9EE8BD0597819A0089C /* OverlaySnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlaySnapshotTests.swift; sourceTree = "<group>"; };
 		8E31C4FBEF5A687BD0E8757D /* AgentTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTools.swift; sourceTree = "<group>"; };
@@ -470,6 +473,7 @@
 		D526B98BCA143BD0302A7966 /* CanvasViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasViews.swift; sourceTree = "<group>"; };
 		D5F5BBB7F1FC532399DE8DE2 /* GrizzyBot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GrizzyBot.entitlements; sourceTree = "<group>"; };
 		D87DBE8B0F52E051C297FA2B /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
+		DA525FD184B1F51F3E038F4C /* AiMemoryBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiMemoryBridgeTests.swift; sourceTree = "<group>"; };
 		DAD01EB6ED569E030CE643B2 /* PluginErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginErrorTests.swift; sourceTree = "<group>"; };
 		DB704FD9B2CDB9B8C40ACF21 /* GrizzyBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GrizzyBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DD3D2E3E81F0E6C6E3CE7C31 /* ComposerImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerImage.swift; sourceTree = "<group>"; };
@@ -563,6 +567,7 @@
 				9C6F47239DF8119B30729893 /* AgentEvalTests.swift */,
 				952F78D26F1214CD06838DD4 /* AgentLoopTests.swift */,
 				9A9628297E2F6AB290976547 /* AgentToolsTests.swift */,
+				DA525FD184B1F51F3E038F4C /* AiMemoryBridgeTests.swift */,
 				E67516D660C63B65366E45FD /* ArtifactTests.swift */,
 				034ABF68635D68B313AA7DEA /* BotHomeWebSearchTests.swift */,
 				CBB9FD1BA06514D5C326236A /* BotMeshTests.swift */,
@@ -774,6 +779,7 @@
 				00F0E652E1C21178CEE2A005 /* AgentSessionTools.swift */,
 				8E31C4FBEF5A687BD0E8757D /* AgentTools.swift */,
 				1F89AB1C5DBB68A861D07FE7 /* AguiClient.swift */,
+				8D0A898F588ED5E1ED779116 /* AiMemoryBridge.swift */,
 				F2BC2D59C4FF7BE70CDEA416 /* Artifact.swift */,
 				F66C8F2FDAF015D559C0EE37 /* ArtifactRuntime.swift */,
 				5A0DC3ACF3FF857D14BC98A3 /* AuditLog.swift */,
@@ -1140,6 +1146,7 @@
 				24CE7D662DE3B77336F50071 /* AgentSessionTools.swift in Sources */,
 				002000712F9B648B461791FB /* AgentTools.swift in Sources */,
 				3D0B35968BEC5EB94C0BC298 /* AguiClient.swift in Sources */,
+				ED5BC331FE745231AE1ACFD9 /* AiMemoryBridge.swift in Sources */,
 				B52F5D82701AE514FA41AC40 /* Artifact.swift in Sources */,
 				7D4E2F48AB9923854901A15F /* ArtifactRuntime.swift in Sources */,
 				BD000FA49A8E793BD2FEE385 /* AuditLog.swift in Sources */,
@@ -1221,6 +1228,7 @@
 				0FE8776E8D339A119A07AC89 /* AgentEvalTests.swift in Sources */,
 				C9CC3636E4ABB5D3ED534B3F /* AgentLoopTests.swift in Sources */,
 				2ACD1183A80FB2BE5F6D54E3 /* AgentToolsTests.swift in Sources */,
+				284FAC467A4B79B844C4027B /* AiMemoryBridgeTests.swift in Sources */,
 				308AFAD5227E142BD31264F6 /* ArtifactTests.swift in Sources */,
 				7B06747F29BFD784602A65CD /* BotHomeWebSearchTests.swift in Sources */,
 				F99902E5AA8EA9216C152D73 /* BotMeshTests.swift in Sources */,

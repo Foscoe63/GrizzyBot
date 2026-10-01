@@ -157,7 +157,8 @@ public actor MLXLocalGenerator: MLXTextGenerating {
     static func toolSpecs(from tools: [ChatTool]) -> [ToolSpec]? {
         guard !tools.isEmpty else { return nil }
         return tools.compactMap { tool in
-            guard let parameters = tool.function.parameters.any as? [String: any Sendable] else {
+            guard let parameters = Self.strippingNulls(tool.function.parameters.any)
+                as? [String: any Sendable] else {
                 return nil
             }
             return [
@@ -168,6 +169,20 @@ public actor MLXLocalGenerator: MLXTextGenerating {
                     "parameters": parameters,
                 ] as [String: any Sendable],
             ] as ToolSpec
+        }
+    }
+
+    /// The chat template is rendered by Jinja, which cannot convert `NSNull`.
+    /// MCP tool schemas routinely carry explicit nulls (`"default": null`), so
+    /// drop them before the schema reaches the template.
+    static func strippingNulls(_ value: Any) -> Any {
+        switch value {
+        case let object as [String: Any]:
+            return object.filter { !($0.value is NSNull) }.mapValues(strippingNulls)
+        case let array as [Any]:
+            return array.filter { !($0 is NSNull) }.map(strippingNulls)
+        default:
+            return value
         }
     }
 
