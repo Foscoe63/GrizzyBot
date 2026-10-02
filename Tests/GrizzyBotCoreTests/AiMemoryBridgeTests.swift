@@ -54,4 +54,23 @@ import Testing
         await dead.flush()
         #expect(await dead.pendingHandoff() == nil)
     }
+
+    @Test func probeReportsDisabled() async {
+        let probe = await AiMemoryBridge.probe(environment: ["GRIZZYBOT_AI_MEMORY": "off"])
+        #expect(probe.enabled == false)
+    }
+
+    @Test func probeReportsUnreachableServerAndTokenSource() async {
+        let probe = await AiMemoryBridge.probe(environment: [
+            "AI_MEMORY_HOOK_URL": "http://127.0.0.1:1",
+            "AI_MEMORY_AUTH_TOKEN": "t",
+        ])
+        #expect(probe.enabled)
+        #expect(probe.tokenSource == .environment)
+        guard case .backingOff(_, let reason) = probe.health else {
+            Issue.record("expected backingOff, got \(probe.health)")
+            return
+        }
+        #expect(reason == "server unreachable")
+    }
 }

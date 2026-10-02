@@ -127,6 +127,62 @@ public final class AiMemoryBridge: @unchecked Sendable {
         case unknown
     }
 
+    /// Where the token came from, for display. Never the token itself.
+    public enum TokenSource: String, Sendable { case environment, keychain, none }
+
+    public struct Probe: Sendable, Equatable {
+        public var enabled: Bool
+        public var server: String
+        public var tokenSource: TokenSource
+        public var health: Health
+        /// What the most recent agent run's bridge saw, if any run has happened this session.
+        public var lastRun: Health
+    }
+
+    private static let observedLock = NSLock()
+    nonisolated(unsafe) private static var observed: Health = .unknown
+
+    private static func lastObserved() -> Health {
+        observedLock.lock(); defer { observedLock.unlock() }
+        return observed
+    }
+
+    private static func observe(_ health: Health) {
+        observedLock.lock(); defer { observedLock.unlock() }
+        observed = health
+    }
+
+    /// Reach the server once and report what happened, for a Settings row. Any HTTP
+    /// answer means it is up; 401/403 means up but the token is wrong or missing.
+    public static func probe(environment: [String: String] = ProcessInfo.processInfo.environment) async -> Probe {
+        let last = lastObserved()
+        let flag = environment["GRIZZYBOT_AI_MEMORY"]?.lowercased() ?? ""
+        let raw = environment["AI_MEMORY_HOOK_URL"] ?? defaultServer
+        let token = environment["AI_MEMORY_AUTH_TOKEN"].flatMap { $0.isEmpty ? nil : $0 }
+        let source: TokenSource = token != nil ? .environment : (keychainToken() != nil ? .keychain : .none)
+        guard !["0", "false", "off", "no"].contains(flag) else {
+            return Probe(enabled: false, server: raw, tokenSource: source, health: .unknown, lastRun: last)
+        }
+        guard let url = URL(string: raw), url.scheme == "http" || url.scheme == "https" else {
+            return Probe(enabled: true, server: raw, tokenSource: source,
+                         health: .backingOff(until: .distantFuture, reason: "invalid server URL"), lastRun: last)
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 3
+        if let bearer = token ?? keychainToken() { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
+        let health: Health
+        do {
+            let (_, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            health = code == 401 || code == 403
+                ? .backingOff(until: .distantFuture, reason: "auth rejected (HTTP \(code)); check the ai-memory token")
+                : .connected
+        } catch {
+            health = .backingOff(until: .distantFuture, reason: "server unreachable")
+        }
+        return Probe(enabled: true, server: raw, tokenSource: source, health: health, lastRun: last)
+    }
+
     /// What the last request saw, so a UI can say why nothing is being captured.
     public var health: Health {
         lock.lock(); defer { lock.unlock() }
@@ -248,11 +304,13 @@ public final class AiMemoryBridge: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         quietUntil = Date().addingTimeInterval(Self.backoff)
         lastFailure = reason
+        Self.observe(.backingOff(until: quietUntil, reason: reason))
     }
 
     private func markSuccess() {
         lock.lock(); defer { lock.unlock() }
         hasSucceeded = true
         lastFailure = nil
+        Self.observe(.connected)
     }
 }

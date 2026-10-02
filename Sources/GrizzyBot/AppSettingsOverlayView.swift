@@ -17,6 +17,8 @@ struct AppSettingsOverlayView: View {
     @State private var braveSearchKey = ""
     @State private var ttsKey = ""
     @State private var sentryDSN = ""
+    @State private var memoryProbe: AiMemoryBridge.Probe?
+    @State private var memoryChecking = false
     @State private var ttsVoice = "Rachel"
     @State private var computerMode: ComputerMode = .auto
     @State private var mcpName = ""
@@ -881,6 +883,31 @@ struct AppSettingsOverlayView: View {
                         }
 
                         settingsCard(
+                            title: "Agent memory (ai-memory)",
+                            subtitle: "Bots send sanitized run events to a local ai-memory server. If nothing is being captured, check here."
+                        ) {
+                            if let probe = memoryProbe {
+                                Text(memoryStatusText(probe))
+                                    .font(.system(size: 12.5))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            } else {
+                                Text("Not checked yet.")
+                                    .font(.system(size: 12.5))
+                                    .foregroundStyle(Theme.textSecondary)
+                            }
+                            GrizzyButton(title: memoryChecking ? "Checking…" : "Check connection", variant: .cream, size: .sm) {
+                                memoryChecking = true
+                                Task {
+                                    memoryProbe = await AiMemoryBridge.probe()
+                                    memoryChecking = false
+                                }
+                            }
+                            .padding(.top, 10)
+                        }
+
+                        settingsCard(
                             title: "Last run log",
                             subtitle: "Tool calls, MCP stderr, and agent errors from this session. Copy this when a run fails."
                         ) {
@@ -1068,6 +1095,24 @@ struct AppSettingsOverlayView: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.textSecondary)
         }
+    }
+
+    private func memoryStatusText(_ probe: AiMemoryBridge.Probe) -> String {
+        func describe(_ health: AiMemoryBridge.Health) -> String {
+            switch health {
+            case .connected: return "connected"
+            case .backingOff(_, let reason): return reason
+            case .unknown: return "no events sent yet"
+            }
+        }
+        guard probe.enabled else { return "Capture is off (GRIZZYBOT_AI_MEMORY=0)." }
+        let token: String
+        switch probe.tokenSource {
+        case .environment: token = "from AI_MEMORY_AUTH_TOKEN"
+        case .keychain: token = "from the Keychain"
+        case .none: token = "none set"
+        }
+        return "Server \(probe.server): \(describe(probe.health))\nToken: \(token)\nLast agent run: \(describe(probe.lastRun))"
     }
 
     private func settingsCard<Content: View>(
