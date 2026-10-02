@@ -426,6 +426,7 @@ public struct GoogleOAuthClient: GoogleOAuthConnecting, Sendable {
     }
 }
 
+// @unchecked Sendable: a test double with unsynchronised public state; use from one test at a time.
 public final class ImmediateGoogleOAuth: GoogleOAuthConnecting, @unchecked Sendable {
     public var credential = GoogleOAuthCredential(
         access: "google-access",

@@ -637,6 +637,7 @@ public enum McpCallArguments {
 
 // MARK: - Stdio session
 
+// @unchecked Sendable: mutable state (`nextId`, `buffer`, `stderrBytes`) is only touched on `queue`.
 final class McpStdioSession: McpSession, @unchecked Sendable {
     private let process: Process
     private let stdin: FileHandle
@@ -892,6 +893,7 @@ enum McpHTTPMode {
     case legacySSE
 }
 
+// @unchecked Sendable: mutable state (`nextId`, `mcpSessionId`) is guarded by `lock`.
 final class McpHTTPSession: McpSession, @unchecked Sendable {
     private let endpoint: URL
     private let headers: [String: String]
