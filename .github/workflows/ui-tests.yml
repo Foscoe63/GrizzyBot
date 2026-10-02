@@ -1,0 +1,39 @@
+name: UI tests
+
+# The XCUITest overlay tests cannot run in the main CI job: they have failed there with
+# "Missing settings-overlay". Run them on demand with the result bundle uploaded, so a failure
+# comes with the screenshot and accessibility tree instead of a bare assertion.
+on:
+  workflow_dispatch:
+
+jobs:
+  ui:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Session info
+        run: |
+          echo "--- displays"; system_profiler SPDisplaysDataType | head -20
+          echo "--- console user"; stat -f '%Su' /dev/console
+          echo "--- frontmost"; osascript -e 'tell application "System Events" to name of first process whose frontmost is true' || true
+      - name: UI tests
+        run: |
+          xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot \
+            -destination 'platform=macOS' -configuration Debug \
+            -resultBundlePath "$RUNNER_TEMP/ui.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            -skipMacroValidation -skipPackagePluginValidation \
+            -only-testing:GrizzyBotUITests test
+      - name: Upload result bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-xcresult
+          path: ${{ runner.temp }}/ui.xcresult

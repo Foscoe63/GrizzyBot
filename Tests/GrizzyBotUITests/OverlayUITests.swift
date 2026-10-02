@@ -23,6 +23,18 @@ final class OverlayUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 8))
         let element = app.descendants(matching: .any)[identifier]
-        XCTAssertTrue(element.waitForExistence(timeout: 12), "Missing \(identifier)")
+        if !element.waitForExistence(timeout: 12) {
+            // A failure here is usually "the app never showed a window", which the message
+            // alone cannot distinguish from "the overlay did not open". Keep what the app looked like.
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "accessibility-tree"
+            tree.lifetime = .keepAlways
+            add(tree)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "screen"
+            shot.lifetime = .keepAlways
+            add(shot)
+            XCTFail("Missing \(identifier); app has \(app.windows.count) window(s)")
+        }
     }
 }
