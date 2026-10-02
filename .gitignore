@@ -1,3 +1,6 @@
+# Xcode / xcodebuild output
+build/
+
 # SwiftPM
 .build/
 .swiftpm/
@@ -17,6 +20,7 @@ xcuserdata/
 
 # Local agent / MCP (do not commit)
 config.json
+opencode.json
 .omo/
 
 # Developer ID team for notarization / iCloud Release entitlements
