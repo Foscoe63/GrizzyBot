@@ -57,10 +57,7 @@ jobs:
       # regression. They stay a local pre-commit check, which is where they
       # do work: identical renders byte-for-byte on the recording machine.
       #
-      # GrizzyBotUITests stays out for a different reason — all four of its
-      # tests fail to find their overlay ("Missing settings-overlay"), and
-      # have since before they ever ran here. A real bug, unrelated to what
-      # these tests guard.
+      # GrizzyBotUITests run in their own job (ui-tests.yml): they need a GUI session.
       #
       # What CI does assert: the artifact web frame (React really compiles
       # and mounts, Mermaid draws, an unsupported import fails visibly), the
