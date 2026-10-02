@@ -13,7 +13,6 @@ jobs:
       contents: write
     env:
       KEYCHAIN: build.keychain-db
-      KEYCHAIN_PASSWORD: actions
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +29,9 @@ jobs:
 
       - name: Install tools
         run: brew install xcodegen create-dmg
+
+      - name: Generate throwaway keychain password
+        run: echo "KEYCHAIN_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
 
       - name: Require Developer ID secrets
         env:
@@ -100,6 +102,8 @@ jobs:
           test -d "$APP"
           echo "path=$APP" >> "$GITHUB_OUTPUT"
           codesign --verify --deep --strict --verbose=2 "$APP"
+          # Notarization rejects a binary without hardened runtime; fail here with a clear reason.
+          codesign -dvv "$APP" 2>&1 | grep -E 'flags=.*runtime' || { echo "Hardened runtime is not enabled on $APP"; exit 1; }
 
       - name: Notarize app
         env:

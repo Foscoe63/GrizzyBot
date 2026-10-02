@@ -74,3 +74,23 @@ jobs:
             -only-testing:GrizzyBotAppTests \
             -skip-testing:GrizzyBotAppTests/OverlaySnapshotTests test
 
+
+  # Optimized builds surface type-check timeouts and whole-module issues that a
+  # Debug build hides (the ContextCompactor.encodedSize break was one of these).
+  release-build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Release build (unsigned)
+        run: |
+          xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot \
+            -destination 'platform=macOS' -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            -skipMacroValidation -skipPackagePluginValidation build
