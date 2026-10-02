@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// Lifecycle capture for the local ai-memory server, the same events its
 /// Claude Code / Codex hooks emit (`session-start`, `user-prompt-submit`,
@@ -9,6 +10,8 @@ import Foundation
 /// is best-effort. A stopped server, a timeout, or a refusal never reaches the
 /// chat, and after a failure the bridge stays quiet for a minute instead of
 /// stalling every tool call.
+// @unchecked Sendable: mutable state (`quietUntil`, `lastFailure`, `hasSucceeded`) is guarded by `lock`;
+// everything else is immutable after init.
 public final class AiMemoryBridge: @unchecked Sendable {
     public static let defaultServer = "http://127.0.0.1:49374"
     public static let workspace = "grizzybot"
@@ -58,6 +61,8 @@ public final class AiMemoryBridge: @unchecked Sendable {
     private let session: URLSession
     private let lock = NSLock()
     private var quietUntil: Date = .distantPast
+    private var lastFailure: String?
+    private var hasSucceeded = false
     private var continuation: AsyncStream<@Sendable () async -> Void>.Continuation?
 
     public init(config: Config, sessionId: String = UUID().uuidString, session: URLSession? = nil) {
@@ -95,8 +100,38 @@ public final class AiMemoryBridge: @unchecked Sendable {
             workspace: environment["GRIZZYBOT_AI_MEMORY_WORKSPACE"] ?? workspace,
             project: projectSlug(botName),
             cwd: cwd,
-            bearerToken: environment["AI_MEMORY_AUTH_TOKEN"]
+            bearerToken: environment["AI_MEMORY_AUTH_TOKEN"] ?? keychainToken()
         ))
+    }
+
+    /// A Finder-launched app does not inherit the shell environment, so the token can
+    /// also live in the Keychain:
+    /// `security add-generic-password -s com.grizzybot.app.ai-memory -a auth-token -w <token>`
+    public static func keychainToken() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.grizzybot.app.ai-memory",
+            kSecAttrAccount as String: "auth-token",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
+        let token = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+
+    public enum Health: Sendable, Equatable {
+        case connected
+        case backingOff(until: Date, reason: String)
+        case unknown
+    }
+
+    /// What the last request saw, so a UI can say why nothing is being captured.
+    public var health: Health {
+        lock.lock(); defer { lock.unlock() }
+        if Date() < quietUntil { return .backingOff(until: quietUntil, reason: lastFailure ?? "unreachable") }
+        return hasSucceeded ? .connected : .unknown
     }
 
     /// One ai-memory project per bot, so a bot's memory never bleeds into another's.
@@ -144,9 +179,13 @@ public final class AiMemoryBridge: @unchecked Sendable {
         continuation?.yield { [weak self] in
             do {
                 let (_, response) = try await session.data(for: outgoing)
-                if let http = response as? HTTPURLResponse, http.statusCode >= 400 { self?.goQuiet() }
+                if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+                    self?.goQuiet(http.statusCode == 401 || http.statusCode == 403 ? "auth rejected (HTTP \(http.statusCode)); check the ai-memory token" : "HTTP \(http.statusCode)")
+                } else {
+                    self?.markSuccess()
+                }
             } catch {
-                self?.goQuiet()
+                self?.goQuiet("server unreachable")
             }
         }
     }
@@ -181,7 +220,7 @@ public final class AiMemoryBridge: @unchecked Sendable {
             let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? nil : text
         } catch {
-            goQuiet()
+            goQuiet("server unreachable")
             return nil
         }
     }
@@ -205,8 +244,15 @@ public final class AiMemoryBridge: @unchecked Sendable {
         return quietUntil
     }
 
-    private func goQuiet() {
+    private func goQuiet(_ reason: String) {
         lock.lock(); defer { lock.unlock() }
         quietUntil = Date().addingTimeInterval(Self.backoff)
+        lastFailure = reason
+    }
+
+    private func markSuccess() {
+        lock.lock(); defer { lock.unlock() }
+        hasSucceeded = true
+        lastFailure = nil
     }
 }
