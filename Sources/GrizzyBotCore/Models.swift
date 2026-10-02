@@ -33,6 +33,9 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var hidden: Bool
     public var unread: Bool
     public var autoApprove: Bool
+    /// Whether `shell` commands may use the network. Off for new bots; bots saved
+    /// before this field existed keep the old behaviour (on).
+    public var shellNetwork: Bool
     public var speakReplies: Bool
     public var notifications: Bool
     public var chiefOfStaff: Bool
@@ -77,6 +80,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         hidden: Bool = false,
         unread: Bool = false,
         autoApprove: Bool = false,
+        shellNetwork: Bool = false,
         speakReplies: Bool = false,
         notifications: Bool = true,
         chiefOfStaff: Bool = false,
@@ -113,6 +117,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.hidden = hidden
         self.unread = unread
         self.autoApprove = autoApprove
+        self.shellNetwork = shellNetwork
         self.speakReplies = speakReplies
         self.notifications = notifications
         self.chiefOfStaff = chiefOfStaff
@@ -137,7 +142,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case avatarShape, avatarImageRev
         case id, name, title, description, instructions, color, notifyOnFinish, parentBotId
         case threadId, preview, status, updatedAt, createdAt
-        case pinned, hidden, unread, autoApprove, speakReplies, notifications, chiefOfStaff
+        case pinned, hidden, unread, autoApprove, shellNetwork, speakReplies, notifications, chiefOfStaff
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
         case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder
     }
@@ -161,6 +166,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         hidden = try c.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
         unread = try c.decodeIfPresent(Bool.self, forKey: .unread) ?? false
         autoApprove = try c.decodeIfPresent(Bool.self, forKey: .autoApprove) ?? false
+        shellNetwork = try c.decodeIfPresent(Bool.self, forKey: .shellNetwork) ?? true
         speakReplies = try c.decodeIfPresent(Bool.self, forKey: .speakReplies) ?? false
         notifications = try c.decodeIfPresent(Bool.self, forKey: .notifications) ?? true
         chiefOfStaff = try c.decodeIfPresent(Bool.self, forKey: .chiefOfStaff) ?? false

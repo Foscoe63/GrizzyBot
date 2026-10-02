@@ -606,6 +606,14 @@ struct RightPanelView: View {
                 }
 
                 settingsToggle(
+                    title: "Shell network access",
+                    subtitle: "Let shell commands reach the network (curl, git, pip). Off keeps a prompt-injected command from sending files out.",
+                    isOn: bot.shellNetwork
+                ) {
+                    store.patchBot(bot.id, shellNetwork: !bot.shellNetwork)
+                }
+
+                settingsToggle(
                     title: "Speak replies",
                     subtitle: "Use configured TTS voice when a reply finishes.",
                     isOn: bot.speakReplies

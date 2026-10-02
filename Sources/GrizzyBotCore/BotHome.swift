@@ -252,6 +252,14 @@ public struct BotHomeStore: Sendable {
             if !out.isEmpty { parts.append(out) }
             if !err.isEmpty { parts.append(err) }
             if timedOut { parts.append("(timed out)") }
+            if exitCode != 0, err.contains("Operation not permitted") {
+                parts.append("(The shell sandbox only lets commands write inside the bot home and the working folder. Use write_file to save elsewhere, or report the real path you wrote to.)")
+            }
+            if exitCode != 0, err.localizedCaseInsensitiveContains("could not resolve host")
+                || err.localizedCaseInsensitiveContains("couldn't resolve host")
+                || err.localizedCaseInsensitiveContains("network is unreachable") {
+                parts.append("(Shell network access may be off for this bot. It can be enabled in the bot's settings.)")
+            }
             if parts.isEmpty { return "exit \(exitCode)" }
             return parts.joined(separator: "\n") + "\nexit \(exitCode)"
         }
@@ -264,7 +272,8 @@ public struct BotHomeStore: Sendable {
         command: String,
         cwd: String = "",
         timeout: TimeInterval = ShellTimeout.default,
-        extraWriteRoots: [String] = []
+        extraWriteRoots: [String] = [],
+        allowNetwork: Bool = false
     ) async throws -> ShellResult {
         let home = try homeURL(botId: botId)
         let directory = try containedURL(home: home, relative: cwd)
@@ -283,6 +292,7 @@ public struct BotHomeStore: Sendable {
             cwd: directory,
             home: home,
             extraWriteRoots: Self.sanitizedWriteRoots(extraWriteRoots),
+            allowNetwork: allowNetwork,
             timeout: timeout
         )
     }
@@ -306,6 +316,7 @@ public struct BotHomeStore: Sendable {
         cwd: URL,
         home: URL,
         extraWriteRoots: [URL],
+        allowNetwork: Bool,
         timeout: TimeInterval
     ) async throws -> ShellResult {
         try await withCheckedThrowingContinuation { continuation in
@@ -316,6 +327,7 @@ public struct BotHomeStore: Sendable {
                         cwd: cwd,
                         home: home,
                         extraWriteRoots: extraWriteRoots,
+                        allowNetwork: allowNetwork,
                         timeout: timeout
                     )
                     continuation.resume(returning: result)
@@ -331,13 +343,14 @@ public struct BotHomeStore: Sendable {
         cwd: URL,
         home: URL,
         extraWriteRoots: [URL],
+        allowNetwork: Bool,
         timeout: TimeInterval
     ) throws -> ShellResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sandbox-exec")
         process.arguments = [
             "-p",
-            seatbeltProfile(home: home, extraWriteRoots: extraWriteRoots),
+            seatbeltProfile(home: home, extraWriteRoots: extraWriteRoots, allowNetwork: allowNetwork),
             "/bin/zsh",
             "-lc",
             command,
@@ -383,7 +396,7 @@ public struct BotHomeStore: Sendable {
         )
     }
 
-    private static func seatbeltProfile(home: URL, extraWriteRoots: [URL] = []) -> String {
+    public static func seatbeltProfile(home: URL, extraWriteRoots: [URL] = [], allowNetwork: Bool = false) -> String {
         let tmp = FileManager.default.temporaryDirectory
         func allowWrite(_ url: URL) -> String {
             let paths = seatbeltPaths(url)
@@ -397,6 +410,8 @@ public struct BotHomeStore: Sendable {
         (version 1)
         (allow default)
         (deny file-write*)
+        \(secretReadDenials())
+        \(allowNetwork ? "" : "(deny network*)")
         \(allowWrite(home))
         \(extra)
         (allow file-write* (subpath "/private/tmp"))
@@ -406,6 +421,19 @@ public struct BotHomeStore: Sendable {
         (allow file-ioctl)
         (allow sysctl-read)
         """
+    }
+
+    /// Credential stores a shell command must not read, even though the profile
+    /// otherwise allows reads. Resolved against the real user home, not the bot's.
+    private static func secretReadDenials() -> String {
+        let realHome = FileManager.default.homeDirectoryForCurrentUser
+        let dirs = [".ssh", ".gnupg", ".aws", ".config/gcloud", ".kube", ".docker", "Library/Keychains"]
+        return dirs.flatMap { seatbeltPaths(realHome.appendingPathComponent($0)) }
+            .map { path in
+                let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+                return "(deny file-read* (subpath \"\(escaped)\"))"
+            }
+            .joined(separator: "\n")
     }
 
     /// Seatbelt matches the kernel path (`/private/var/...`), not the `/var` symlink.

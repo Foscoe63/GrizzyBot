@@ -95,6 +95,36 @@ struct BotHomeTests {
         #expect(!FileManager.default.fileExists(atPath: src.path))
     }
 
+    @Test("seatbelt profile denies network and credential reads unless allowed")
+    func seatbeltProfileHardening() {
+        let home = FileManager.default.temporaryDirectory
+        let closed = BotHomeStore.seatbeltProfile(home: home)
+        #expect(closed.contains("(deny network*)"))
+        #expect(closed.contains("/.ssh\")"))
+        #expect(closed.contains("Library/Keychains"))
+        let open = BotHomeStore.seatbeltProfile(home: home, allowNetwork: true)
+        #expect(!open.contains("(deny network*)"))
+        #expect(open.contains("/.ssh\")"))
+    }
+
+    @Test("shell cannot read ~/.ssh")
+    func shellCannotReadSSH() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grizzy-home-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let ssh = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh").path
+        let result = try await BotHomeStore(root: root).runShell(botId: "bot-1", command: "ls '\(ssh)'")
+        if FileManager.default.fileExists(atPath: ssh) {
+            #expect(result.exitCode != 0, "\(result.combined)")
+        }
+    }
+
+    @Test("denied writes get a hint toward write_file")
+    func deniedWriteHint() {
+        let r = BotHomeStore.ShellResult(exitCode: 1, stdout: "", stderr: "touch: x: Operation not permitted")
+        #expect(r.combined.contains("write_file"))
+    }
+
     @Test("shell timeout defaults and clamps")
     func shellTimeout() {
         #expect(BotHomeStore.ShellTimeout.default == 120)

@@ -2251,7 +2251,8 @@ public final class AppStore {
                     command: command,
                     cwd: cwd,
                     timeout: timeout,
-                    extraWriteRoots: extraShellWriteRoots(for: bot)
+                    extraWriteRoots: extraShellWriteRoots(for: bot),
+                    allowNetwork: bot.shellNetwork
                 )
                 let status: ApprovalStatus = allowed ? .alwaysAllowed : .allowed
                 return AgentToolCallResult(
@@ -6597,6 +6598,7 @@ public final class AppStore {
         )
         if let idx = bots.firstIndex(where: { $0.id == copy.id }) {
             bots[idx].autoApprove = source.autoApprove
+            bots[idx].shellNetwork = source.shellNetwork
             bots[idx].speakReplies = source.speakReplies
             bots[idx].notifications = source.notifications
             bots[idx].computerMode = source.computerMode
@@ -6955,6 +6957,7 @@ public final class AppStore {
         instructions: String? = nil,
         color: String? = nil,
         autoApprove: Bool? = nil,
+        shellNetwork: Bool? = nil,
         speakReplies: Bool? = nil,
         notifications: Bool? = nil,
         computerMode: ComputerMode? = nil,
@@ -6972,6 +6975,7 @@ public final class AppStore {
         if let instructions { bots[idx].instructions = instructions }
         if let color { bots[idx].color = color }
         if let autoApprove { bots[idx].autoApprove = autoApprove }
+        if let shellNetwork { bots[idx].shellNetwork = shellNetwork }
         if let speakReplies { bots[idx].speakReplies = speakReplies }
         if let notifications { bots[idx].notifications = notifications }
         if let computerMode { bots[idx].computerMode = computerMode }
