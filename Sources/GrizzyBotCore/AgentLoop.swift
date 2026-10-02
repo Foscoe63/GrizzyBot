@@ -400,6 +400,7 @@ public enum AgentLoop {
         public static func sandbox() -> String {
             """
             Shell runs inside a macOS seatbelt sandbox rooted at your home. If a working folder is set for this run, shell may also write inside that folder (mv, rm, mkdir). Destructive shell and plugin writes pause for user approval unless always-allowed.
+            Shell ~/Desktop, ~/Documents and the like are inside your sandbox home, not the user's real folders, and cp/mv to /Users/... outside the working folder is blocked. To save a file where the user will see it, write_file into the working folder (or an absolute path they named, which pauses for approval). When you report a save, give the full path from the tool result or ls output; never describe a sandbox ~ path as the user's Desktop. If the real location was blocked, say so plainly and name where the file actually is.
             Shell default timeout is \(Int(BotHomeStore.ShellTimeout.default))s. For multi-step research (curl loops, sleeps), pass timeout_seconds up to \(Int(BotHomeStore.ShellTimeout.max)) or split into shorter commands.
             Keep going across many tool rounds. If context is compacted, trust the remaining transcript and continue the job.
             """
