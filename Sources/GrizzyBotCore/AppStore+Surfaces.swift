@@ -344,15 +344,6 @@ extension AppStore {
         save()
     }
 
-    public func setAllBotMcpServers(_ botId: String, enabled: Bool) {
-        guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
-        for server in mcpServers {
-            bots[idx].setTool(server.toolId, enabled: enabled)
-        }
-        bots[idx].updatedAt = .now
-        save()
-    }
-
     public func setDefaultTool(_ toolId: String, enabled: Bool) {
         setDefaultTools([toolId], enabled: enabled)
     }
