@@ -481,6 +481,45 @@ extension AppStore {
         save()
     }
 
+    public func areAllMcpToolsEnabled(scope enabledIds: [String], serverId: String) -> Bool {
+        McpToolGate.allChildrenEnabled(
+            enabledIds: enabledIds,
+            serverId: serverId,
+            advertised: mcpToolNames(for: serverId)
+        )
+    }
+
+    public func setAllDefaultMcpTools(serverId: String, enabled: Bool) {
+        var config = appConfig
+        let advertised = mcpToolNames(for: serverId)
+        McpToolGate.setAllChildren(
+            enabledIds: &config.defaultEnabledTools,
+            serverId: serverId,
+            enabled: enabled,
+            advertised: advertised
+        )
+        for id in ["mcp:\(serverId)"] + McpToolGate.childIds(serverId: serverId, names: advertised)
+        where !config.seenToolIds.contains(id) {
+            config.seenToolIds.append(id)
+        }
+        appConfig = config
+        save()
+    }
+
+    public func setAllBotMcpTools(botId: String, serverId: String, enabled: Bool) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
+        var tools = bots[idx].enabledTools
+        McpToolGate.setAllChildren(
+            enabledIds: &tools,
+            serverId: serverId,
+            enabled: enabled,
+            advertised: mcpToolNames(for: serverId)
+        )
+        bots[idx].enabledTools = tools
+        bots[idx].updatedAt = .now
+        save()
+    }
+
     public func probeMcpServer(_ serverId: String) {
         guard let server = mcpServers.first(where: { $0.id == serverId }) else { return }
         if mcpProbeStatus[serverId] == .checking { return }

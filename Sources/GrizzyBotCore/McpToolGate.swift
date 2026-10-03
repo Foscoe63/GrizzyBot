@@ -93,6 +93,38 @@ public enum McpToolGate {
         }
     }
 
+    /// True when the server is on and every advertised tool is enabled.
+    public static func allChildrenEnabled(
+        enabledIds: [String],
+        serverId: String,
+        advertised: [String]
+    ) -> Bool {
+        guard !advertised.isEmpty else { return false }
+        return advertised.allSatisfy {
+            isToolEnabled(enabledIds: enabledIds, serverId: serverId, toolName: $0, advertised: advertised)
+        }
+    }
+
+    /// Turn every advertised tool on or off at once. Turning off keeps the
+    /// server on but records a bare `mcp:<serverId>/` marker so "no child
+    /// toggles" (legacy all-on) is not mistaken for "everything enabled".
+    public static func setAllChildren(
+        enabledIds: inout [String],
+        serverId: String,
+        enabled: Bool,
+        advertised: [String]
+    ) {
+        let parent = "mcp:\(serverId)"
+        let prefix = childPrefix(serverId: serverId)
+        enabledIds.removeAll { $0.hasPrefix(prefix) }
+        if enabled {
+            enabledIds.append(contentsOf: childIds(serverId: serverId, names: advertised))
+            if !enabledIds.contains(parent) { enabledIds.append(parent) }
+        } else {
+            enabledIds.append(prefix)
+        }
+    }
+
     public static func stripServer(_ serverId: String, from ids: inout [String]) {
         let parent = "mcp:\(serverId)"
         let prefix = childPrefix(serverId: serverId)

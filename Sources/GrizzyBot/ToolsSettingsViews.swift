@@ -329,6 +329,13 @@ struct McpServersToolsBlock: View {
         }
         if !names.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
+                ToolCapsuleToggle(
+                    title: "All tools",
+                    subtitle: "Turn every tool on this server on or off at once.",
+                    isOn: areAllChildrenEnabled(server: server),
+                    action: { toggleAllChildren(server: server) }
+                )
+                .opacity(parentOn ? 1 : 0.45)
                 ForEach(names, id: \.self) { name in
                     ToolCapsuleToggle(
                         title: name,
@@ -396,6 +403,26 @@ struct McpServersToolsBlock: View {
             store.setDefaultTool(server.toolId, enabled: next)
         case .bot(let botId):
             store.setBotTool(botId, toolId: server.toolId, enabled: next)
+        }
+    }
+
+    private func areAllChildrenEnabled(server: McpServer) -> Bool {
+        switch scope {
+        case .appDefaults:
+            return store.areAllMcpToolsEnabled(scope: store.appConfig.defaultEnabledTools, serverId: server.id)
+        case .bot(let botId):
+            guard let bot = store.bots.first(where: { $0.id == botId }) else { return false }
+            return store.areAllMcpToolsEnabled(scope: bot.enabledTools, serverId: server.id)
+        }
+    }
+
+    private func toggleAllChildren(server: McpServer) {
+        let next = !areAllChildrenEnabled(server: server)
+        switch scope {
+        case .appDefaults:
+            store.setAllDefaultMcpTools(serverId: server.id, enabled: next)
+        case .bot(let botId):
+            store.setAllBotMcpTools(botId: botId, serverId: server.id, enabled: next)
         }
     }
 
