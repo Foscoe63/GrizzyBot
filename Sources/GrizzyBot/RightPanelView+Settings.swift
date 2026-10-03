@@ -447,10 +447,32 @@ extension RightPanelView {
                 .foregroundStyle(Theme.textMuted)
 
             if !store.mcpServers.isEmpty {
-                Text("MCP servers")
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.top, 6)
+                let allMcpOn = store.mcpServers.allSatisfy { bot.isToolEnabled($0.toolId) }
+                let noMcpOn = !store.mcpServers.contains { bot.isToolEnabled($0.toolId) }
+                HStack(spacing: 12) {
+                    Text("MCP servers")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    Button("Enable all") {
+                        store.setAllBotMcpServers(bot.id, enabled: true)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textSidebarIcon)
+                    .disabled(allMcpOn)
+                    .opacity(allMcpOn ? 0.4 : 1)
+
+                    Button("Disable all") {
+                        store.setAllBotMcpServers(bot.id, enabled: false)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.orange)
+                    .disabled(noMcpOn)
+                    .opacity(noMcpOn ? 0.4 : 1)
+                }
+                .padding(.top, 6)
                 McpServersToolsBlock(scope: .bot(bot.id))
             }
 
