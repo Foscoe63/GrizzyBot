@@ -930,8 +930,20 @@ public final class AppStore {
             description: template.blurb,
             instructions: template.instructions,
             enabledSkills: template.skillIds,
-            enabledTools: template.toolIds
+            enabledTools: toolIds(for: template)
         )
+    }
+
+    /// The template's built-in tools plus its MCP tools, resolved against the
+    /// servers configured in this workspace (matched by name, case-insensitive).
+    public func toolIds(for template: BotTemplate) -> [String] {
+        var ids = template.toolIds
+        for (name, tools) in template.mcpTools.sorted(by: { $0.key < $1.key }) {
+            guard let server = mcpServers.first(where: { $0.name.lowercased() == name }) else { continue }
+            ids.append(server.toolId)
+            ids.append(contentsOf: McpToolGate.childIds(serverId: server.id, names: tools))
+        }
+        return ids
     }
 
     public func updateBot(

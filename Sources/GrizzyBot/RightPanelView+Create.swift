@@ -70,7 +70,9 @@ extension RightPanelView {
                     name: name,
                     title: createTitle,
                     description: createDescription,
-                    instructions: createDescription
+                    instructions: createDescription,
+                    enabledSkills: BotTemplates.standard.skillIds,
+                    enabledTools: store.toolIds(for: BotTemplates.standard)
                 )
                 createName = ""
                 createTitle = ""
