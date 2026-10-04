@@ -281,6 +281,9 @@ struct AppSettingsOverlayView: View {
 
                     case .components:
                         ComponentsSettingsView()
+
+                    case .folders:
+                        FoldersSettingsView()
                     }
                 }
                 .padding(.horizontal, 20)
@@ -358,6 +361,7 @@ struct AppSettingsOverlayView: View {
         case .governance: return "checkmark.shield"
         case .knowledge: return "books.vertical"
         case .components: return "puzzlepiece.extension"
+        case .folders: return "folder"
         }
     }
 

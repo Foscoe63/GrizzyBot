@@ -52,6 +52,7 @@ public final class AppStore {
     public var mcpServers: [McpServer] = []
     public var actionPolicy: ActionPolicy = .openDefault
     public var knowledgeSources: [KnowledgeSource] = []
+    public var grantedFolders: [GrantedFolder] = []
     public var pluginGrants: [PluginGrant] = []
     public var sandboxComponents: [SandboxComponent] = []
     public var mcpAdvertisedTools: [String: [String]] = [:]
@@ -76,7 +77,7 @@ public final class AppStore {
     public var pendingAuthEmail: String = ""
 
     public enum AppSettingsSection: String, Sendable, CaseIterable, Identifiable {
-        case general, connections, computer, voice, tools, themes, privacy, watchers, diagnostics, governance, knowledge, components
+        case general, connections, computer, voice, tools, themes, privacy, watchers, diagnostics, governance, knowledge, components, folders
         public var id: String { rawValue }
         public var label: String {
             switch self {
@@ -92,6 +93,7 @@ public final class AppStore {
             case .governance: return "Governance"
             case .knowledge: return "Knowledge"
             case .components: return "Components"
+            case .folders: return "Folders"
             }
         }
     }
@@ -399,6 +401,7 @@ public final class AppStore {
         customTools = []
         mcpServers = []
         folderWatchers = []
+        grantedFolders = []
         actionPolicy = .openDefault
         knowledgeSources = []
         pluginGrants = []
@@ -440,6 +443,7 @@ public final class AppStore {
         providerProfiles = ModelProviderProfiles.migrateProfiles(from: ws)
         groups = ws.groups
         botChat = ws.botChat
+        grantedFolders = ws.grantedFolders
         appConfig = ws.appConfig
         customTools = ws.customTools
         mcpServers = ws.mcpServers.map { server in
@@ -526,7 +530,8 @@ public final class AppStore {
             pluginGrants: pluginGrants,
             sandboxComponents: sandboxComponents,
             mcpAdvertisedTools: mcpAdvertisedTools,
-            botChat: botChat
+            botChat: botChat,
+            grantedFolders: grantedFolders
         )
     }
 
@@ -1024,13 +1029,54 @@ public final class AppStore {
         return bot.workingFolder
     }
 
+    /// Folders from Settings → Folders that this bot has been assigned.
+    public func grantedFolders(for bot: Bot) -> [GrantedFolder] {
+        grantedFolders.filter { bot.grantedFolderIds.contains($0.id) }
+    }
+
+    @discardableResult
+    public func addGrantedFolder(path: String, name: String? = nil) -> GrantedFolder? {
+        let expanded = BotHomeStore.expandPath(path)
+        guard !expanded.isEmpty, !BotHomeStore.isDeniedHostPath(expanded) else { return nil }
+        let standard = URL(fileURLWithPath: expanded).standardizedFileURL.path
+        if let existing = grantedFolders.first(where: { BotHomeStore.expandPath($0.path) == standard }) { return existing }
+        let label = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let folder = GrantedFolder(name: label.isEmpty ? (standard as NSString).lastPathComponent : label, path: standard)
+        grantedFolders.append(folder)
+        save()
+        return folder
+    }
+
+    public func removeGrantedFolder(_ id: String) {
+        grantedFolders.removeAll { $0.id == id }
+        for idx in bots.indices { bots[idx].grantedFolderIds.removeAll { $0 == id } }
+        save()
+    }
+
+    public func renameGrantedFolder(_ id: String, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let idx = grantedFolders.firstIndex(where: { $0.id == id }) else { return }
+        grantedFolders[idx].name = trimmed
+        save()
+    }
+
+    public func setBotFolder(_ botId: String, folderId: String, granted: Bool) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
+        bots[idx].grantedFolderIds.removeAll { $0 == folderId }
+        if granted { bots[idx].grantedFolderIds.append(folderId) }
+        bots[idx].updatedAt = .now
+        save()
+    }
+
     private func extraShellWriteRoots(for bot: Bot) -> [String] {
+        var roots = GrantedFolders.writeRoots(grantedFolders(for: bot))
         guard let folder = effectiveWorkingFolder(for: bot)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !folder.isEmpty
-        else { return [] }
+        else { return roots }
         let expanded = BotHomeStore.expandPath(folder)
-        guard WorkingFolder.isTrusted(expanded, workingFolder: expanded) else { return [] }
-        return [expanded]
+        guard WorkingFolder.isTrusted(expanded, workingFolder: expanded) else { return roots }
+        roots.append(expanded)
+        return roots
     }
 
     public func send(botId: String, text: String, attaching files: [URL] = [], workingFolderOverride: String? = nil) {
@@ -1329,10 +1375,10 @@ public final class AppStore {
         let skillText = SkillMarkdown.catalogPrompt(from: botSkills, injected: injected)
         let homePath = (try? botHome.homeURL(botId: botId).path) ?? ""
         let computerNote = self.computerNote(for: bot)
-        let workingFolderNote = WorkingFolder.promptNote(
-            effectiveWorkingFolder(for: bot),
-            scopedToRun: pinFolderToRun
-        )
+        let workingFolderNote = [
+            WorkingFolder.promptNote(effectiveWorkingFolder(for: bot), scopedToRun: pinFolderToRun),
+            GrantedFolders.promptNote(grantedFolders(for: bot)),
+        ].filter { !$0.isEmpty }.joined(separator: "\n\n")
 
         var blocks: [MessageBlock] = []
         var pause: AgentPause?
@@ -1802,7 +1848,8 @@ public final class AppStore {
                 if BotHomeStore.isDeniedHostPath(path) {
                     return AgentToolCallResult(output: "\(tool) failed: \(BotHomeError.hostDenied.localizedDescription)")
                 }
-                if WorkingFolder.isTrusted(path, workingFolder: effectiveWorkingFolder(for: bot)) {
+                if WorkingFolder.isTrusted(path, workingFolder: effectiveWorkingFolder(for: bot))
+                    || GrantedFolders.contains(path, in: grantedFolders(for: bot)) {
                     continue
                 }
                 if let gated = gatedWrite(

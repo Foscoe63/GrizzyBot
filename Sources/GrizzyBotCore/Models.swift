@@ -57,6 +57,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var enabledComponents: [String]
     /// Optional host folder; relative file tool paths resolve here.
     public var workingFolder: String?
+    /// Ids of `GrantedFolder`s (Settings → Folders) this bot may read and write.
+    public var grantedFolderIds: [String]
     /// `BotAvatarShape` raw value; nil is the default circle.
     public var avatarShape: String?
     /// Bumped whenever an uploaded avatar image changes; nil means no image.
@@ -97,6 +99,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         aguiURL: String? = nil,
         enabledComponents: [String] = AgentComponentCatalog.allIds,
         workingFolder: String? = nil,
+        grantedFolderIds: [String] = [],
         avatarShape: String? = nil,
         avatarImageRev: Int? = nil
     ) {
@@ -134,6 +137,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.aguiURL = aguiURL
         self.enabledComponents = enabledComponents
         self.workingFolder = workingFolder
+        self.grantedFolderIds = grantedFolderIds
         self.avatarShape = avatarShape
         self.avatarImageRev = avatarImageRev
     }
@@ -144,7 +148,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case threadId, preview, status, updatedAt, createdAt
         case pinned, hidden, unread, autoApprove, shellNetwork, speakReplies, notifications, chiefOfStaff
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
-        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder
+        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds
     }
 
     public init(from decoder: Decoder) throws {
@@ -183,6 +187,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         aguiURL = try c.decodeIfPresent(String.self, forKey: .aguiURL)
         enabledComponents = try c.decodeIfPresent([String].self, forKey: .enabledComponents) ?? AgentComponentCatalog.allIds
         workingFolder = try c.decodeIfPresent(String.self, forKey: .workingFolder)
+        grantedFolderIds = try c.decodeIfPresent([String].self, forKey: .grantedFolderIds) ?? []
         avatarShape = try c.decodeIfPresent(String.self, forKey: .avatarShape)
         avatarImageRev = try c.decodeIfPresent(Int.self, forKey: .avatarImageRev)
     }

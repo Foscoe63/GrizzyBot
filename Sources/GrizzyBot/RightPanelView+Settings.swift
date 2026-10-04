@@ -46,6 +46,35 @@ extension RightPanelView {
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.textMuted)
                     .padding(.top, 6)
+
+                Text("Granted folders")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+                if store.grantedFolders.isEmpty {
+                    Text("None yet. Add folders in Settings → Folders, then assign them here.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textMuted)
+                        .padding(.top, 4)
+                } else {
+                    Text("This bot can read and write these folders without asking each time.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textMuted)
+                        .padding(.top, 4)
+                    ForEach(store.grantedFolders) { folder in
+                        settingsToggle(
+                            title: folder.name,
+                            subtitle: folder.path,
+                            isOn: bot.grantedFolderIds.contains(folder.id)
+                        ) {
+                            store.setBotFolder(
+                                bot.id,
+                                folderId: folder.id,
+                                granted: !bot.grantedFolderIds.contains(folder.id)
+                            )
+                        }
+                    }
+                }
                 GrizzyField(
                     label: "Memory",
                     placeholder: "Facts this bot should keep. Standing rules go under ## Pin.",
