@@ -57,6 +57,19 @@ struct McpClientTests {
         #expect(list["dirpath"] == .string("notes/"))
     }
 
+    @Test("aliases map filepath to path for vault tools")
+    func vaultPathAlias() {
+        let write = McpCallArguments.resolve([
+            "tool": .string("vault_write"),
+            "filepath": .string("Note.md"),
+            "text": .string("# hi"),
+        ])
+        #expect(write["path"] == .string("Note.md"))
+        #expect(write["content"] == .string("# hi"))
+        let kept = McpCallArguments.resolve(["tool": .string("vault_read"), "path": .string("A.md")])
+        #expect(kept["path"] == .string("A.md"))
+    }
+
     @Test("Toolport catalog names wrap as toolport_call_tool")
     func gatewayWrapsCatalogName() {
         let server = McpServer(name: "Toolport", command: "toolport-gateway")

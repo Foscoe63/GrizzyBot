@@ -583,6 +583,10 @@ public enum McpCallArguments {
         fill(&out, canonical: "filepath", aliases: [
             "path", "file", "filename", "file_path", "note_path", "relative_path", "vault_path",
         ])
+        // Local REST API's vault_* tools take `path`, not `filepath`.
+        fill(&out, canonical: "path", aliases: [
+            "filepath", "file", "filename", "file_path", "note_path", "relative_path", "vault_path",
+        ])
         fill(&out, canonical: "dirpath", aliases: [
             "dir", "directory", "folder", "folder_path", "path",
         ])
