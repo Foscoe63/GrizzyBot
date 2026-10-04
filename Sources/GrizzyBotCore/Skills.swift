@@ -265,7 +265,7 @@ public enum BundledSkills {
         - If search fails, is blocked, or returns no results twice, stop. Say so and work from what you have (including this Mac Settings). Do not keep retrying similar queries.
         - For MCP, list once then call with the exact tool name. After a tool error, stop; do not grep binaries or retry similar searches.
         - Never claim you visited a page unless `web_fetch` returned it.
-        - Never claim an Obsidian write unless the tool result names `obsidian_put_file` and status is ok.
+        - Never claim an Obsidian write unless the tool result names `obsidian_put_file` or `vault_write`/`vault_append`/`vault_patch` and status is ok.
         """,
         allowedTools: ["web_search", "web_fetch", "write_file", "mcp_list_tools", "mcp_call"]
     )

@@ -96,6 +96,9 @@ struct AgentToolsTests {
         #expect(McpConfigText.headerLines(["Z": "9", "A": "1"]) == "A: 1\nZ: 9")
         #expect(McpConfigText.parseArgs(" -y  @pkg  /tmp ") == ["-y", "@pkg", "/tmp"])
         #expect(McpConfigText.argsLine(["-y", "@pkg"]) == "-y @pkg")
+        let quoted = McpConfigText.parseArgs("mcp-remote@latest http://127.0.0.1:27123/mcp/ --header \"Authorization: Bearer abc\"")
+        #expect(quoted == ["mcp-remote@latest", "http://127.0.0.1:27123/mcp/", "--header", "Authorization: Bearer abc"])
+        #expect(McpConfigText.parseArgs(McpConfigText.argsLine(quoted)) == quoted)
     }
 
     @Test("fast-filesystem-mcp positional paths become --allow")

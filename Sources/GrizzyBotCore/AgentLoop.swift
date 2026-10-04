@@ -183,6 +183,9 @@ public struct AgentLoopResult: Sendable {
 
 /// Deterministic end-of-turn check: never trust chat text over tool cards.
 public enum AgentCompletionGate {
+    /// Write tools across Obsidian MCP servers: community `obsidian_put_file`, Local REST API built-in `vault_write`/`vault_append`/`vault_patch`.
+    static let vaultWriteToolNames = ["put_file", "append_content", "patch_content", "vault_write", "vault_append", "vault_patch"]
+
     public static func claimsVaultWrite(_ text: String) -> Bool {
         let t = text.lowercased()
         if t.contains("vault note written") { return true }
@@ -199,7 +202,7 @@ public enum AgentCompletionGate {
             let content = (message.content ?? "").lowercased()
             if content.contains("tool error") { continue }
             if content.contains("successfully uploaded") { return true }
-            if content.contains("obsidian_put_file") || content.contains("put_file") {
+            if vaultWriteToolNames.contains(where: content.contains) {
                 if content.contains("uploaded") || content.contains("ok") { return true }
             }
         }
@@ -211,7 +214,7 @@ public enum AgentCompletionGate {
                 if line.k == "tool" { tool = line.v.lowercased() }
                 if line.k == "status" { status = line.v.lowercased() }
             }
-            let writeTool = tool.contains("put_file") || tool.contains("obsidian")
+            let writeTool = vaultWriteToolNames.contains(where: tool.contains) || tool.contains("obsidian")
             if writeTool && status == "ok" { return true }
         }
         return false
@@ -476,7 +479,7 @@ public enum AgentLoop {
             Artifacts are shared on this Mac: artifact_create, artifact_update, artifact_rewrite, artifact_list, artifact_read, artifact_delete. Create one for substantial standalone content the user will keep, re-read, or run — a document, a program, a diagram, a small app — and answer in the reply for anything conversational or short. Put the whole thing in the artifact rather than repeating it in the reply. To change one you already made, call artifact_update with a unique old_str; re-read it first with artifact_read if you did not write it this turn. Each artifact is also mirrored into the working folder as a file, so do not also write_file the same content.
             If the user asked you to write a prompt or instructions for an agent, write that prompt. Do not run the job unless they asked you to execute it.
             Shell ~ is the bot home, not the Mac home.
-            Never claim an Obsidian write unless the tool result names obsidian_put_file (or that server's write tool) and status is ok.
+            Never claim an Obsidian write unless the tool result names obsidian_put_file or vault_write/vault_append/vault_patch (or that server's write tool) and status is ok.
             """
         }
 
@@ -815,7 +818,7 @@ public enum AgentLoop {
                         messages.append(.assistant(lastText))
                     }
                     messages.append(.user(
-                        "You claimed an Obsidian/vault write, but no tool result names obsidian_put_file (or that server's write tool) with status ok. Call mcp_call to write it, or retract the claim."
+                        "You claimed an Obsidian/vault write, but no tool result names obsidian_put_file or vault_write/vault_append/vault_patch (or that server's write tool) with status ok. Call mcp_call to write it, or retract the claim."
                     ))
                     continue
                 }

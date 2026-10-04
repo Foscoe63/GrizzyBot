@@ -299,6 +299,7 @@ public enum McpToolRouting: Sendable {
         if let server = preferredServer(for: builtin, context: context) {
             let known = context.advertised[server.id] ?? []
             let tool = canonicalTool(analog, known: known)
+                ?? (builtin == "destination_write" ? canonicalTool("vault_write", known: known) : nil)
                 ?? known.first { $0.lowercased().contains(analog.replacingOccurrences(of: "_", with: "")) }
                 ?? analog
             let chat = "\(McpNativeNaming.slug(asServer(server)))\(McpNativeNaming.separator)\(tool)"

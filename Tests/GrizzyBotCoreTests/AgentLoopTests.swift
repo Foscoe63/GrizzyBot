@@ -508,6 +508,16 @@ struct AgentLoopTests {
         #expect(AgentCompletionGate.claimsVaultWrite(result.text))
     }
 
+    @Test("confirms vault writes from the Local REST API tools")
+    func confirmsVaultWriteTools() {
+        for tool in ["vault_write", "vault_append", "vault_patch", "obsidian_put_file"] {
+            let card = MessageBlock.card(lines: [CardLine(k: "tool", v: tool), CardLine(k: "status", v: "ok")])
+            #expect(AgentCompletionGate.confirmedVaultWrite(messages: [], blocks: [card]))
+        }
+        let failed = MessageBlock.card(lines: [CardLine(k: "tool", v: "vault_write"), CardLine(k: "status", v: "error")])
+        #expect(!AgentCompletionGate.confirmedVaultWrite(messages: [], blocks: [failed]))
+    }
+
     @Test("nudges the model to actually write when it claims a vault save")
     func vaultClaimContinuesForWrite() async throws {
         let client = QueueChatClient([

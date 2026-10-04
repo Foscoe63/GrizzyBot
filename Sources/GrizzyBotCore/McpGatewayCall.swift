@@ -147,7 +147,7 @@ public enum McpGatewayCall {
             return "Obsidian Local REST API is not reachable. Prefer https://127.0.0.1:27124 (HTTPS) or http://127.0.0.1:27123 (HTTP). Start Obsidian with Local REST API enabled, or write the note with write_file under notes/ and tell the user to move it into the vault."
         }
         if lower.contains("is a required property") || lower.contains("input validation error") {
-            return "Required arguments were missing. Use the exact arg names from mcp_list_tools (filepath+content for put_file, dirpath for list). Prefer path→filepath aliases already applied — pass the missing field explicitly and retry once."
+            return "Required arguments were missing. Use the exact arg names from mcp_list_tools (filepath+content for put_file, path+content for vault_write, dirpath for list). Prefer path→filepath aliases already applied — pass the missing field explicitly and retry once."
         }
         if lower.contains("no route for tool") {
             return "That catalog tool name is not routed. mcp_list_tools on the correct server, then mcp_call with the exact returned name. Do not invent tool names."
