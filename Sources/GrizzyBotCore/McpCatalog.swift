@@ -96,6 +96,18 @@ public enum McpCatalog {
         return entry.writeTools.contains(trimmed) ? .write : .read
     }
 
+    /// Whether a call should stop for the user's approval. A server's own annotations win
+    /// (`readOnlyHint` lets it through, `destructiveHint` or an explicit non-read-only hint
+    /// stops it); with no annotations only the catalog's known write tools stop.
+    public static func needsApproval(server: McpServer?, toolName: String, listed: McpToolInfo?) -> Bool {
+        if let listed {
+            if listed.readOnlyHint == true { return false }
+            if listed.destructiveHint == true || listed.readOnlyHint == false { return true }
+        }
+        guard let server, let entry = entry(for: server) else { return false }
+        return entry.writeTools.contains(toolName.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     public static func classify(
         serverName: String,
         command: String,
