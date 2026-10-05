@@ -423,6 +423,8 @@ extension Bot {
         if ArtifactStore.toolIds.contains(toolId) { return true }
         if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
         if toolId == "message_bot", enabledTools.contains("spawn_bot") { return true }
+        if toolId == "check_bot" || toolId == "list_delegations",
+           enabledTools.contains("spawn_bot") || enabledTools.contains("message_bot") { return true }
         if toolId.hasPrefix("shortcuts_"), enabledTools.contains("shell") { return true }
         if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
         if toolId == "import_skills", enabledTools.contains("read_file") { return true }
@@ -520,6 +522,10 @@ extension AgentToolCatalog {
                     ? ["search_knowledge"] : []
             )
             .union(enabledIds.contains("spawn_bot") ? ["message_bot"] : [])
+            .union(
+                (enabledIds.contains("spawn_bot") || enabledIds.contains("message_bot"))
+                    ? ["check_bot", "list_delegations"] : []
+            )
             // A bot that can run shell commands can already invoke
             // /usr/bin/shortcuts, so the structured tools grant it nothing new —
             // and bots saved before these existed get them without a migration.
@@ -948,6 +954,21 @@ extension AgentToolCatalog {
                     "bot_id": stringProp("Optional bot id instead of the name"),
                 ],
                 required: ["name", "task"]
+            )
+            add(
+                "check_bot",
+                description: "Check on a bot you handed work to: its current status, what it is waiting on, and its latest reply. Use after a message_bot timeout or wait:false.",
+                properties: [
+                    "name": stringProp("Name of the bot from the roster"),
+                    "bot_id": stringProp("Optional bot id instead of the name"),
+                ],
+                required: ["name"]
+            )
+            add(
+                "list_delegations",
+                description: "List the jobs you handed to other bots, newest first, with whether each is still running, answered, needs the user, or failed.",
+                properties: [:],
+                required: []
             )
             add(
                 "delete_bot",
