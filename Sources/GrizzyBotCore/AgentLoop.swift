@@ -120,6 +120,9 @@ public struct AgentToolCallResult: Sendable {
     public var loadedSkillBodies: [(id: String, body: String)]
     /// When true, end the agent loop after this tool (complete).
     public var endTurn: Bool
+    /// Model tokens spent inside the tool (a helper's own loop), added to the turn's usage.
+    public var nestedInputTokens: Int = 0
+    public var nestedOutputTokens: Int = 0
 
     public init(
         output: String,
@@ -697,6 +700,9 @@ public enum AgentLoop {
         "web_search", "web_fetch", "read_file", "list_files", "search_memory",
         "computer_screenshot", "mcp_list_tools", "read_skill", "search_knowledge",
         "canvas_list", "artifact_list", "artifact_read",
+        // Helpers are independent loops; a lead fanning out three of them should not
+        // wait for each in turn.
+        "run_subagent", "check_bots",
     ]
 
     /// Runs the loop and mirrors its lifecycle to ai-memory (see `AiMemoryBridge`).
@@ -949,6 +955,8 @@ public enum AgentLoop {
             var notes: [ChatMessage] = []
             var stop: AgentLoopResult?
             for (call, result) in zip(response.toolCalls, results) {
+                inputTokens += result.nestedInputTokens
+                outputTokens += result.nestedOutputTokens
                 if stop != nil {
                     messages.append(ChatMessage.tool(
                         id: call.id,

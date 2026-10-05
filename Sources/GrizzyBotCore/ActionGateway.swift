@@ -57,7 +57,7 @@ public enum ActionGateway {
             return .read
         case "artifact_create", "artifact_update", "artifact_rewrite", "artifact_delete":
             return .writeFile
-        case "report_decline", "request_takeover":
+        case "report_decline", "request_takeover", "check_bots":
             return .read
         default:
             if tool.hasPrefix("computer_") { return .activate }

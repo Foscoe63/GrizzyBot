@@ -59,6 +59,14 @@ public actor AgentTodoStore {
 }
 
 public enum AgentSessionTools {
+    /// Set while a `run_subagent` helper runs, so its checklist is its own. Helpers share
+    /// the lead's bot thread, and keying by thread let a helper overwrite the lead's plan.
+    @TaskLocal public static var todoScope: String?
+
+    public static func todoKey(threadKey: String) -> String {
+        todoScope.map { "\(threadKey)#\($0)" } ?? threadKey
+    }
+
     public static func handleTodo(markdown: String, threadKey: String) async -> AgentToolCallResult {
         let trimmed = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
