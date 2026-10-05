@@ -242,9 +242,92 @@ public enum ContextCompactor {
                 total += call.name.count
                 total += call.arguments.count
             }
-            total += message.imageJPEGBase64?.count ?? 0
+            if message.imageJPEGBase64?.isEmpty == false {
+                total += imageCharCost
+            }
         }
         return total
+    }
+
+    /// What one attached image costs against the character budget. Providers bill an
+    /// image by its pixel size (roughly 1–2k tokens for a screenshot), not by the length
+    /// of its base64 — counting the raw base64 made one screenshot outweigh the whole
+    /// budget, so every later step compacted the job down to its last six messages.
+    public static let imageCharCost = 6_000
+
+    /// Only the newest images are worth resending; older screenshots show a screen
+    /// that no longer exists. Drops pixels from all but the last `keepLast` images.
+    public static func dropStaleImages(_ messages: [ChatMessage], keepLast: Int = 2) -> [ChatMessage] {
+        var copy = messages
+        var kept = 0
+        for i in copy.indices.reversed() where copy[i].imageJPEGBase64?.isEmpty == false {
+            if kept < keepLast {
+                kept += 1
+            } else {
+                copy[i].imageJPEGBase64 = nil
+                if copy[i].role == "user" {
+                    copy[i].content = (copy[i].content ?? "") + " [older screenshot removed to save context]"
+                }
+            }
+        }
+        return copy
+    }
+
+    /// The newest `limit` messages, starting on a user turn so a saved transcript never
+    /// opens on a tool result whose call was cut off.
+    public static func recent(_ messages: [ChatMessage], limit: Int) -> [ChatMessage] {
+        guard messages.count > limit else { return messages }
+        var start = messages.count - limit
+        while start < messages.count, messages[start].role != "user" {
+            start += 1
+        }
+        return start < messages.count ? Array(messages[start...]) : Array(messages.suffix(limit))
+    }
+
+    /// Restores the shape every provider requires: each assistant tool call is followed
+    /// directly by exactly one result for it, before any other message.
+    ///
+    /// Three things used to break that shape and turn the next request into an HTTP 400:
+    /// compaction dropping an assistant message but keeping its results, a pause or
+    /// `complete` ending the turn before later calls in the same step got a result, and
+    /// notes (screenshots, promoted tools, loaded skills) appended between two results.
+    /// Orphaned results are dropped, missing ones are filled in, and interleaved
+    /// messages move to just after the results.
+    public static func repairToolPairs(_ messages: [ChatMessage]) -> [ChatMessage] {
+        var out: [ChatMessage] = []
+        out.reserveCapacity(messages.count)
+        var i = 0
+        while i < messages.count {
+            let message = messages[i]
+            i += 1
+            if message.role == "tool" { continue }
+            out.append(message)
+            guard message.role == "assistant", !message.toolCalls.isEmpty else { continue }
+            var pending = Set(message.toolCalls.map(\.id))
+            var results: [String: ChatMessage] = [:]
+            var deferred: [ChatMessage] = []
+            while i < messages.count, !pending.isEmpty {
+                let next = messages[i]
+                if next.role == "tool" {
+                    if let id = next.toolCallId, pending.remove(id) != nil {
+                        results[id] = next
+                    }
+                } else if next.role == "user" {
+                    deferred.append(next)
+                } else {
+                    break
+                }
+                i += 1
+            }
+            for call in message.toolCalls {
+                out.append(results[call.id] ?? .tool(
+                    id: call.id,
+                    content: "Not run: the turn ended before this call executed."
+                ))
+            }
+            out.append(contentsOf: deferred)
+        }
+        return out
     }
 
     /// Keep system + newest turns; shrink tool payloads and stuffed user pastes.
@@ -259,8 +342,13 @@ public enum ContextCompactor {
             }
             if encodedSize(copy) > budget, copy.count > 8 {
                 let head = copy.prefix(1)
-                let tail = copy.suffix(6)
-                let dropped = copy.count - 7
+                // Start the kept tail on its assistant call, never mid-results.
+                var tailStart = copy.count - 6
+                while tailStart > 1, copy[tailStart].role == "tool" {
+                    tailStart -= 1
+                }
+                let tail = copy[tailStart...]
+                let dropped = tailStart - 1
                 let note = ChatMessage(
                     role: "user",
                     content: "[Earlier in this job, \(dropped) messages were compacted to stay within context.]"
@@ -707,7 +795,10 @@ public enum AgentLoop {
         let hasMcpTools = tools.contains { $0.function.name == "mcp_call" }
 
         func persistable() -> [ChatMessage] {
-            Array(messages.drop(while: { $0.role == "system" }).prefix(200))
+            // The newest 200, not the oldest: a long thread must keep its latest turns.
+            ContextCompactor.repairToolPairs(
+                ContextCompactor.recent(Array(messages.drop(while: { $0.role == "system" })), limit: 200)
+            )
         }
 
         func loopResult(
@@ -749,7 +840,7 @@ public enum AgentLoop {
                 }
                 let chatRequest = ChatCompletionRequest(
                     endpoint: request.endpoint,
-                    messages: messages,
+                    messages: ContextCompactor.repairToolPairs(messages),
                     tools: tools,
                     stallMs: request.stallMs
                 )
@@ -773,6 +864,7 @@ public enum AgentLoop {
         for step in 1...maxSteps {
             if Task.isCancelled { throw CancellationError() }
             onStep?(step, maxSteps)
+            messages = ContextCompactor.dropStaleImages(messages)
             let packed = ContextCompactor.compact(messages, budget: request.charBudget)
             messages = packed.messages
             if packed.compacted { compacted = true }
@@ -852,7 +944,18 @@ public enum AgentLoop {
                 execute: execute
             )
             var disabledThisStep: [String] = []
+            // Notes go after every tool result of this step: providers reject a user
+            // message sitting between two results of the same assistant turn.
+            var notes: [ChatMessage] = []
+            var stop: AgentLoopResult?
             for (call, result) in zip(response.toolCalls, results) {
+                if stop != nil {
+                    messages.append(ChatMessage.tool(
+                        id: call.id,
+                        content: "Not run: the turn ended before this call executed."
+                    ))
+                    continue
+                }
                 blocks.append(contentsOf: result.blocks)
                 let raw = result.output.isEmpty ? "(empty tool result)" : result.output
                 var output = (call.name != "mcp_list_tools" && raw.count > 3_500)
@@ -867,7 +970,7 @@ public enum AgentLoop {
                 }
                 messages.append(ChatMessage.tool(id: call.id, content: output))
                 if let jpeg = result.imageJPEGBase64, vision {
-                    messages.append(
+                    notes.append(
                         ChatMessage(
                             role: "user",
                             content: "Screenshot from \(call.name).",
@@ -899,31 +1002,35 @@ public enum AgentLoop {
                     if !newcomers.isEmpty {
                         tools.append(contentsOf: McpCatalogPromote.chatTools(from: newcomers))
                         let names = newcomers.map(\.chatName).prefix(8).joined(separator: ", ")
-                        messages.append(.user(
+                        notes.append(.user(
                             "First-class MCP tools are now available this turn: \(names). Call them directly by name with their arguments — do not wrap in mcp_call, toolport_call_tool, or call_tool_by_name."
                         ))
                     }
                 }
                 if !result.loadedSkillBodies.isEmpty {
                     for skill in result.loadedSkillBodies {
-                        messages.append(.user("Loaded skill \(skill.id):\n\n\(skill.body)"))
+                        notes.append(.user("Loaded skill \(skill.id):\n\n\(skill.body)"))
                     }
                 }
                 if result.endTurn {
                     let text = result.output.isEmpty ? lastText : result.output
-                    return loopResult(
+                    stop = loopResult(
                         text: text.isEmpty ? "Done." : text,
                         steps: step
                     )
-                }
-                if let nextPause = result.pause {
+                } else if let nextPause = result.pause {
                     pause = nextPause
                     let text = lastText.isEmpty ? "Waiting on you to continue." : lastText
-                    return loopResult(
+                    stop = loopResult(
                         text: text,
                         steps: step
                     )
                 }
+            }
+            messages.append(contentsOf: notes)
+            if let stop {
+                // Rebuilt so the saved transcript includes the results appended above.
+                return loopResult(text: stop.text, steps: stop.steps)
             }
             if !disabledThisStep.isEmpty, hasMcpTools {
                 messages.append(.user(

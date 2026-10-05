@@ -36,10 +36,12 @@ public enum ModelRequestRetry {
     public static func isRetryable(_ error: Error) -> Bool {
         guard let llm = error as? LLMError else { return false }
         switch llm {
-        case .http(let code, _):
+        case .http(let code, let body):
             if code == 429 { return true }
             if (500...599).contains(code) { return true }
             if code == -1 { return true }
+            // A context overflow succeeds on retry once the transcript is compacted.
+            if isContextOverflow(code: code, body: body) { return true }
             return false
         case .stalled:
             return false
@@ -50,10 +52,19 @@ public enum ModelRequestRetry {
 
     public static func shouldCompactOnRetry(_ error: Error) -> Bool {
         guard let llm = error as? LLMError else { return false }
-        if case .http(let code, _) = llm {
-            return (500...599).contains(code)
+        if case .http(let code, let body) = llm {
+            return (500...599).contains(code) || isContextOverflow(code: code, body: body)
         }
         return false
+    }
+
+    /// Providers report an over-long prompt as a 400/413 with wording like
+    /// "maximum context length" or "prompt is too long".
+    static func isContextOverflow(code: Int, body: String) -> Bool {
+        guard code == 400 || code == 413 else { return false }
+        let lowered = body.lowercased()
+        return ["context length", "context_length", "context window", "too many tokens",
+                "prompt is too long", "maximum context", "too long"].contains(where: lowered.contains)
     }
 
     public static func backoffNanoseconds(attempt: Int) -> UInt64 {
