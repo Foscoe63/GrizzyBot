@@ -1045,7 +1045,7 @@ public struct OpenAIChatClient: ChatCompleting {
 
 /// Messages API server-sent events: text deltas stream to the UI, tool_use input
 /// arrives as partial JSON per content block, usage splits across start and delta.
-public struct AnthropicStreamAccumulator {
+public struct AnthropicStreamAccumulator: Sendable {
     public init() {}
 
     var text = ""
