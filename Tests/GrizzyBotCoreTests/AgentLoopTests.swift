@@ -1107,3 +1107,72 @@ struct TranscriptIntegrityTests {
         #expect(!ModelRequestRetry.isRetryable(LLMError.http(400, "invalid tool schema")))
     }
 }
+
+@Suite("Anthropic request body")
+struct AnthropicBodyTests {
+    private let endpoint = ModelEndpoint(
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
+        baseURL: "https://api.anthropic.com/v1",
+        apiKey: "k"
+    )
+
+    @Test("screenshots go out as image blocks and tool results share one user turn")
+    func imagesAndGrouping() throws {
+        let request = ChatCompletionRequest(
+            endpoint: endpoint,
+            messages: [
+                .system("sys"),
+                .user("look"),
+                ChatMessage(role: "assistant", toolCalls: [
+                    LLMToolCall(id: "a", name: "computer_screenshot", arguments: "{}"),
+                    LLMToolCall(id: "b", name: "read_file", arguments: "{\"path\":\"x\"}"),
+                ]),
+                .tool(id: "a", content: "shot"),
+                .tool(id: "b", content: "file"),
+                ChatMessage(role: "user", content: "Screenshot from a.", imageJPEGBase64: "img"),
+            ],
+            tools: AgentToolCatalog.chatTools(enabledIds: ["read_file"])
+        )
+        let body = OpenAIChatClient.anthropicBody(request, maxTokens: 1_000)
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        #expect(messages.map { $0["role"] as? String } == ["user", "assistant", "user"])
+        let last = try #require(messages[2]["content"] as? [[String: Any]])
+        #expect(last.map { $0["type"] as? String } == ["tool_result", "tool_result", "image", "text"])
+        #expect(last.last?["cache_control"] != nil)
+        let system = try #require(body["system"] as? [[String: Any]])
+        #expect(system.first?["cache_control"] != nil)
+        let tools = try #require(body["tools"] as? [[String: Any]])
+        #expect(tools.last?["cache_control"] != nil)
+    }
+
+    @Test("output ceiling follows the model generation")
+    func maxTokens() {
+        #expect(OpenAIChatClient.anthropicMaxTokens(model: "claude-3-haiku-20240307", streaming: true) == 4_096)
+        #expect(OpenAIChatClient.anthropicMaxTokens(model: "claude-sonnet-4-5", streaming: true) == 32_000)
+        #expect(OpenAIChatClient.anthropicMaxTokens(model: "claude-sonnet-4-5", streaming: false) == 16_000)
+    }
+
+    @Test("streamed text and tool input are reassembled from events")
+    func streamEvents() throws {
+        var acc = AnthropicStreamAccumulator()
+        let lines = [
+            #"data: {"type":"message_start","message":{"usage":{"input_tokens":5,"cache_read_input_tokens":100}}}"#,
+            #"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+            #"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}"#,
+            #"data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"t1","name":"read_file"}}"#,
+            #"data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"path\":"}}"#,
+            #"data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"a\"}"}}"#,
+            #"data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":7}}"#,
+            #"data: {"type":"message_stop"}"#,
+        ]
+        var done = false
+        for line in lines { done = try acc.consume(line: line, onDelta: { _ in }) }
+        #expect(done)
+        let response = try acc.result()
+        #expect(response.text == "hi")
+        #expect(response.toolCalls.first?.arguments == #"{"path":"a"}"#)
+        #expect(response.inputTokens == 105)
+        #expect(response.outputTokens == 7)
+    }
+}

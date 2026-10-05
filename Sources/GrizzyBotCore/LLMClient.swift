@@ -649,81 +649,194 @@ public struct OpenAIChatClient: ChatCompleting {
         _ request: ChatCompletionRequest,
         onDelta: @escaping @Sendable (String) -> Void
     ) async throws -> ChatCompletionResponse {
-        // Anthropic streaming uses a different event shape; fall back to a full request and emit once.
-        let response = try await completeAnthropic(request)
-        if !response.text.isEmpty { onDelta(response.text) }
-        return response
+        let urlString = request.endpoint.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            + "/messages"
+        guard let url = URL(string: urlString) else { throw LLMError.invalidURL(urlString) }
+        var body = Self.anthropicBody(request, maxTokens: Self.anthropicMaxTokens(model: request.endpoint.model, streaming: true))
+        body["stream"] = true
+
+        var urlRequest = URLRequest(url: url, timeoutInterval: request.timeout)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        urlRequest.setValue(request.endpoint.apiKey, forHTTPHeaderField: "x-api-key")
+        urlRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+        ModelTransport.prepare(&urlRequest)
+
+        let bytes: URLSession.AsyncBytes
+        let response: URLResponse
+        do {
+            (bytes, response) = try await session(for: url).bytes(for: urlRequest)
+        } catch {
+            throw LLMError.transport(error, url: url)
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if !(200..<300).contains(status) {
+            var snippet = ""
+            for try await line in bytes.lines {
+                snippet += line
+                if snippet.count > 800 { break }
+            }
+            throw LLMError.http(status, Self.extractErrorMessage(snippet))
+        }
+
+        let monitor = StallMonitor(stallMs: request.stallMs)
+        let streamTask = Task { () -> AnthropicStreamAccumulator in
+            var acc = AnthropicStreamAccumulator()
+            for try await line in bytes.lines {
+                await monitor.touch()
+                if try acc.consume(line: line, onDelta: onDelta) { break }
+            }
+            return acc
+        }
+        let watchTask = Task {
+            do {
+                try await monitor.watchUntilStall()
+            } catch is CancellationError {
+                return
+            } catch {
+                streamTask.cancel()
+            }
+        }
+        do {
+            let acc = try await streamTask.value
+            watchTask.cancel()
+            return try acc.result()
+        } catch is CancellationError {
+            watchTask.cancel()
+            let snap = await monitor.snapshot()
+            if snap.stalled {
+                throw LLMError.stalled(silentForMs: snap.silentForMs, chunks: snap.chunks)
+            }
+            throw CancellationError()
+        } catch {
+            watchTask.cancel()
+            throw error
+        }
     }
 
     private func completeAnthropic(_ request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
         let urlString = request.endpoint.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             + "/messages"
         guard let url = URL(string: urlString) else { throw LLMError.invalidURL(urlString) }
+        let body = Self.anthropicBody(request, maxTokens: Self.anthropicMaxTokens(model: request.endpoint.model, streaming: false))
+        let data = try await postJSON(url: url, body: body, request: request, extra: [:]) { req in
+            req.setValue(request.endpoint.apiKey, forHTTPHeaderField: "x-api-key")
+            req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        }
+        return try Self.parseAnthropic(data)
+    }
 
+    /// Output ceiling per Claude generation. A fixed 4,096 cut long artifact and
+    /// write_file calls off mid-JSON. Non-streaming requests stay at 16k so a long
+    /// reply cannot outlast the HTTP timeout.
+    public static func anthropicMaxTokens(model: String, streaming: Bool) -> Int {
+        let id = model.lowercased()
+        if id.contains("claude-3-haiku") || id.contains("claude-3-opus") || id.contains("claude-3-sonnet") {
+            return 4_096
+        }
+        if id.contains("claude-3-5") || id.contains("claude-3.5") { return 8_192 }
+        return streaming ? 32_000 : 16_000
+    }
+
+    /// Messages API body: system as a cached block, tool results grouped into one user
+    /// turn per assistant call (consecutive same-role messages merge), images as image
+    /// blocks, and cache breakpoints on the tool list and the newest message so each
+    /// agent step re-reads the long prefix from cache instead of paying for it again.
+    public static func anthropicBody(_ request: ChatCompletionRequest, maxTokens: Int) -> [String: Any] {
+        let cache: [String: Any] = ["type": "ephemeral"]
+        let vision = LLMRouting.supportsVisionImages(provider: request.endpoint.provider, model: request.endpoint.model)
         var system = ""
         var messages: [[String: Any]] = []
+
+        func append(role: String, blocks: [[String: Any]]) {
+            guard !blocks.isEmpty else { return }
+            if let last = messages.indices.last, messages[last]["role"] as? String == role,
+               var existing = messages[last]["content"] as? [[String: Any]] {
+                // tool_result blocks must lead a user turn.
+                if role == "user", blocks.contains(where: { $0["type"] as? String == "tool_result" }) {
+                    let results = existing.filter { $0["type"] as? String == "tool_result" }
+                    let rest = existing.filter { $0["type"] as? String != "tool_result" }
+                    existing = results + blocks + rest
+                } else {
+                    existing += blocks
+                }
+                messages[last]["content"] = existing
+            } else {
+                messages.append(["role": role, "content": blocks])
+            }
+        }
+
         for message in request.messages {
-            if message.role == "system" {
-                if let content = message.content, !content.isEmpty {
-                    system += (system.isEmpty ? "" : "\n\n") + content
-                }
-                continue
-            }
-            if message.role == "tool" {
-                messages.append([
-                    "role": "user",
-                    "content": [[
-                        "type": "tool_result",
-                        "tool_use_id": message.toolCallId ?? "",
-                        "content": message.content ?? "",
-                    ]],
-                ])
-                continue
-            }
-            if message.role == "assistant", !message.toolCalls.isEmpty {
-                var content: [[String: Any]] = []
-                if let text = message.content, !text.isEmpty {
-                    content.append(["type": "text", "text": text])
-                }
+            let text = message.content ?? ""
+            switch message.role {
+            case "system":
+                if !text.isEmpty { system += (system.isEmpty ? "" : "\n\n") + text }
+            case "tool":
+                append(role: "user", blocks: [[
+                    "type": "tool_result",
+                    "tool_use_id": message.toolCallId ?? "",
+                    "content": text.isEmpty ? "(empty tool result)" : text,
+                ]])
+            case "assistant":
+                var blocks: [[String: Any]] = []
+                if !text.isEmpty { blocks.append(["type": "text", "text": text]) }
                 for call in message.toolCalls {
                     let parsed = JSONValue.parseObject(call.arguments)
-                    content.append([
+                    blocks.append([
                         "type": "tool_use",
                         "id": call.id,
                         "name": call.name,
                         "input": parsed.isEmpty ? [String: Any]() : parsed.mapValues(\.any),
                     ])
                 }
-                messages.append(["role": "assistant", "content": content])
-                continue
+                append(role: "assistant", blocks: blocks)
+            default:
+                var blocks: [[String: Any]] = []
+                if vision, let jpeg = message.imageJPEGBase64, !jpeg.isEmpty {
+                    blocks.append([
+                        "type": "image",
+                        "source": ["type": "base64", "media_type": "image/jpeg", "data": jpeg],
+                    ])
+                }
+                if !text.isEmpty { blocks.append(["type": "text", "text": text]) }
+                append(role: "user", blocks: blocks)
             }
-            messages.append([
-                "role": message.role == "assistant" ? "assistant" : "user",
-                "content": message.content ?? "",
-            ])
+        }
+
+        // The Messages API requires the conversation to open on a user turn.
+        if messages.first?["role"] as? String == "assistant" {
+            messages.insert(["role": "user", "content": [["type": "text", "text": "(earlier conversation)"]]], at: 0)
+        }
+
+        // Rolling breakpoint on the newest block: the next step's request extends this prefix.
+        if let last = messages.indices.last, var blocks = messages[last]["content"] as? [[String: Any]],
+           let index = blocks.indices.last {
+            blocks[index]["cache_control"] = cache
+            messages[last]["content"] = blocks
         }
 
         var body: [String: Any] = [
             "model": request.endpoint.model,
-            "max_tokens": 4096,
+            "max_tokens": maxTokens,
             "messages": messages,
         ]
-        if !system.isEmpty { body["system"] = system }
+        if !system.isEmpty {
+            body["system"] = [["type": "text", "text": system, "cache_control": cache]]
+        }
         if !request.tools.isEmpty {
-            body["tools"] = request.tools.map { tool in
+            var tools: [[String: Any]] = request.tools.map { tool in
                 [
                     "name": tool.function.name,
                     "description": tool.function.description,
                     "input_schema": tool.function.parameters.any,
                 ]
             }
+            tools[tools.count - 1]["cache_control"] = cache
+            body["tools"] = tools
         }
-
-        let data = try await postJSON(url: url, body: body, request: request, extra: [:]) { req in
-            req.setValue(request.endpoint.apiKey, forHTTPHeaderField: "x-api-key")
-            req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        }
-        return try Self.parseAnthropic(data)
+        return body
     }
 
     private func postJSON(
@@ -822,7 +935,10 @@ public struct OpenAIChatClient: ChatCompleting {
             throw LLMError.decoding("not an object")
         }
         let usage = root["usage"] as? [String: Any]
+        // Cached prefix tokens are reported separately; they still fill the window.
         let input = intValue(usage?["input_tokens"])
+            + intValue(usage?["cache_creation_input_tokens"])
+            + intValue(usage?["cache_read_input_tokens"])
         let output = intValue(usage?["output_tokens"])
         let blocks = root["content"] as? [[String: Any]] ?? []
         var text = ""
@@ -925,6 +1041,91 @@ public struct OpenAIChatClient: ChatCompleting {
 
     static func streamText(_ value: Any?) -> String { extractText(value) }
     static func streamInt(_ value: Any?) -> Int { intValue(value) }
+}
+
+/// Messages API server-sent events: text deltas stream to the UI, tool_use input
+/// arrives as partial JSON per content block, usage splits across start and delta.
+public struct AnthropicStreamAccumulator {
+    public init() {}
+
+    var text = ""
+    var inputTokens = 0
+    var outputTokens = 0
+    var stopReason: String?
+    var calls: [Int: (id: String, name: String, arguments: String)] = [:]
+
+    /// Returns true on `message_stop`. Throws on an in-stream `error` event.
+    public mutating func consume(line: String, onDelta: @escaping @Sendable (String) -> Void) throws -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("data:") else { return false }
+        let payload = trimmed.dropFirst(5).trimmingCharacters(in: .whitespaces)
+        guard let data = payload.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return false
+        }
+        let index = OpenAIChatClient.streamInt(json["index"])
+        switch json["type"] as? String {
+        case "message_start":
+            let usage = (json["message"] as? [String: Any])?["usage"] as? [String: Any] ?? [:]
+            inputTokens = OpenAIChatClient.streamInt(usage["input_tokens"])
+                + OpenAIChatClient.streamInt(usage["cache_creation_input_tokens"])
+                + OpenAIChatClient.streamInt(usage["cache_read_input_tokens"])
+        case "content_block_start":
+            if let block = json["content_block"] as? [String: Any], block["type"] as? String == "tool_use" {
+                calls[index] = (block["id"] as? String ?? "", block["name"] as? String ?? "", "")
+            }
+        case "content_block_delta":
+            let delta = json["delta"] as? [String: Any] ?? [:]
+            switch delta["type"] as? String {
+            case "text_delta":
+                let piece = delta["text"] as? String ?? ""
+                if !piece.isEmpty {
+                    text += piece
+                    onDelta(piece)
+                }
+            case "input_json_delta":
+                calls[index]?.arguments += delta["partial_json"] as? String ?? ""
+            default:
+                break
+            }
+        case "message_delta":
+            if let reason = (json["delta"] as? [String: Any])?["stop_reason"] as? String {
+                stopReason = reason
+            }
+            if let usage = json["usage"] as? [String: Any] {
+                outputTokens = OpenAIChatClient.streamInt(usage["output_tokens"])
+            }
+        case "message_stop":
+            return true
+        case "error":
+            let error = json["error"] as? [String: Any] ?? [:]
+            let kind = error["type"] as? String ?? "error"
+            let code = kind == "overloaded_error" ? 529 : 500
+            throw LLMError.http(code, error["message"] as? String ?? kind)
+        default:
+            break
+        }
+        return false
+    }
+
+    public func result() throws -> ChatCompletionResponse {
+        let toolCalls = calls.keys.sorted().compactMap { index -> LLMToolCall? in
+            guard let call = calls[index], !call.name.isEmpty else { return nil }
+            return LLMToolCall(
+                id: call.id.isEmpty ? UUID().uuidString : call.id,
+                name: call.name,
+                arguments: call.arguments.isEmpty ? "{}" : call.arguments
+            )
+        }
+        if text.isEmpty && toolCalls.isEmpty { throw LLMError.emptyResponse }
+        return ChatCompletionResponse(
+            text: text,
+            toolCalls: toolCalls,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            finishReason: stopReason
+        )
+    }
 }
 
 private struct OpenAIStreamAccumulator {
