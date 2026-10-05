@@ -4257,6 +4257,10 @@ public final class AppStore {
 
     /// Every skill in the library, whether or not this bot has it on.
     public func setAllBotSkills(_ botId: String, enabled: Bool) {
+        // "None" also drops ids no longer in the library (e.g. a template's missing skill).
+        if !enabled, let idx = bots.firstIndex(where: { $0.id == botId }) {
+            bots[idx].enabledSkills.removeAll()
+        }
         setBotSkills(botId, skillIds: skills.map(\.id), enabled: enabled)
     }
 
