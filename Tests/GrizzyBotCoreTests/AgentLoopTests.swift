@@ -956,3 +956,223 @@ struct BotRosterPromptTests {
         #expect(!prompt.contains("[you created it]"))
     }
 }
+
+@Suite("Transcript integrity")
+struct TranscriptIntegrityTests {
+    private let endpoint = ModelEndpoint(
+        provider: "openrouter",
+        model: "test",
+        baseURL: "https://example.com/v1",
+        apiKey: "k"
+    )
+
+    /// Every tool call is answered right after its assistant message, and no result is orphaned.
+    private func wellFormed(_ messages: [ChatMessage]) -> Bool {
+        var i = 0
+        while i < messages.count {
+            let message = messages[i]
+            if message.role == "tool" { return false }
+            i += 1
+            for call in message.toolCalls {
+                guard i < messages.count, messages[i].role == "tool", messages[i].toolCallId == call.id else {
+                    return false
+                }
+                i += 1
+            }
+        }
+        return true
+    }
+
+    @Test("a screenshot counts as a fixed cost, not its base64 length")
+    func imageCost() {
+        let shot = ChatMessage(role: "user", content: "s", imageJPEGBase64: String(repeating: "A", count: 200_000))
+        #expect(ContextCompactor.encodedSize([shot]) < 10_000)
+    }
+
+    @Test("only the newest two images keep their pixels")
+    func staleImages() {
+        let messages = (0..<4).map { ChatMessage(role: "user", content: "\($0)", imageJPEGBase64: "img") }
+        let trimmed = ContextCompactor.dropStaleImages(messages)
+        #expect(trimmed.filter { $0.imageJPEGBase64 != nil }.count == 2)
+        #expect(trimmed[3].imageJPEGBase64 == "img")
+    }
+
+    @Test("saved transcript keeps the newest messages, starting on a user turn")
+    func recentKeepsNewest() {
+        var messages: [ChatMessage] = []
+        for i in 0..<130 {
+            messages.append(.user("u\(i)"))
+            messages.append(.assistant("a\(i)"))
+        }
+        let kept = ContextCompactor.recent(messages, limit: 200)
+        #expect(kept.count <= 200)
+        #expect(kept.first?.role == "user")
+        #expect(kept.last?.content == "a129")
+    }
+
+    @Test("repair drops orphaned results, fills missing ones and moves notes after results")
+    func repair() {
+        let messages: [ChatMessage] = [
+            .system("sys"),
+            .tool(id: "orphan", content: "x"),
+            ChatMessage(role: "assistant", toolCalls: [
+                LLMToolCall(id: "a", name: "read_file", arguments: "{}"),
+                LLMToolCall(id: "b", name: "read_file", arguments: "{}"),
+                LLMToolCall(id: "c", name: "read_file", arguments: "{}"),
+            ]),
+            .tool(id: "a", content: "ok"),
+            .user("Screenshot from a."),
+            .tool(id: "b", content: "ok"),
+            .user("next turn"),
+        ]
+        let fixed = ContextCompactor.repairToolPairs(messages)
+        #expect(wellFormed(fixed))
+        #expect(fixed.map(\.role) == ["system", "assistant", "tool", "tool", "tool", "user", "user"])
+        #expect(fixed[4].content?.contains("Not run") == true)
+    }
+
+    @Test("compaction never leaves a tail that opens on a tool result")
+    func compactionKeepsPairs() {
+        var messages: [ChatMessage] = [.system("sys"), .user("go")]
+        for i in 0..<12 {
+            messages.append(ChatMessage(role: "assistant", toolCalls: [
+                LLMToolCall(id: "\(i)a", name: "read_file", arguments: "{}"),
+                LLMToolCall(id: "\(i)b", name: "read_file", arguments: "{}"),
+                LLMToolCall(id: "\(i)c", name: "read_file", arguments: "{}"),
+            ]))
+            for suffix in ["a", "b", "c"] {
+                messages.append(.tool(id: "\(i)\(suffix)", content: String(repeating: "x", count: 4_000)))
+            }
+        }
+        let packed = ContextCompactor.compact(messages, budget: 3_000).messages
+        #expect(wellFormed(packed))
+    }
+
+    @Test("a screenshot from the first of two calls is sent after both results")
+    func notesAfterResults() async throws {
+        let client = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [
+                LLMToolCall(id: "1", name: "computer_screenshot", arguments: "{}"),
+                LLMToolCall(id: "2", name: "read_file", arguments: "{\"path\":\"a\"}"),
+            ]),
+            ChatCompletionResponse(text: "seen."),
+        ])
+        _ = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: ModelEndpoint(provider: "openai", model: "gpt-4o", baseURL: "https://example.com/v1", apiKey: "k"),
+                botName: "Scout",
+                prompt: "look",
+                tools: AgentToolCatalog.chatTools(enabledIds: ["read_file"])
+            )
+        ) { name, _ in
+            AgentToolCallResult(output: "ok", imageJPEGBase64: name == "computer_screenshot" ? "img" : nil)
+        }
+        let sent = client.requests[1].messages
+        #expect(wellFormed(sent))
+        #expect(sent.last?.imageJPEGBase64 == "img")
+    }
+
+    @Test("a pause mid-step still answers every call in the saved transcript")
+    func pauseAnswersEveryCall() async throws {
+        let client = QueueChatClient([
+            ChatCompletionResponse(toolCalls: [
+                LLMToolCall(id: "1", name: "shell", arguments: "{\"command\":\"rm x\"}"),
+                LLMToolCall(id: "2", name: "read_file", arguments: "{\"path\":\"a\"}"),
+            ]),
+        ])
+        let result = try await AgentLoop.run(
+            client: client,
+            request: AgentLoopRequest(
+                endpoint: endpoint,
+                botName: "Scout",
+                prompt: "clean up",
+                tools: AgentToolCatalog.chatTools(enabledIds: ["shell", "read_file"])
+            )
+        ) { name, args in
+            name == "shell"
+                ? AgentToolCallResult(output: "Need approval", pause: .approval(tool: "shell.exec", detail: "rm x", arguments: args))
+                : AgentToolCallResult(output: "ok")
+        }
+        #expect(result.pause != nil)
+        #expect(wellFormed(result.messages))
+        #expect(result.messages.filter { $0.role == "tool" }.count == 2)
+    }
+
+    @Test("context-overflow 400s compact and retry")
+    func contextOverflowRetries() {
+        let overflow = LLMError.http(400, "This model's maximum context length is 128000 tokens")
+        #expect(ModelRequestRetry.isRetryable(overflow))
+        #expect(ModelRequestRetry.shouldCompactOnRetry(overflow))
+        #expect(!ModelRequestRetry.isRetryable(LLMError.http(400, "invalid tool schema")))
+    }
+}
+
+@Suite("Anthropic request body")
+struct AnthropicBodyTests {
+    private let endpoint = ModelEndpoint(
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
+        baseURL: "https://api.anthropic.com/v1",
+        apiKey: "k"
+    )
+
+    @Test("screenshots go out as image blocks and tool results share one user turn")
+    func imagesAndGrouping() throws {
+        let request = ChatCompletionRequest(
+            endpoint: endpoint,
+            messages: [
+                .system("sys"),
+                .user("look"),
+                ChatMessage(role: "assistant", toolCalls: [
+                    LLMToolCall(id: "a", name: "computer_screenshot", arguments: "{}"),
+                    LLMToolCall(id: "b", name: "read_file", arguments: "{\"path\":\"x\"}"),
+                ]),
+                .tool(id: "a", content: "shot"),
+                .tool(id: "b", content: "file"),
+                ChatMessage(role: "user", content: "Screenshot from a.", imageJPEGBase64: "img"),
+            ],
+            tools: AgentToolCatalog.chatTools(enabledIds: ["read_file"])
+        )
+        let body = OpenAIChatClient.anthropicBody(request, maxTokens: 1_000)
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        #expect(messages.map { $0["role"] as? String } == ["user", "assistant", "user"])
+        let last = try #require(messages[2]["content"] as? [[String: Any]])
+        #expect(last.map { $0["type"] as? String } == ["tool_result", "tool_result", "image", "text"])
+        #expect(last.last?["cache_control"] != nil)
+        let system = try #require(body["system"] as? [[String: Any]])
+        #expect(system.first?["cache_control"] != nil)
+        let tools = try #require(body["tools"] as? [[String: Any]])
+        #expect(tools.last?["cache_control"] != nil)
+    }
+
+    @Test("output ceiling follows the model generation")
+    func maxTokens() {
+        #expect(OpenAIChatClient.anthropicMaxTokens(model: "claude-3-haiku-20240307", streaming: true) == 4_096)
+        #expect(OpenAIChatClient.anthropicMaxTokens(model: "claude-sonnet-4-5", streaming: true) == 32_000)
+        #expect(OpenAIChatClient.anthropicMaxTokens(model: "claude-sonnet-4-5", streaming: false) == 16_000)
+    }
+
+    @Test("streamed text and tool input are reassembled from events")
+    func streamEvents() throws {
+        var acc = AnthropicStreamAccumulator()
+        let lines = [
+            #"data: {"type":"message_start","message":{"usage":{"input_tokens":5,"cache_read_input_tokens":100}}}"#,
+            #"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+            #"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}"#,
+            #"data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"t1","name":"read_file"}}"#,
+            #"data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"path\":"}}"#,
+            #"data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"a\"}"}}"#,
+            #"data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":7}}"#,
+            #"data: {"type":"message_stop"}"#,
+        ]
+        var done = false
+        for line in lines { done = try acc.consume(line: line, onDelta: { _ in }) }
+        #expect(done)
+        let response = try acc.result()
+        #expect(response.text == "hi")
+        #expect(response.toolCalls.first?.arguments == #"{"path":"a"}"#)
+        #expect(response.inputTokens == 105)
+        #expect(response.outputTokens == 7)
+    }
+}

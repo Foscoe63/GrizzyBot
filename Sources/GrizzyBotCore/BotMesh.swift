@@ -40,6 +40,9 @@ public struct BotChatEntry: Codable, Sendable, Hashable, Identifiable {
     public var reply: String?
     public var outcome: Outcome
     public var createdAt: Date
+    /// True when the sender stopped waiting (wait:false, or the wait timed out). The
+    /// answer is then delivered back to the sender's thread when the peer finishes.
+    public var detached: Bool?
 
     public init(
         id: String = Ids.new(),
@@ -48,7 +51,8 @@ public struct BotChatEntry: Codable, Sendable, Hashable, Identifiable {
         text: String,
         reply: String? = nil,
         outcome: Outcome = .sent,
-        createdAt: Date = .now
+        createdAt: Date = .now,
+        detached: Bool? = nil
     ) {
         self.id = id
         self.fromBotId = fromBotId
@@ -57,6 +61,7 @@ public struct BotChatEntry: Codable, Sendable, Hashable, Identifiable {
         self.reply = reply
         self.outcome = outcome
         self.createdAt = createdAt
+        self.detached = detached
     }
 
     /// The log is a convenience view, not a transcript; cap it so it can't grow

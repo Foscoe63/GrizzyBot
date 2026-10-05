@@ -141,6 +141,8 @@ struct StoreTests {
         let chief = store.createBot(name: "GrizzyBot", title: "Orchestrator")
         store.setChiefOfStaff(chief.id, enabled: true)
         let researcher = store.createBot(name: "Researcher", title: "Research & briefs")
+        // The user is looking at the chief; delegation must not move them.
+        store.selectBot(chief.id)
         return (store, chief, researcher)
     }
 
@@ -227,6 +229,36 @@ struct StoreTests {
         #expect(authors == [ada.id, linus.id])
     }
 
+    @Test("an everyone room hears from every member; the bulletin rides along; a mentions room waits")
+    func roomDefaultResponders() async {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "room-all@b.com", password: "password1") == nil)
+        let ada = store.createBot(name: "Ada", title: "")
+        let grace = store.createBot(name: "Grace", title: "")
+        let room = store.createGroup(name: "Team", memberIds: [ada.id, grace.id])
+        store.updateGroupBulletin(room.id, bulletin: "Ship Friday.")
+        let client = QueueChatClient([
+            ChatCompletionResponse(text: "Ada here."),
+            ChatCompletionResponse(text: "Grace here."),
+        ])
+        store.chatCompleter = client
+        store.sendGroupMessage(groupId: room.id, text: "status?")
+        var authors: [String] = []
+        for _ in 0..<400 {
+            authors = (store.threads[room.id]?.messages ?? []).filter { $0.role == .bot }.compactMap(\.authorBotId)
+            if authors.count == 2, store.threads[room.id]?.run?.status == .completed { break }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(authors == [ada.id, grace.id])
+        #expect(client.requests.first?.messages.contains { ($0.content ?? "").contains("Ship Friday.") } == true)
+
+        let quiet = store.createGroup(name: "Quiet", memberIds: [ada.id, grace.id])
+        if let idx = store.groups.firstIndex(where: { $0.id == quiet.id }) { store.groups[idx].defaultResponder = .mentions }
+        store.sendGroupMessage(groupId: quiet.id, text: "fyi")
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(store.threads[quiet.id]?.messages.contains { $0.role == .bot } != true)
+    }
+
     @Test("a reply that only echoes the room roster does not pull other members in")
     func roomRosterEchoDoesNotEscalate() async {
         let store = tempStore()
@@ -259,9 +291,40 @@ struct StoreTests {
         store.send(botId: chief.id, text: "kick off the brief")
         #expect(await store.waitForRunCompletion(botId: chief.id))
         let toolResults = (store.threads[chief.id]?.llmMessages ?? []).filter { $0.role == "tool" }
-        #expect(toolResults.contains { ($0.content ?? "").contains("its own thread") })
+        #expect(toolResults.contains { ($0.content ?? "").contains("delivered back to you") })
         #expect(childBotStatus(in: store.messages(for: chief.id), botId: researcher.id) == .messaged)
         #expect(await store.waitForRunCompletion(botId: researcher.id))
+
+        // When the peer finishes, its outcome comes back to the chief as a new turn.
+        var delivered = false
+        for _ in 0..<400 {
+            delivered = store.messages(for: chief.id).contains {
+                $0.role == .user && $0.firstText.hasPrefix("Update on work you handed off")
+            }
+            if delivered { break }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(delivered)
+        #expect(store.botChat.first?.outcome == .answered)
+        #expect(store.activeBotId == chief.id)
+    }
+
+    @Test("check_bots lists handoffs with their state and answer")
+    func checkBotsListsHandoffs() async {
+        let (store, chief, _) = rosterStore(email: "roster-check@b.com")
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"researcher\",\"task\":\"Brief me on the filing\"}"),
+            ChatCompletionResponse(text: "The filing closes on the 30th."),
+            ChatCompletionResponse(toolCalls: [LLMToolCall(id: "2", name: "check_bots", arguments: "{}")]),
+            ChatCompletionResponse(text: "Done."),
+        ])
+        store.send(botId: chief.id, text: "get me a brief and tell me who has what")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        let toolResults = (store.threads[chief.id]?.llmMessages ?? []).filter { $0.role == "tool" }
+        #expect(toolResults.contains {
+            let text = $0.content ?? ""
+            return text.contains("Researcher [answered]") && text.contains("closes on the 30th")
+        })
     }
 
     @Test("a peer that stops for approval reports back as needing the user")

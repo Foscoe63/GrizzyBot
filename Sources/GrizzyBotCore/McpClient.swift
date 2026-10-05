@@ -32,11 +32,19 @@ public struct McpToolInfo: Sendable, Hashable {
     public var name: String
     public var description: String
     public var inputSchema: [String: AnyCodableMCP]
+    /// The server's `annotations.readOnlyHint`: it says this tool changes nothing.
+    public var readOnlyHint: Bool
 
-    public init(name: String, description: String = "", inputSchema: [String: AnyCodableMCP] = [:]) {
+    public init(
+        name: String,
+        description: String = "",
+        inputSchema: [String: AnyCodableMCP] = [:],
+        readOnlyHint: Bool = false
+    ) {
         self.name = name
         self.description = description
         self.inputSchema = inputSchema
+        self.readOnlyHint = readOnlyHint
     }
 }
 
@@ -253,17 +261,28 @@ public enum McpClient {
     }
 
     static func toolsList(session: any McpSession) async throws -> [McpToolInfo] {
-        let raw = try await session.sendRequest(method: "tools/list", params: [:])
-        let obj = raw as? [String: Any] ?? [:]
-        let list = obj["tools"] as? [[String: Any]] ?? []
+        // Servers may page their catalog; follow nextCursor (bounded so a buggy server can't loop us).
+        var list: [[String: Any]] = []
+        var cursor: String?
+        for _ in 0..<20 {
+            let params: [String: Any] = cursor.map { ["cursor": $0] } ?? [:]
+            let raw = try await session.sendRequest(method: "tools/list", params: params)
+            let obj = raw as? [String: Any] ?? [:]
+            list += obj["tools"] as? [[String: Any]] ?? []
+            guard let next = obj["nextCursor"] as? String, !next.isEmpty, next != cursor else { break }
+            cursor = next
+        }
         return list.compactMap { item in
             guard let name = item["name"] as? String, !name.isEmpty else { return nil }
             let description = item["description"] as? String ?? ""
             let schema = (item["inputSchema"] as? [String: Any]) ?? [:]
+            let annotations = item["annotations"] as? [String: Any] ?? [:]
             return McpToolInfo(
                 name: name,
                 description: description,
-                inputSchema: schema.mapValues(AnyCodableMCP.init)
+                inputSchema: schema.mapValues(AnyCodableMCP.init),
+                readOnlyHint: (annotations["readOnlyHint"] as? Bool) == true
+                    && (annotations["destructiveHint"] as? Bool) != true
             )
         }
     }
@@ -281,20 +300,41 @@ public enum McpClient {
             ]
         )
         let obj = raw as? [String: Any] ?? [:]
-        let isError = (obj["isError"] as? Bool) ?? false
+        return (renderCallResult(obj), (obj["isError"] as? Bool) ?? false)
+    }
+
+    /// Flattens a tools/call result to text. Binary blocks (image, audio, blob resources)
+    /// become a short note: dumping base64 into the transcript burns context for nothing.
+    public static func renderCallResult(_ obj: [String: Any]) -> String {
         let content = obj["content"] as? [[String: Any]] ?? []
         let texts = content.compactMap { block -> String? in
-            if let t = block["text"] as? String { return t }
-            if let data = block["data"] as? String { return data }
-            return nil
+            let type = block["type"] as? String ?? ""
+            switch type {
+            case "image", "audio":
+                let mime = block["mimeType"] as? String ?? type
+                let bytes = ((block["data"] as? String)?.count ?? 0) * 3 / 4
+                return "[\(type) returned: \(mime), \(max(1, bytes / 1024)) KB, not shown]"
+            case "resource":
+                let res = block["resource"] as? [String: Any] ?? [:]
+                let uri = res["uri"] as? String ?? ""
+                if let t = res["text"] as? String { return uri.isEmpty ? t : "[\(uri)]\n\(t)" }
+                let mime = res["mimeType"] as? String ?? "binary"
+                return "[resource \(uri) (\(mime)), binary content not shown]"
+            case "resource_link":
+                let name = block["name"] as? String ?? ""
+                let uri = block["uri"] as? String ?? ""
+                return "[link \(name.isEmpty ? uri : "\(name): \(uri)")]"
+            default:
+                return block["text"] as? String
+            }
         }
         if !texts.isEmpty {
-            return (texts.joined(separator: "\n\n"), isError)
+            return texts.joined(separator: "\n\n")
         }
         if let structured = obj["structuredContent"] {
-            return (stringifyJSON(structured), isError)
+            return stringifyJSON(structured)
         }
-        return (stringifyJSON(obj), isError)
+        return stringifyJSON(obj)
     }
 
     public static func selectTool(from tools: [McpToolInfo], prompt: String) -> McpToolInfo {
@@ -497,6 +537,22 @@ public enum McpClient {
             return Int(value)
         }
         return nil
+    }
+
+    /// Answer for a request the server sent us (ping, roots/list, sampling...). Notifications
+    /// (no id) get nil. We support ping and an empty roots list; everything else is "not found".
+    public static func serverRequestReply(_ object: [String: Any]) -> Data? {
+        guard let method = object["method"] as? String, let id = object["id"], !(id is NSNull) else { return nil }
+        var reply: [String: Any] = ["jsonrpc": "2.0", "id": id]
+        switch method {
+        case "ping":
+            reply["result"] = [String: Any]()
+        case "roots/list":
+            reply["result"] = ["roots": [Any]()]
+        default:
+            reply["error"] = ["code": -32601, "message": "Method not supported by this client: \(method)"] as [String: Any]
+        }
+        return try? JSONSerialization.data(withJSONObject: reply)
     }
 
     static func jsonRPCId(_ object: [String: Any]) -> Int? {
@@ -762,6 +818,14 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
     private func handleLine(_ line: Data) {
         do {
             let obj = try McpClient.decodeJSONObject(line)
+            // A server-initiated request or notification, not a reply: its id is the server's
+            // own counter and must never settle one of our pending calls.
+            if obj["method"] != nil {
+                if let reply = McpClient.serverRequestReply(obj) {
+                    try? stdin.write(contentsOf: reply + Data([0x0A]))
+                }
+                return
+            }
             guard let id = McpClient.jsonRPCId(obj) else { return }
             if let error = obj["error"] as? [String: Any] {
                 let code = error["code"] as? Int ?? -1

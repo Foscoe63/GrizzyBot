@@ -513,3 +513,42 @@ struct McpClientTests {
         }
     }
 }
+
+@Suite("MCP protocol hygiene")
+struct McpProtocolHygieneTests {
+    @Test("binary blocks become short notes; text resources keep their text")
+    func renderBinary() {
+        let text = McpClient.renderCallResult([
+            "content": [
+                ["type": "text", "text": "hello"],
+                ["type": "image", "mimeType": "image/png", "data": String(repeating: "A", count: 40_000)],
+                ["type": "resource", "resource": ["uri": "file:///a.txt", "text": "body"]],
+                ["type": "resource_link", "name": "Doc", "uri": "https://x.test/d"],
+            ] as [[String: Any]],
+        ])
+        #expect(text.contains("hello"))
+        #expect(text.contains("[image returned: image/png, 29 KB, not shown]"))
+        #expect(text.contains("[file:///a.txt]\nbody"))
+        #expect(text.contains("[link Doc: https://x.test/d]"))
+        #expect(!text.contains("AAAA"))
+    }
+
+    @Test("server pings are answered; server notifications are not")
+    func serverRequests() throws {
+        let ping = try #require(McpClient.serverRequestReply(["jsonrpc": "2.0", "id": 7, "method": "ping"]))
+        let obj = try #require(try JSONSerialization.jsonObject(with: ping) as? [String: Any])
+        #expect(obj["id"] as? Int == 7)
+        #expect(obj["result"] != nil)
+        let unknown = try #require(McpClient.serverRequestReply(["jsonrpc": "2.0", "id": "s1", "method": "sampling/createMessage"]))
+        #expect(String(decoding: unknown, as: UTF8.self).contains("-32601"))
+        #expect(McpClient.serverRequestReply(["jsonrpc": "2.0", "method": "notifications/progress"]) == nil)
+    }
+
+    @Test("a custom server's read-only tool skips the write gate; unmarked stays a write")
+    func readOnlyHint() {
+        let server = McpServer(name: "my-notes", command: "my-notes-server", url: "")
+        #expect(McpCatalog.classify(server: server, toolName: "search", advertised: true, readOnlyHint: true) == .read)
+        #expect(McpCatalog.classify(server: server, toolName: "search", advertised: true) == .write)
+        #expect(McpCatalog.classify(server: server, toolName: "search", advertised: false, readOnlyHint: true) == .write)
+    }
+}

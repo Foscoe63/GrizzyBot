@@ -422,7 +422,7 @@ extension Bot {
         if CanvasBoardStore.toolIds.contains(toolId) { return true }
         if ArtifactStore.toolIds.contains(toolId) { return true }
         if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
-        if toolId == "message_bot", enabledTools.contains("spawn_bot") { return true }
+        if toolId == "message_bot" || toolId == "check_bots", enabledTools.contains("spawn_bot") { return true }
         if toolId.hasPrefix("shortcuts_"), enabledTools.contains("shell") { return true }
         if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
         if toolId == "import_skills", enabledTools.contains("read_file") { return true }
@@ -519,7 +519,7 @@ extension AgentToolCatalog {
                 (enabledIds.contains("remember") || enabledIds.contains("search_memory"))
                     ? ["search_knowledge"] : []
             )
-            .union(enabledIds.contains("spawn_bot") ? ["message_bot"] : [])
+            .union(enabledIds.contains("spawn_bot") ? ["message_bot", "check_bots"] : [])
             // A bot that can run shell commands can already invoke
             // /usr/bin/shortcuts, so the structured tools grant it nothing new —
             // and bots saved before these existed get them without a migration.
@@ -948,6 +948,14 @@ extension AgentToolCatalog {
                     "bot_id": stringProp("Optional bot id instead of the name"),
                 ],
                 required: ["name", "task"]
+            )
+            add(
+                "check_bots",
+                description: "List the work you handed to other bots with message_bot: who has it, whether it is still running, answered, failed or waiting on the user, and the answer when there is one. Use it before reporting on delegated work.",
+                properties: [
+                    "name": stringProp("Optional: only handoffs to this bot"),
+                ],
+                required: []
             )
             add(
                 "delete_bot",

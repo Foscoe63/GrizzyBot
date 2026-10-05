@@ -87,12 +87,14 @@ public enum McpCatalog {
     public static func classify(
         server: McpServer?,
         toolName: String,
-        advertised: Bool
+        advertised: Bool,
+        readOnlyHint: Bool = false
     ) -> McpEffect {
         let trimmed = toolName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .write }
         guard advertised else { return .write }
-        guard let server, let entry = entry(for: server) else { return .write }
+        // Unknown servers stay fail-closed unless the server itself marks the tool read-only.
+        guard let server, let entry = entry(for: server) else { return readOnlyHint ? .read : .write }
         return entry.writeTools.contains(trimmed) ? .write : .read
     }
 

@@ -57,7 +57,7 @@ public enum ActionGateway {
             return .read
         case "artifact_create", "artifact_update", "artifact_rewrite", "artifact_delete":
             return .writeFile
-        case "report_decline", "request_takeover":
+        case "report_decline", "request_takeover", "check_bots":
             return .read
         default:
             if tool.hasPrefix("computer_") { return .activate }
@@ -74,7 +74,8 @@ public enum ActionGateway {
         pageHost: String = "",
         element: PolicyElement? = nil,
         mcpServer: McpServer? = nil,
-        advertisedMcpTool: Bool = false
+        advertisedMcpTool: Bool = false,
+        mcpReadOnlyHint: Bool = false
     ) -> PolicyContext {
         let args = JSONValue.object(JSONValue.parseObject(argumentsJSON))
         func s(_ keys: String...) -> String {
@@ -112,7 +113,8 @@ public enum ActionGateway {
                 effect = McpCatalog.classify(
                     server: mcpServer,
                     toolName: mcpTool,
-                    advertised: advertisedMcpTool
+                    advertised: advertisedMcpTool,
+                    readOnlyHint: mcpReadOnlyHint
                 )
             }
             mcpEffect = effect

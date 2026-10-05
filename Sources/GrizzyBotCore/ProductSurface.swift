@@ -530,7 +530,10 @@ public enum ElevenLabsError: Error, LocalizedError, Sendable {
 }
 
 extension AgentLoopRequest {
+    /// Characters of transcript kept before compaction (~4 chars per token). Cloud
+    /// models take 128k+ tokens, so ~60k tokens of history leaves room for tool
+    /// schemas and the reply; 80k chars (~20k tokens) compacted long jobs far too early.
     public static func charBudget(provider: String?) -> Int {
-        LocalProviders.isLocal(provider ?? "") ? 24_000 : 80_000
+        LocalProviders.isLocal(provider ?? "") ? 24_000 : 240_000
     }
 }
