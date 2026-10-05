@@ -319,22 +319,29 @@ public struct BotHomeStore: Sendable {
         allowNetwork: Bool,
         timeout: TimeInterval
     ) async throws -> ShellResult {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let result = try runProcess(
-                        command: command,
-                        cwd: cwd,
-                        home: home,
-                        extraWriteRoots: extraWriteRoots,
-                        allowNetwork: allowNetwork,
-                        timeout: timeout
-                    )
-                    continuation.resume(returning: result)
-                } catch {
-                    continuation.resume(throwing: error)
+        let box = ShellProcessBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let result = try runProcess(
+                            command: command,
+                            cwd: cwd,
+                            home: home,
+                            extraWriteRoots: extraWriteRoots,
+                            allowNetwork: allowNetwork,
+                            timeout: timeout,
+                            box: box
+                        )
+                        continuation.resume(returning: result)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
+        } onCancel: {
+            // Stop in the UI cancels the run; the shell must die with it, not run to its timeout.
+            box.cancel()
         }
     }
 
@@ -344,7 +351,8 @@ public struct BotHomeStore: Sendable {
         home: URL,
         extraWriteRoots: [URL],
         allowNetwork: Bool,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        box: ShellProcessBox
     ) throws -> ShellResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sandbox-exec")
@@ -372,26 +380,46 @@ public struct BotHomeStore: Sendable {
         process.standardError = errPipe
         process.standardInput = FileHandle.nullDevice
 
+        // Drain both pipes while the command runs. Reading only after exit deadlocks any
+        // command that writes more than the pipe buffer (~64 KB): it blocks on write, never exits.
+        let out = ShellOutputBuffer(limit: 20_000)
+        let err = ShellOutputBuffer(limit: 8_000)
+        // A semaphore, not a group: a group freed with an unmatched enter() traps.
+        let eof = DispatchSemaphore(value: 0)
+        for (pipe, buffer) in [(outPipe, out), (errPipe, err)] {
+            pipe.fileHandleForReading.readabilityHandler = { handle in
+                let chunk = handle.availableData
+                if chunk.isEmpty {
+                    handle.readabilityHandler = nil
+                    eof.signal()
+                } else {
+                    buffer.append(chunk)
+                }
+            }
+        }
+
         let group = DispatchGroup()
         group.enter()
         process.terminationHandler = { _ in group.leave() }
         try process.run()
+        box.attach(process)
         let wait = group.wait(timeout: .now() + timeout)
         var timedOut = false
         if wait == .timedOut {
             timedOut = true
-            process.terminate()
-            _ = group.wait(timeout: .now() + 2)
-            if process.isRunning {
-                process.interrupt()
-            }
+            box.cancel()
+            _ = group.wait(timeout: .now() + 3)
         }
-        let stdout = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        // A backgrounded grandchild can hold the pipes open past exit; don't wait on it forever.
+        let eofDeadline = DispatchTime.now() + 1
+        _ = eof.wait(timeout: eofDeadline)
+        _ = eof.wait(timeout: eofDeadline)
+        outPipe.fileHandleForReading.readabilityHandler = nil
+        errPipe.fileHandleForReading.readabilityHandler = nil
         return ShellResult(
-            exitCode: Int(process.terminationStatus),
-            stdout: String(stdout.prefix(20_000)),
-            stderr: String(stderr.prefix(8_000)),
+            exitCode: process.isRunning ? -1 : Int(process.terminationStatus),
+            stdout: out.text,
+            stderr: err.text,
             timedOut: timedOut
         )
     }
@@ -427,7 +455,11 @@ public struct BotHomeStore: Sendable {
     /// otherwise allows reads. Resolved against the real user home, not the bot's.
     private static func secretReadDenials() -> String {
         let realHome = FileManager.default.homeDirectoryForCurrentUser
-        let dirs = [".ssh", ".gnupg", ".aws", ".config/gcloud", ".kube", ".docker", "Library/Keychains"]
+        let dirs = [
+            ".ssh", ".gnupg", ".aws", ".config/gcloud", ".kube", ".docker", "Library/Keychains",
+            ".azure", ".config/gh", ".config/op", ".password-store", ".netrc", ".git-credentials",
+            ".npmrc", ".pypirc", "Library/Cookies",
+        ]
         return dirs.flatMap { seatbeltPaths(realHome.appendingPathComponent($0)) }
             .map { path in
                 let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
@@ -549,5 +581,64 @@ public enum BotHomeError: Error, LocalizedError, Sendable, Equatable {
         case .wrongType(let p): return "Wrong type: \(p)"
         case .hostDenied: return "That path is blocked (secrets). Ask the user to paste the file if they need it."
         }
+    }
+}
+
+/// Holds the running shell so a cancelled run (or a timeout) can kill it and its children.
+final class ShellProcessBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancelled = false
+
+    func attach(_ process: Process) {
+        lock.lock()
+        self.process = process
+        let kill = cancelled
+        lock.unlock()
+        if kill { cancel() }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let proc = process
+        lock.unlock()
+        guard let proc, proc.isRunning else { return }
+        let pid = proc.processIdentifier
+        // Children first (pkill -P), then the shell; SIGKILL whatever ignores SIGTERM.
+        let reap = Process()
+        reap.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        reap.arguments = ["-TERM", "-P", String(pid)]
+        try? reap.run()
+        reap.waitUntilExit()
+        proc.terminate()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+            if kill(pid, 0) == 0 { kill(pid, SIGKILL) }
+        }
+    }
+}
+
+/// Keeps the first `limit` characters of a stream and counts what it dropped.
+final class ShellOutputBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private let limit: Int
+    private var data = Data()
+    private var dropped = 0
+
+    init(limit: Int) { self.limit = limit }
+
+    func append(_ chunk: Data) {
+        lock.lock(); defer { lock.unlock() }
+        // Bytes, with headroom for multi-byte characters; trimmed to characters in `text`.
+        let room = max(0, limit * 4 - data.count)
+        data.append(chunk.prefix(room))
+        dropped += max(0, chunk.count - room)
+    }
+
+    var text: String {
+        lock.lock(); defer { lock.unlock() }
+        let full = String(decoding: data, as: UTF8.self)
+        guard full.count > limit || dropped > 0 else { return full }
+        return String(full.prefix(limit)) + "\n[output truncated]"
     }
 }
