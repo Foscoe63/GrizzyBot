@@ -242,9 +242,69 @@ public enum ContextCompactor {
                 total += call.name.count
                 total += call.arguments.count
             }
-            total += message.imageJPEGBase64?.count ?? 0
+            if message.imageJPEGBase64 != nil { total += imageCharEstimate }
         }
         return total
+    }
+
+    /// A screenshot costs roughly 1.5k tokens regardless of its base64 length,
+    /// so count it as a fixed size instead of letting one JPEG eat the budget.
+    public static let imageCharEstimate = 6_000
+    /// Older screenshots are dropped so only the newest few are re-sent each step.
+    public static let keptImages = 2
+
+    /// Drop every image except the newest `keep`.
+    public static func pruneImages(_ messages: inout [ChatMessage], keep: Int = keptImages) {
+        var seen = 0
+        for i in messages.indices.reversed() where messages[i].imageJPEGBase64 != nil {
+            seen += 1
+            if seen > keep { messages[i].imageJPEGBase64 = nil }
+        }
+    }
+
+    /// Newest `limit` messages (system messages removed), cut so the transcript
+    /// starts on a user message and never opens with an orphaned tool result.
+    public static func trimTranscript(_ messages: [ChatMessage], limit: Int) -> [ChatMessage] {
+        var body = Array(messages.drop(while: { $0.role == "system" }))
+        if body.count > limit { body = Array(body.suffix(limit)) }
+        if let firstUser = body.firstIndex(where: { $0.role == "user" }) {
+            body = Array(body[firstUser...])
+        } else {
+            body = Array(body.drop(while: { $0.role == "tool" }))
+        }
+        return repairToolPairs(body)
+    }
+
+    /// Providers reject a tool result with no matching call and a call with no
+    /// result. Drop the former and synthesize the latter.
+    public static func repairToolPairs(_ messages: [ChatMessage]) -> [ChatMessage] {
+        var out: [ChatMessage] = []
+        var open: Set<String> = []
+        func closeOpen() {
+            guard !open.isEmpty else { return }
+            // Preserve the original call order for the synthesized results.
+            if let call = out.last(where: { $0.role == "assistant" && !$0.toolCalls.isEmpty }) {
+                for c in call.toolCalls where open.contains(c.id) {
+                    out.append(.tool(id: c.id, content: "(no result recorded — interrupted)"))
+                }
+            }
+            open.removeAll()
+        }
+        for message in messages {
+            if message.role == "tool" {
+                guard let id = message.toolCallId, open.contains(id) else { continue }
+                open.remove(id)
+                out.append(message)
+                continue
+            }
+            closeOpen()
+            out.append(message)
+            if message.role == "assistant" {
+                open = Set(message.toolCalls.map(\.id))
+            }
+        }
+        closeOpen()
+        return out
     }
 
     /// Keep system + newest turns; shrink tool payloads and stuffed user pastes.
@@ -252,15 +312,18 @@ public enum ContextCompactor {
         let original = encodedSize(messages)
         guard original > budget else { return (messages, false) }
         var copy = messages
+        pruneImages(&copy)
         if copy.count > 4 {
             shrinkTools(&copy, keepLast: 6)
             if encodedSize(copy) > budget {
                 shrinkTools(&copy, keepLast: 0)
             }
             if encodedSize(copy) > budget, copy.count > 8 {
+                var tailStart = copy.count - 6
+                while tailStart > 1, copy[tailStart].role == "tool" { tailStart -= 1 }
                 let head = copy.prefix(1)
-                let tail = copy.suffix(6)
-                let dropped = copy.count - 7
+                let tail = copy[tailStart...]
+                let dropped = tailStart - 1
                 let note = ChatMessage(
                     role: "user",
                     content: "[Earlier in this job, \(dropped) messages were compacted to stay within context.]"
@@ -271,6 +334,7 @@ public enum ContextCompactor {
         if encodedSize(copy) > budget {
             shrinkOversizedText(&copy)
         }
+        copy = repairToolPairs(copy)
         return (copy, encodedSize(copy) < original)
     }
 
@@ -707,7 +771,9 @@ public enum AgentLoop {
         let hasMcpTools = tools.contains { $0.function.name == "mcp_call" }
 
         func persistable() -> [ChatMessage] {
-            Array(messages.drop(while: { $0.role == "system" }).prefix(200))
+            var kept = ContextCompactor.trimTranscript(messages, limit: 200)
+            ContextCompactor.pruneImages(&kept, keep: 0)
+            return kept
         }
 
         func loopResult(
@@ -852,6 +918,8 @@ public enum AgentLoop {
                 execute: execute
             )
             var disabledThisStep: [String] = []
+            var stepNotes: [ChatMessage] = []
+            var finish: (text: String, pause: AgentPause?)?
             for (call, result) in zip(response.toolCalls, results) {
                 blocks.append(contentsOf: result.blocks)
                 let raw = result.output.isEmpty ? "(empty tool result)" : result.output
@@ -867,7 +935,7 @@ public enum AgentLoop {
                 }
                 messages.append(ChatMessage.tool(id: call.id, content: output))
                 if let jpeg = result.imageJPEGBase64, vision {
-                    messages.append(
+                    stepNotes.append(
                         ChatMessage(
                             role: "user",
                             content: "Screenshot from \(call.name).",
@@ -899,31 +967,32 @@ public enum AgentLoop {
                     if !newcomers.isEmpty {
                         tools.append(contentsOf: McpCatalogPromote.chatTools(from: newcomers))
                         let names = newcomers.map(\.chatName).prefix(8).joined(separator: ", ")
-                        messages.append(.user(
+                        stepNotes.append(.user(
                             "First-class MCP tools are now available this turn: \(names). Call them directly by name with their arguments — do not wrap in mcp_call, toolport_call_tool, or call_tool_by_name."
                         ))
                     }
                 }
                 if !result.loadedSkillBodies.isEmpty {
                     for skill in result.loadedSkillBodies {
-                        messages.append(.user("Loaded skill \(skill.id):\n\n\(skill.body)"))
+                        stepNotes.append(.user("Loaded skill \(skill.id):\n\n\(skill.body)"))
                     }
                 }
-                if result.endTurn {
-                    let text = result.output.isEmpty ? lastText : result.output
-                    return loopResult(
-                        text: text.isEmpty ? "Done." : text,
-                        steps: step
-                    )
+                if finish == nil {
+                    if result.endTurn {
+                        let text = result.output.isEmpty ? lastText : result.output
+                        finish = (text.isEmpty ? "Done." : text, nil)
+                    } else if let nextPause = result.pause {
+                        finish = (lastText.isEmpty ? "Waiting on you to continue." : lastText, nextPause)
+                    }
                 }
-                if let nextPause = result.pause {
-                    pause = nextPause
-                    let text = lastText.isEmpty ? "Waiting on you to continue." : lastText
-                    return loopResult(
-                        text: text,
-                        steps: step
-                    )
-                }
+            }
+            // Every call has its result by now; notes go after them so providers
+            // that need results to follow the assistant message directly accept it.
+            messages.append(contentsOf: stepNotes)
+            ContextCompactor.pruneImages(&messages)
+            if let finish {
+                if let nextPause = finish.pause { pause = nextPause }
+                return loopResult(text: finish.text, steps: step)
             }
             if !disabledThisStep.isEmpty, hasMcpTools {
                 messages.append(.user(
