@@ -74,7 +74,8 @@ public enum ActionGateway {
         pageHost: String = "",
         element: PolicyElement? = nil,
         mcpServer: McpServer? = nil,
-        advertisedMcpTool: Bool = false
+        advertisedMcpTool: Bool = false,
+        mcpReadOnlyHint: Bool = false
     ) -> PolicyContext {
         let args = JSONValue.object(JSONValue.parseObject(argumentsJSON))
         func s(_ keys: String...) -> String {
@@ -112,7 +113,8 @@ public enum ActionGateway {
                 effect = McpCatalog.classify(
                     server: mcpServer,
                     toolName: mcpTool,
-                    advertised: advertisedMcpTool
+                    advertised: advertisedMcpTool,
+                    readOnlyHint: mcpReadOnlyHint
                 )
             }
             mcpEffect = effect

@@ -2044,7 +2044,11 @@ public final class AppStore {
             pageHost: pageHost,
             element: resolved,
             mcpServer: mcpServer,
-            advertisedMcpTool: advertised
+            advertisedMcpTool: advertised,
+            mcpReadOnlyHint: mcpServer.map { server in
+                let toolName = s("tool", "name")
+                return mcpListedTools[server.id]?.contains { $0.name == toolName && $0.readOnlyHint } == true
+            } ?? false
         )
         let decision = ActionGateway.decide(policy: actionPolicy, context: context)
         recordAudit(
