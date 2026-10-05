@@ -319,79 +319,148 @@ public struct BotHomeStore: Sendable {
         allowNetwork: Bool,
         timeout: TimeInterval
     ) async throws -> ShellResult {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let result = try runProcess(
-                        command: command,
-                        cwd: cwd,
-                        home: home,
-                        extraWriteRoots: extraWriteRoots,
-                        allowNetwork: allowNetwork,
-                        timeout: timeout
-                    )
-                    continuation.resume(returning: result)
-                } catch {
-                    continuation.resume(throwing: error)
+        let handle = ShellProcessHandle()
+        let result: ShellResult = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        continuation.resume(returning: try runProcess(
+                            command: command,
+                            cwd: cwd,
+                            home: home,
+                            extraWriteRoots: extraWriteRoots,
+                            allowNetwork: allowNetwork,
+                            timeout: timeout,
+                            handle: handle
+                        ))
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
+        } onCancel: {
+            handle.cancel()
         }
+        // Stop kills the command's whole process group; surface it as a cancellation.
+        try Task.checkCancellation()
+        return result
     }
 
+    /// Runs the command in its own process group so a timeout or Stop takes down its
+    /// children too, and reads both pipes while it runs so output past the 64 KB pipe
+    /// buffer can't wedge the command.
     private static func runProcess(
         command: String,
         cwd: URL,
         home: URL,
         extraWriteRoots: [URL],
         allowNetwork: Bool,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        handle: ShellProcessHandle
     ) throws -> ShellResult {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sandbox-exec")
-        process.arguments = [
-            "-p",
+        var executable = "/usr/bin/sandbox-exec"
+        var arguments = [
+            "sandbox-exec", "-p",
             seatbeltProfile(home: home, extraWriteRoots: extraWriteRoots, allowNetwork: allowNetwork),
-            "/bin/zsh",
-            "-lc",
-            command,
+            "/bin/zsh", "-lc", command,
         ]
-        process.currentDirectoryURL = cwd
-        if !FileManager.default.isExecutableFile(atPath: "/usr/bin/sandbox-exec") {
-            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            process.arguments = ["-lc", command]
+        if !FileManager.default.isExecutableFile(atPath: executable) {
+            executable = "/bin/zsh"
+            arguments = ["zsh", "-lc", command]
         }
-        process.environment = [
-            "HOME": home.path,
-            "TMPDIR": NSTemporaryDirectory(),
-            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
-            "LANG": "en_US.UTF-8",
+        let environment = [
+            "HOME=\(home.path)",
+            "TMPDIR=\(NSTemporaryDirectory())",
+            "PATH=/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
+            "LANG=en_US.UTF-8",
         ]
-        let outPipe = Pipe()
-        let errPipe = Pipe()
-        process.standardOutput = outPipe
-        process.standardError = errPipe
-        process.standardInput = FileHandle.nullDevice
 
-        let group = DispatchGroup()
-        group.enter()
-        process.terminationHandler = { _ in group.leave() }
-        try process.run()
-        let wait = group.wait(timeout: .now() + timeout)
-        var timedOut = false
-        if wait == .timedOut {
-            timedOut = true
-            process.terminate()
-            _ = group.wait(timeout: .now() + 2)
-            if process.isRunning {
-                process.interrupt()
+        var outFds: [Int32] = [0, 0]
+        var errFds: [Int32] = [0, 0]
+        guard pipe(&outFds) == 0 else { throw BotHomeError.shellLaunch("pipe failed") }
+        guard pipe(&errFds) == 0 else {
+            close(outFds[0]); close(outFds[1])
+            throw BotHomeError.shellLaunch("pipe failed")
+        }
+        // Keep concurrent launches from inheriting each other's pipe ends.
+        for fd in outFds + errFds { _ = fcntl(fd, F_SETFD, FD_CLOEXEC) }
+
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_adddup2(&actions, outFds[1], 1)
+        posix_spawn_file_actions_adddup2(&actions, errFds[1], 2)
+        posix_spawn_file_actions_addchdir_np(&actions, cwd.path)
+        var attributes: posix_spawnattr_t?
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP))
+        posix_spawnattr_setpgroup(&attributes, 0)
+
+        let argv = arguments.map { strdup($0) } + [nil]
+        let envp = environment.map { strdup($0) } + [nil]
+        defer {
+            argv.forEach { free($0) }
+            envp.forEach { free($0) }
+        }
+        var pid: pid_t = 0
+        let spawned = posix_spawn(&pid, executable, &actions, &attributes, argv, envp)
+        close(outFds[1])
+        close(errFds[1])
+        guard spawned == 0 else {
+            close(outFds[0]); close(errFds[0])
+            throw BotHomeError.shellLaunch(String(cString: strerror(spawned)))
+        }
+        handle.started(pid: pid)
+
+        let stdout = ShellOutputBuffer(limit: 1_000_000)
+        let stderr = ShellOutputBuffer(limit: 1_000_000)
+        let readers = DispatchGroup()
+        let exited = ExitFlag()
+        for (fd, buffer) in [(outFds[0], stdout), (errFds[0], stderr)] {
+            readers.enter()
+            DispatchQueue.global(qos: .userInitiated).async {
+                buffer.drain(fd: fd, exited: exited)
+                close(fd)
+                readers.leave()
             }
         }
-        let stdout = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+
+        let finished = DispatchSemaphore(value: 0)
+        let status = ExitStatusBox()
+        DispatchQueue.global(qos: .userInitiated).async {
+            var raw: Int32 = 0
+            while waitpid(pid, &raw, 0) < 0, errno == EINTR {}
+            status.value = raw
+            exited.set()
+            finished.signal()
+        }
+
+        var timedOut = false
+        if finished.wait(timeout: .now() + timeout) == .timedOut {
+            timedOut = true
+            handle.signalGroup(SIGTERM)
+            if finished.wait(timeout: .now() + 2) == .timedOut {
+                handle.signalGroup(SIGKILL)
+                finished.wait()
+            }
+        }
+        // A background child can keep the pipes open after the command exits; the readers
+        // give up shortly after exit rather than waiting on it.
+        _ = readers.wait(timeout: .now() + 3)
+
+        let raw = status.value
+        let exitCode: Int
+        if raw & 0x7f == 0 {
+            exitCode = Int((raw >> 8) & 0xff)
+        } else {
+            exitCode = 128 + Int(raw & 0x7f)
+        }
         return ShellResult(
-            exitCode: Int(process.terminationStatus),
-            stdout: String(stdout.prefix(20_000)),
-            stderr: String(stderr.prefix(8_000)),
+            exitCode: exitCode,
+            stdout: String(stdout.string.prefix(20_000)),
+            stderr: String(stderr.string.prefix(8_000)),
             timedOut: timedOut
         )
     }
@@ -423,11 +492,19 @@ public struct BotHomeStore: Sendable {
         """
     }
 
+    /// Paths under the real home that hold credentials, history or private mail/messages.
+    static let secretReadPaths = [
+        ".ssh", ".gnupg", ".aws", ".config/gcloud", ".kube", ".docker", "Library/Keychains",
+        ".config/gh", ".config/op", ".npmrc", ".netrc", ".git-credentials", ".pypirc",
+        ".zsh_history", ".zhistory", ".bash_history", ".python_history", ".node_repl_history",
+        "Library/Mail", "Library/Messages", "Library/Cookies", "Library/Safari",
+    ]
+
     /// Credential stores a shell command must not read, even though the profile
     /// otherwise allows reads. Resolved against the real user home, not the bot's.
     private static func secretReadDenials() -> String {
         let realHome = FileManager.default.homeDirectoryForCurrentUser
-        let dirs = [".ssh", ".gnupg", ".aws", ".config/gcloud", ".kube", ".docker", "Library/Keychains"]
+        let dirs = secretReadPaths
         return dirs.flatMap { seatbeltPaths(realHome.appendingPathComponent($0)) }
             .map { path in
                 let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
@@ -540,6 +617,7 @@ public enum BotHomeError: Error, LocalizedError, Sendable, Equatable {
     case notFound(String)
     case wrongType(String)
     case hostDenied
+    case shellLaunch(String)
 
     public var errorDescription: String? {
         switch self {
@@ -548,6 +626,97 @@ public enum BotHomeError: Error, LocalizedError, Sendable, Equatable {
         case .notFound(let p): return "Not found: \(p)"
         case .wrongType(let p): return "Wrong type: \(p)"
         case .hostDenied: return "That path is blocked (secrets). Ask the user to paste the file if they need it."
+        case .shellLaunch(let why): return "Could not start the shell: \(why)"
+        }
+    }
+}
+
+
+/// Lets Stop (task cancellation) reach into a running shell command and kill its process group.
+final class ShellProcessHandle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var pid: pid_t = 0
+    private var cancelled = false
+
+    func started(pid: pid_t) {
+        lock.lock()
+        self.pid = pid
+        let alreadyCancelled = cancelled
+        lock.unlock()
+        if alreadyCancelled { signalGroup(SIGKILL) }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+        signalGroup(SIGKILL)
+    }
+
+    func signalGroup(_ signal: Int32) {
+        lock.lock()
+        let target = pid
+        lock.unlock()
+        if target > 0 { kill(-target, signal) }
+    }
+}
+
+private final class ExitStatusBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var raw: Int32 = 0
+    var value: Int32 {
+        get { lock.lock(); defer { lock.unlock() }; return raw }
+        set { lock.lock(); raw = newValue; lock.unlock() }
+    }
+}
+
+private final class ExitFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var at: Date?
+    func set() { lock.lock(); at = .now; lock.unlock() }
+    /// True once the process has been gone for `grace` seconds.
+    func goneFor(_ grace: TimeInterval) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let at else { return false }
+        return Date().timeIntervalSince(at) >= grace
+    }
+}
+
+/// Collects up to `limit` bytes from a pipe, discarding the rest so the writer never blocks.
+private final class ShellOutputBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    private let limit: Int
+
+    init(limit: Int) { self.limit = limit }
+
+    var string: String {
+        lock.lock(); defer { lock.unlock() }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    func drain(fd: Int32, exited: ExitFlag) {
+        var chunk = [UInt8](repeating: 0, count: 65_536)
+        while true {
+            var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&pfd, 1, 200)
+            if ready < 0 {
+                if errno == EINTR { continue }
+                return
+            }
+            if ready == 0 {
+                if exited.goneFor(1) { return }
+                continue
+            }
+            let n = read(fd, &chunk, chunk.count)
+            if n < 0 {
+                if errno == EINTR || errno == EAGAIN { continue }
+                return
+            }
+            if n == 0 { return }
+            lock.lock()
+            if data.count < limit { data.append(chunk, count: min(n, limit - data.count)) }
+            lock.unlock()
         }
     }
 }
