@@ -4238,6 +4238,12 @@ public final class AppStore {
     /// Every skill in the library, whether or not this bot has it on.
     public func setAllBotSkills(_ botId: String, enabled: Bool) {
         setBotSkills(botId, skillIds: skills.map(\.id), enabled: enabled)
+        // Disable all means none, including ids the library no longer has (a template can
+        // name skills that aren't installed).
+        if !enabled, let idx = bots.firstIndex(where: { $0.id == botId }), !bots[idx].enabledSkills.isEmpty {
+            bots[idx].enabledSkills = []
+            save()
+        }
     }
 
     public func installUserSkill(id: String, description: String, body: String) throws {
