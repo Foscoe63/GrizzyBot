@@ -809,15 +809,19 @@ extension AppStore {
             switch groups[gIdx].defaultResponder {
             case .member(let id):
                 return bots.contains(where: { $0.id == id }) ? [id] : []
-            case .everyone, .mentions:
-                return members.first.map { [$0.id] } ?? []
+            case .everyone:
+                return members.map(\.id)
+            case .mentions:
+                // Mentions-only rooms stay quiet until someone is @mentioned.
+                return []
             }
         }()
         guard !queue.isEmpty else { return }
 
         let room = groups[gIdx].name
+        let bulletin = groups[gIdx].bulletin.trimmingCharacters(in: .whitespacesAndNewlines)
         Task { [weak self] in
-            await self?.runGroupTurns(groupId: groupId, roomName: room, members: members, initial: queue, userText: trimmed)
+            await self?.runGroupTurns(groupId: groupId, roomName: room, bulletin: bulletin, members: members, initial: queue, userText: trimmed)
         }
     }
 
@@ -827,6 +831,7 @@ extension AppStore {
     private func runGroupTurns(
         groupId: String,
         roomName: String,
+        bulletin: String = "",
         members: [Bot],
         initial: [String],
         userText: String
@@ -852,9 +857,10 @@ extension AppStore {
             save()
 
             let source = handoffs[botId].map { "\($0.from) said:\n\n\($0.text)" } ?? "The user said:\n\n\(userText)"
+            let board = bulletin.isEmpty ? "" : "Room bulletin (pinned by the user):\n\(bulletin)\n\n"
             let prompt = """
                 [Room "\(roomName)" — members: \(roster) and the user] You are \(bot.name).
-                \(source)
+                \(board)\(source)
 
                 Answer as yourself. To pull a teammate in, write @ followed by their name.
                 """
