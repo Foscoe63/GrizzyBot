@@ -203,6 +203,23 @@ public final class AppStore {
     var canvasBoard: CanvasBoardStore
     var artifactStore: ArtifactStore
     var runTasks: [String: Task<Void, Never>] = [:]
+    /// Mid-run messages the agent loop picks up between steps, keyed by run.
+    var runInboxes: [String: RunInbox] = [:]
+    /// Messages waiting for their run to end before they get a turn, keyed by thread.
+    var heldSends: [String: [QueuedSend]] = [:]
+    /// Loopback receiver that lets outside systems fire routines.
+    let webhookReceiver = WebhookReceiver()
+    /// When each webhook last fired, to keep a chatty sender from flooding a bot.
+    var webhookLastFire: [String: Date] = [:]
+    /// Long-poll loop for Telegram while it is switched on.
+    var telegramTask: Task<Void, Never>?
+    var telegramPairing = TelegramPairing()
+    /// Chats waiting on a reply, keyed by the bot they asked.
+    var telegramReplyTargets: [String: Int64] = [:]
+    /// Builds the API client from a token. Tests swap it for a stand-in.
+    var telegramAPIFactory: @Sendable (String) -> any TelegramAPI = { TelegramBotAPI(token: $0) }
+    /// Last thing worth telling the person about the Telegram link, for Settings.
+    public var telegramNotice: String?
     var bootTasks: [String: Task<Void, Never>] = [:]
     var pluginTasks: [String: Task<Void, Never>] = [:]
     var schedulerTask: Task<Void, Never>?
@@ -1122,6 +1139,11 @@ public final class AppStore {
                 reply: "Unknown command `/\(name)`. Type `/help` to list skills enabled for this bot."
             )
             return
+        case .builtin(let command, let argument):
+            if let reply = handleBuiltin(command, argument: argument, botId: botId) {
+                appendLocalAssistant(botId: botId, userText: trimmed, reply: reply)
+                return
+            }
         case .skill, .plain:
             break
         }
@@ -1132,6 +1154,27 @@ public final class AppStore {
             }
             return botId
         }()
+        if let run = threads[threadKey]?.run, run.status == .running, runTasks[run.id] != nil {
+            queueWhileBusy(botId: botId, threadKey: threadKey, run: run, text: trimmed, imageJPEG: attachedJPEG)
+            return
+        }
+        submitUserTurn(
+            botId: botId,
+            threadKey: threadKey,
+            text: trimmed,
+            imageJPEG: attachedJPEG,
+            workingFolderOverride: workingFolderOverride
+        )
+    }
+
+    /// Files the message as a user turn on its thread and starts the run for it.
+    private func submitUserTurn(
+        botId: String,
+        threadKey: String,
+        text: String,
+        imageJPEG: String?,
+        workingFolderOverride: String? = nil
+    ) {
         guard var thread = threads[threadKey] ?? threads[botId] else { return }
         if threads[threadKey] == nil {
             threads[threadKey] = thread
@@ -1143,19 +1186,78 @@ public final class AppStore {
             threadId: thread.threadId,
             seq: thread.nextSeq,
             role: .user,
-            blocks: [.text(trimmed)]
+            blocks: [.text(text)]
         )
         thread.messages.append(userMsg)
         thread.cursor = userMsg.seq
 
         threads[threadKey] = thread
-        bots[botIdx].preview = trimmed.count > 80 ? String(trimmed.prefix(80)) + "…" : trimmed
+        bots[botIdx].preview = text.count > 80 ? String(text.prefix(80)) + "…" : text
         bots[botIdx].updatedAt = .now
         save()
         if let folder = workingFolderOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !folder.isEmpty {
             runWorkingFolderOverride[botId] = (folder as NSString).expandingTildeInPath
         }
-        launchRun(botId: botId, threadKey: threadKey, prompt: trimmed, promptImageJPEGBase64: attachedJPEG)
+        launchRun(botId: botId, threadKey: threadKey, prompt: text, promptImageJPEGBase64: imageJPEG)
+    }
+
+    /// A message sent while the bot is mid-run. It shows up in the thread at once, then
+    /// either reaches the run in flight (steer) or waits for it to end.
+    private func queueWhileBusy(botId: String, threadKey: String, run: Run, text: String, imageJPEG: String?) {
+        guard var thread = threads[threadKey], let botIdx = bots.firstIndex(where: { $0.id == botId }) else { return }
+        let userMsg = ThreadMessage(
+            id: Ids.new(),
+            threadId: thread.threadId,
+            seq: thread.nextSeq,
+            role: .user,
+            blocks: [.text(text)]
+        )
+        thread.messages.append(userMsg)
+        thread.cursor = userMsg.seq
+        threads[threadKey] = thread
+        bots[botIdx].preview = text.count > 80 ? String(text.prefix(80)) + "…" : text
+        bots[botIdx].updatedAt = .now
+        save()
+
+        let item = QueuedSend(messageId: userMsg.id, text: text, imageJPEGBase64: imageJPEG)
+        // A picture cannot be slipped into a run that is already underway.
+        if appConfig.queueMode == .steer, imageJPEG == nil, let inbox = runInboxes[run.id] {
+            inbox.push(item)
+        } else {
+            heldSends[threadKey, default: []].append(item)
+        }
+        appendRunLog(botId: botId, kind: "queue", text: "\(appConfig.queueMode.rawValue) \(String(text.prefix(120)))")
+    }
+
+    /// Called once a run has stopped. Gives anything left in the mailbox a turn of its own
+    /// (the run ended before the loop looked), or drops it if the person pressed Stop.
+    func settleQueue(botId: String, threadKey: String, runId: String, cancelled: Bool = false) {
+        let leftover = runInboxes.removeValue(forKey: runId)?.drain() ?? []
+        if cancelled {
+            heldSends[threadKey] = nil
+            return
+        }
+        let held = leftover + (heldSends[threadKey] ?? [])
+        guard !held.isEmpty else { return }
+        if let run = threads[threadKey]?.run, run.status == .running, runTasks[run.id] != nil { return }
+        let turns = QueuePlanner.turns(for: held, mode: appConfig.queueMode)
+        guard let first = turns.first else { return }
+        let rest = turns.dropFirst().flatMap { $0 }
+        heldSends[threadKey] = rest.isEmpty ? nil : Array(rest)
+
+        // The messages are already on screen from when they were sent; pull them so the
+        // turn files them again after the reply they were waiting behind.
+        let ids = Set(first.map(\.messageId))
+        if var thread = threads[threadKey] {
+            thread.messages.removeAll { ids.contains($0.id) }
+            threads[threadKey] = thread
+        }
+        submitUserTurn(
+            botId: botId,
+            threadKey: threadKey,
+            text: QueuePlanner.merge(first.map(\.text)),
+            imageJPEG: first.compactMap(\.imageJPEGBase64).last
+        )
     }
 
     /// Slash / local replies that do not start an LLM run.
@@ -1217,6 +1319,7 @@ public final class AppStore {
         bots[botIdx].updatedAt = .now
         save()
         let runId = run.id
+        runInboxes[runId] = RunInbox()
         let imageNote = (promptImageJPEGBase64?.isEmpty == false) ? " +image" : ""
         appendRunLog(botId: botId, kind: "run", text: "start \(String(prompt.prefix(240)))\(imageNote)")
         let task = Task { [weak self] in
@@ -1339,6 +1442,13 @@ public final class AppStore {
         case .plain(let plain):
             agentPromptRaw = plain
             injected = pinFolderToRun ? [] : SkillMarkdown.matching(botSkills, prompt: plain)
+        case .builtin(let command, let argument):
+            switch command {
+            case .plan: agentPromptRaw = BuiltinCommands.planPrompt(task: argument)
+            case .goal: agentPromptRaw = BuiltinCommands.goalKickoff(goal: bot.goal ?? argument)
+            default: agentPromptRaw = prompt
+            }
+            injected = []
         case .unknown, .help:
             agentPromptRaw = prompt
             injected = pinFolderToRun ? [] : SkillMarkdown.matching(botSkills, prompt: prompt)
@@ -1370,6 +1480,7 @@ public final class AppStore {
             }
             save()
             releaseWorkingFolderOverrideIfNeeded(botId: botId)
+            settleQueue(botId: botId, threadKey: threadKey, runId: runId)
             return
         }
         let skillText = SkillMarkdown.catalogPrompt(from: botSkills, injected: injected)
@@ -1423,6 +1534,13 @@ public final class AppStore {
             }
             let progressId = progressMsg.id
             let stallMs = max(0, appConfig.agentStallTimeoutMs)
+            var steerPoll: (@Sendable () -> [String])?
+            if let inbox = runInboxes[runId] {
+                steerPoll = { @Sendable in
+                    let items: [QueuedSend] = inbox.drain()
+                    return items.map { $0.text }
+                }
+            }
             let loopRequest = AgentLoopRequest(
                 endpoint: endpoint,
                 botName: bot.name,
@@ -1443,7 +1561,9 @@ public final class AppStore {
                 workingFolderNote: workingFolderNote,
                 stallMs: stallMs,
                 roster: rosterEntries(for: bot),
-                isChiefOfStaff: bot.chiefOfStaff
+                isChiefOfStaff: bot.chiefOfStaff,
+                steer: steerPoll,
+                goal: bot.goal ?? ""
             )
             let execute: @Sendable (String, String) async -> AgentToolCallResult = { [weak self] name, arguments in
                 guard let self else {
@@ -1580,9 +1700,15 @@ public final class AppStore {
             blocks: blocks,
             runId: runId
         )
-        thread2.messages.append(botMsg)
-        thread2.cursor = botMsg.seq
-        if !transcript.isEmpty {
+        // A heartbeat that found nothing to report leaves no trace in the chat.
+        let silentHeartbeat = pause == nil && !failed
+            && routineForRun(thread2.run)?.heartbeat == true
+            && HeartbeatPolicy.isIdle(replyText)
+        if !silentHeartbeat {
+            thread2.messages.append(botMsg)
+            thread2.cursor = botMsg.seq
+        }
+        if !transcript.isEmpty, !silentHeartbeat {
             thread2.llmMessages = transcript
         }
 
@@ -1622,7 +1748,14 @@ public final class AppStore {
             thread2.run?.completedAt = .now
         }
         threads[threadKey] = thread2
-        finalizeBotPreview(botId: botId, threadKey: threadKey, message: botMsg)
+        if !silentHeartbeat {
+            finalizeBotPreview(botId: botId, threadKey: threadKey, message: botMsg)
+        } else if let idx = bots.firstIndex(where: { $0.id == botId }) {
+            bots[idx].status = "idle"
+            appendRunLog(botId: botId, kind: "heartbeat", text: "all clear")
+        }
+        recordRoutineOutput(botId: botId, run: thread2.run, text: replyText, failed: failed)
+        flushDelegationReports()
         usage.append(
             UsageRecord(
                 id: Ids.new(),
@@ -1643,8 +1776,12 @@ public final class AppStore {
             status: thread2.run?.status,
             error: thread2.run?.error ?? (failed ? replyText : nil)
         )
-        announceFinished(botId: botId, text: replyText, status: thread2.run?.status)
+        if !silentHeartbeat {
+            announceFinished(botId: botId, text: replyText, status: thread2.run?.status)
+        }
+        telegramAfterRun(botId: botId, threadKey: threadKey, silent: silentHeartbeat)
         releaseWorkingFolderOverrideIfNeeded(botId: botId)
+        settleQueue(botId: botId, threadKey: threadKey, runId: runId)
     }
 
     private func runScriptedAgent(botId: String, threadKey: String, runId: String, prompt: String) async {
@@ -1766,7 +1903,9 @@ public final class AppStore {
 
         runTasks.removeValue(forKey: runId)
         announceFinished(botId: botId, text: botMsg.firstText, status: thread2.run?.status)
+        telegramAfterRun(botId: botId, threadKey: threadKey)
         releaseWorkingFolderOverrideIfNeeded(botId: botId)
+        settleQueue(botId: botId, threadKey: threadKey, runId: runId)
     }
 
     private func setThinkingProgress(threadKey: String, runId: String, messageId: String, text: String) {
@@ -1824,7 +1963,8 @@ public final class AppStore {
         depth: Int,
         endpoint: ModelEndpoint,
         client: any ChatCompleting,
-        approved: Bool = false
+        approved: Bool = false,
+        scope: String? = nil
     ) async -> AgentToolCallResult {
         let args = JSONValue.parseObject(argumentsJSON)
         func s(_ keys: String...) -> String {
@@ -1885,7 +2025,8 @@ public final class AppStore {
                     depth: depth,
                     endpoint: endpoint,
                     client: client,
-                    approved: approved
+                    approved: approved,
+                    scope: scope
                 )
             case .advertised(let serverId, let toolName):
                 var rewritten = args
@@ -1898,7 +2039,8 @@ public final class AppStore {
                     depth: depth,
                     endpoint: endpoint,
                     client: client,
-                    approved: approved
+                    approved: approved,
+                    scope: scope
                 )
             case .missingGateway(let tool):
                 let output = McpToolRouting.missingGatewayMessage(tool: tool, enabled: enabledMcp)
@@ -2076,6 +2218,7 @@ public final class AppStore {
             }
             do {
                 let before = (try? botHome.readFlexible(botId: botId, path: path)) ?? ""
+                checkpoint(botId: botId, tool: "write_file", paths: [path])
                 try botHome.writeFlexible(botId: botId, path: path, content: content)
                 if !BotHomeStore.isHostPath(path) {
                     upsertFile(path: path, content: content)
@@ -2122,6 +2265,7 @@ public final class AppStore {
                 return gated
             }
             do {
+                checkpoint(botId: botId, tool: "edit_file", paths: [path])
                 try botHome.editFlexible(botId: botId, path: path, content: content, mode: append ? .append : .replace)
                 if !BotHomeStore.isHostPath(path) {
                     refreshFilesMirror(botId: botId)
@@ -2145,6 +2289,7 @@ public final class AppStore {
                 return gated
             }
             do {
+                checkpoint(botId: botId, tool: "move_file", paths: [from, to])
                 try botHome.moveFlexible(botId: botId, from: from, to: to)
                 if !BotHomeStore.isHostPath(from), !BotHomeStore.isHostPath(to) {
                     refreshFilesMirror(botId: botId)
@@ -2164,6 +2309,7 @@ public final class AppStore {
                 return gated
             }
             do {
+                checkpoint(botId: botId, tool: "delete_file", paths: [path])
                 try botHome.deleteFlexible(botId: botId, path: path)
                 if !BotHomeStore.isHostPath(path) {
                     refreshFilesMirror(botId: botId)
@@ -2395,6 +2541,16 @@ public final class AppStore {
             return AgentToolCallResult(
                 output: text,
                 blocks: [.card(lines: hits.prefix(8).map { CardLine(k: $0.path, v: $0.snippet) })]
+            )
+
+        case "search_sessions":
+            let query = s("query", "q")
+            guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
+            let hits = SessionSearch.search(docs: sessionDocs(for: botId), query: query)
+            if hits.isEmpty { return AgentToolCallResult(output: "Nothing in earlier chats matches “\(query)”.") }
+            return AgentToolCallResult(
+                output: SessionSearch.render(hits),
+                blocks: [.card(lines: hits.prefix(6).map { CardLine(k: $0.thread, v: $0.snippet) })]
             )
 
         case "search_knowledge":
@@ -2781,10 +2937,10 @@ public final class AppStore {
             )
 
         case "todo":
-            return await AgentSessionTools.handleTodo(markdown: s("markdown", "list"), threadKey: threadKey(for: botId))
+            return await AgentSessionTools.handleTodo(markdown: s("markdown", "list"), threadKey: scope ?? threadKey(for: botId))
 
         case "complete":
-            return await AgentSessionTools.handleComplete(summary: s("summary", "text"), threadKey: threadKey(for: botId))
+            return await AgentSessionTools.handleComplete(summary: s("summary", "text"), threadKey: scope ?? threadKey(for: botId))
 
         case "clarify":
             return AgentSessionTools.handleClarify(question: s("question", "ask", "text"))
@@ -2800,18 +2956,23 @@ public final class AppStore {
                 } else {
                     folder = try botHome.homeURL(botId: botId).appendingPathComponent(path)
                 }
-                let imported = try SkillLibrary.importFromDirectory(folder, into: userPersistence.root)
+                let scanned = try SkillLibrary.importScanned(folder, into: userPersistence.root)
                 reloadSkills()
+                let imported = scanned.map(\.skill)
                 let names = imported.map(\.id).joined(separator: ", ")
-                return AgentToolCallResult(
-                    output: imported.isEmpty
-                        ? "No SKILL.md files found under \(path)."
-                        : "Imported \(imported.count) skill(s): \(names)",
-                    blocks: [.card(lines: [
-                        CardLine(k: "imported", v: imported.isEmpty ? "none" : names),
-                        CardLine(k: "from", v: path),
-                    ])]
-                )
+                let flagged = scanned.filter { $0.report.risk > .clean }
+                var output = imported.isEmpty
+                    ? "No SKILL.md files found under \(path)."
+                    : "Imported \(imported.count) skill(s): \(names). They are switched off until the person enables them."
+                var lines = [
+                    CardLine(k: "imported", v: imported.isEmpty ? "none" : names),
+                    CardLine(k: "from", v: path),
+                ]
+                for item in flagged {
+                    output += "\nSCAN \(item.skill.id) — \(item.report.risk.label):\n\(item.report.summary)"
+                    lines.append(CardLine(k: "⚠ \(item.skill.id)", v: item.report.risk.label))
+                }
+                return AgentToolCallResult(output: output, blocks: [.card(lines: lines)])
             } catch {
                 return AgentToolCallResult(output: "Import failed: \(error.localizedDescription)")
             }
@@ -2879,6 +3040,7 @@ public final class AppStore {
             let title = s("title")
             let instructions = s("instructions")
             let firstPrompt = s("prompt")
+            let previousSelection = activeBotId
             let child = createBot(
                 name: name,
                 title: title,
@@ -2886,7 +3048,7 @@ public final class AppStore {
                 instructions: instructions,
                 parentBotId: botId
             )
-            activeBotId = botId
+            activeBotId = previousSelection
             if !firstPrompt.isEmpty {
                 send(botId: child.id, text: firstPrompt)
             }
@@ -2921,9 +3083,13 @@ public final class AppStore {
                 return AgentToolCallResult(output: "That is you. Do the work yourself.")
             }
             let peerKey = threadKey(for: peer.id)
-            if threads[peerKey]?.run?.status == .running {
+            if let busy = threads[peerKey]?.run?.status,
+               busy.isActive || busy == .waitingInput || busy == .waitingTakeover {
+                let why = busy.isActive
+                    ? "is already working on something"
+                    : "is waiting on the user"
                 return AgentToolCallResult(
-                    output: "\(peer.name) is already working on something. Wait for it to finish before handing it more."
+                    output: "\(peer.name) \(why). Don't pile more on it — use check_bot to see where it is, and hand it this once it is free."
                 )
             }
             // Default to waiting: the user asked *this* bot, so "go read the other
@@ -2932,7 +3098,6 @@ public final class AppStore {
             let senderName = bots.first(where: { $0.id == botId })?.name ?? "another bot"
             let chatId = logBotChat(from: botId, to: peer.id, text: task)
             send(botId: peer.id, text: "Message from \(senderName) (a bot on this Mac):\n\n\(task)")
-            activeBotId = botId
 
             func dispatched(_ note: String) -> AgentToolCallResult {
                 AgentToolCallResult(
@@ -2943,15 +3108,15 @@ public final class AppStore {
 
             guard wait else {
                 return dispatched(
-                    "Asked \(peer.name) to: \(task.prefix(200)). It works in its own thread — its answer lands there, not here."
+                    "Asked \(peer.name) to: \(task.prefix(200)). It works in its own thread. Use check_bot or list_delegations to see where it is; a finished job is also reported back in this thread."
                 )
             }
 
             let settled = await awaitPeerReply(threadKey: peerKey)
             switch settled {
             case .completed:
-                let reply = threads[peerKey]?.messages.last(where: { $0.role == .bot })?.firstText ?? ""
-                updateBotChat(chatId, reply: reply, outcome: .answered)
+                let reply = latestBotReply(threadKey: peerKey)
+                updateBotChat(chatId, reply: reply, outcome: .answered, reported: true)
                 guard !reply.isEmpty else {
                     return dispatched("\(peer.name) finished but said nothing. Its thread has the detail.")
                 }
@@ -2962,20 +3127,40 @@ public final class AppStore {
             case .waitingInput, .waitingTakeover:
                 let pending = threads[peerKey]?.pendingTool
                 let what = pending.map { " on \($0.tool)\($0.detail.isEmpty ? "" : " (\($0.detail))")" } ?? ""
-                updateBotChat(chatId, reply: nil, outcome: .needsUser)
+                updateBotChat(chatId, reply: nil, outcome: .needsUser, reported: true)
                 return dispatched(
                     "\(peer.name) stopped and needs the user\(what). Tell them to answer it in \(peer.name)'s thread — do not claim the task is done."
                 )
             case .failed, .cancelled:
                 let why = threads[peerKey]?.run?.error ?? "no reason recorded"
-                updateBotChat(chatId, reply: nil, outcome: .failed)
+                updateBotChat(chatId, reply: nil, outcome: .failed, reported: true)
                 return dispatched("\(peer.name) did not finish: \(why). Its thread has the detail.")
             case .queued, .leased, .running, .none:
                 // Still going. This is the fire-and-forget outcome, reached honestly.
                 return dispatched(
-                    "\(peer.name) is still working after \(Int(peerReplyTimeout))s. Its answer will land in its own thread — say so rather than waiting or guessing at it."
+                    "\(peer.name) is still working after \(Int(peerReplyTimeout))s. It keeps going in its own thread. Use check_bot to look again later; when it finishes its answer is also posted back in this thread. Tell the user it is still running rather than guessing."
                 )
             }
+
+        case "check_bot":
+            let wanted = s("bot_id", "id", "name", "bot")
+            guard let peer = bots.first(where: {
+                $0.id == wanted || $0.name.caseInsensitiveCompare(wanted) == .orderedSame
+            }) else {
+                return AgentToolCallResult(output: "No bot named \(wanted).")
+            }
+            return AgentToolCallResult(output: describePeer(peer))
+
+        case "list_delegations":
+            let mine = botChat.filter { $0.fromBotId == botId }.suffix(20).reversed()
+            guard !mine.isEmpty else {
+                return AgentToolCallResult(output: "You haven't handed any work to other bots yet.")
+            }
+            let lines = mine.map { entry -> String in
+                let peerName = bots.first(where: { $0.id == entry.toBotId })?.name ?? entry.toBotId
+                return "- \(peerName): \"\(entry.text.prefix(80))\" — \(delegationState(entry))"
+            }
+            return AgentToolCallResult(output: lines.joined(separator: "\n"))
 
         case "delete_bot":
             let confirm = s("confirm_name", "name")
@@ -3024,6 +3209,7 @@ public final class AppStore {
                     promotedMcp: Array(mcpPromotedTools.values),
                     mcpAdvertised: mcpAdvertisedTools
                 )
+                let provider = endpoint.provider
                 let nested = try await AgentLoop.run(
                     client: client,
                     request: AgentLoopRequest(
@@ -3040,7 +3226,17 @@ public final class AppStore {
                         prompt: task,
                         tools: nestedTools,
                         maxSteps: 16,
-                        depth: depth + 1
+                        depth: depth + 1,
+                        charBudget: AgentLoopRequest.charBudget(provider: provider),
+                        computerNote: computerNote(for: bot),
+                        workingFolderNote: [
+                            WorkingFolder.promptNote(
+                                effectiveWorkingFolder(for: bot),
+                                scopedToRun: runWorkingFolderOverride[botId] != nil
+                            ),
+                            GrantedFolders.promptNote(grantedFolders(for: bot)),
+                        ].filter { !$0.isEmpty }.joined(separator: "\n\n"),
+                        stallMs: max(0, appConfig.agentStallTimeoutMs)
                     )
                 ) { [weak self] nestedName, nestedArgs in
                     guard let self else {
@@ -3052,21 +3248,42 @@ public final class AppStore {
                         botId: botId,
                         depth: depth + 1,
                         endpoint: endpoint,
-                        client: client
+                        client: client,
+                        // The helper's checklist is its own, not the lead's.
+                        scope: "\(threadKey(for: botId)):helper:\(helperId)"
                     )
                 }
+                let helperBlock = MessageBlock.subagent(
+                    agentId: helperId,
+                    name: helperName,
+                    task: task,
+                    status: nested.failed ? .failed : .completed,
+                    progress: nil,
+                    result: nested.text
+                )
+                // A helper that stopped for an approval or a question hands that
+                // stop to the lead's run, so the user is actually asked.
+                if let pause = nested.pause {
+                    return AgentToolCallResult(
+                        output: "Helper \(helperName) paused and is waiting on the user (\(nested.text)). Do not treat its work as finished; the user's answer resumes it.",
+                        blocks: nested.blocks + [helperBlock],
+                        pause: pause,
+                        extraInputTokens: nested.inputTokens,
+                        extraOutputTokens: nested.outputTokens
+                    )
+                }
+                let reported: String
+                if nested.failed {
+                    reported = "Helper \(helperName) did not finish (\(nested.failureReason ?? "unknown reason")). "
+                        + (nested.text.isEmpty ? "" : "Its last words: \(nested.text)")
+                } else {
+                    reported = nested.text.isEmpty ? "Helper finished." : nested.text
+                }
                 return AgentToolCallResult(
-                    output: nested.text.isEmpty ? "Helper finished." : nested.text,
-                    blocks: nested.blocks + [
-                        .subagent(
-                            agentId: helperId,
-                            name: helperName,
-                            task: task,
-                            status: .completed,
-                            progress: nil,
-                            result: nested.text
-                        ),
-                    ]
+                    output: reported,
+                    blocks: nested.blocks + [helperBlock],
+                    extraInputTokens: nested.inputTokens,
+                    extraOutputTokens: nested.outputTokens
                 )
             } catch {
                 return AgentToolCallResult(
@@ -3128,6 +3345,26 @@ public final class AppStore {
                 return AgentToolCallResult(output: denied)
             }
             let prompt = s("prompt", "query", "text")
+            // Servers only see the folders this bot may use, through roots/list.
+            McpRoots.set(
+                ([effectiveWorkingFolder(for: bot)].compactMap { $0 }.filter { !$0.isEmpty }
+                    + grantedFolders(for: bot).map(\.path)).map(BotHomeStore.expandPath)
+            )
+            if !toolName.isEmpty,
+               McpCatalog.needsApproval(
+                   server: server,
+                   toolName: toolName,
+                   listed: mcpListedTools[server.id]?.first(where: { $0.name == toolName })
+               ),
+               let gated = gatedWrite(
+                   tool: "mcp_call:\(server.id)/\(toolName)",
+                   detail: "\(server.name) → \(toolName)",
+                   argumentsJSON: argumentsJSON,
+                   bot: bot,
+                   approved: approved
+               ) {
+                return gated
+            }
             do {
                 if toolName.isEmpty {
                     if prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -3158,6 +3395,7 @@ public final class AppStore {
                             isError: result.isError,
                             text: result.text
                         ))],
+                        imageJPEGBase64: result.images.lazy.compactMap(McpImageConversion.jpegBase64).first,
                         promotedMcpTools: harvested
                     )
                 }
@@ -3214,6 +3452,7 @@ public final class AppStore {
                         isError: result.isError,
                         text: result.text
                     ))],
+                    imageJPEGBase64: result.images.lazy.compactMap(McpImageConversion.jpegBase64).first,
                     promotedMcpTools: harvested
                 )
             } catch {
@@ -3949,6 +4188,7 @@ public final class AppStore {
         save()
         finishRoutineIfNeeded(botId: botId, threadKey: key, status: .cancelled, error: "cancelled")
         releaseWorkingFolderOverrideIfNeeded(botId: botId)
+        settleQueue(botId: botId, threadKey: key, runId: runId, cancelled: true)
     }
 
     private func finishRoutineIfNeeded(
@@ -3968,7 +4208,7 @@ public final class AppStore {
         let plan = RoutineTickPolicy.reschedule(
             routine,
             status: status,
-            manual: run.trigger == RoutineTrigger.manual,
+            manual: run.trigger != RoutineTrigger.scheduled,
             error: error
         )
         routines[botId]?[idx].inProgress = false
@@ -4105,7 +4345,7 @@ public final class AppStore {
         }
     }
 
-    private func ingestMemoryFileIfNeeded(botId: String, path: String) {
+    func ingestMemoryFileIfNeeded(botId: String, path: String) {
         guard URL(fileURLWithPath: path).lastPathComponent == MemoryFiles.botFileName else { return }
         let text = (try? botHome.read(botId: botId, path: MemoryFiles.botFileName)) ?? MemoryLedger.botTemplate
         replaceMemoryDocument(scope: "bot", botId: botId, path: MemoryFiles.botFileName, content: text)
@@ -4180,6 +4420,12 @@ public final class AppStore {
     /// Every skill in the library, whether or not this bot has it on.
     public func setAllBotSkills(_ botId: String, enabled: Bool) {
         setBotSkills(botId, skillIds: skills.map(\.id), enabled: enabled)
+        // Disable all means none, including ids the library no longer has (a template can
+        // name skills that aren't installed).
+        if !enabled, let idx = bots.firstIndex(where: { $0.id == botId }), !bots[idx].enabledSkills.isEmpty {
+            bots[idx].enabledSkills = []
+            save()
+        }
     }
 
     public func installUserSkill(id: String, description: String, body: String) throws {
@@ -4586,11 +4832,94 @@ public final class AppStore {
         return entry.id
     }
 
-    private func updateBotChat(_ id: String, reply: String?, outcome: BotChatEntry.Outcome) {
+    private func updateBotChat(_ id: String, reply: String?, outcome: BotChatEntry.Outcome, reported: Bool = false) {
         guard let idx = botChat.firstIndex(where: { $0.id == id }) else { return }
         if let reply, !reply.isEmpty { botChat[idx].reply = reply }
         botChat[idx].outcome = outcome
+        if reported { botChat[idx].reportedAt = .now }
         save()
+    }
+
+    /// Every text block of a thread's newest bot message, not just the first.
+    func latestBotReply(threadKey key: String) -> String {
+        guard let message = threads[key]?.messages.last(where: { $0.role == .bot }) else { return "" }
+        return message.blocks.compactMap { block -> String? in
+            if case .text(let t) = block, !t.isEmpty { return t }
+            return nil
+        }.joined(separator: "\n\n")
+    }
+
+    /// Live state of a handed-off job, read from the peer's run rather than the
+    /// (possibly stale) ledger outcome.
+    func delegationState(_ entry: BotChatEntry) -> String {
+        let key = threadKey(for: entry.toBotId)
+        switch entry.outcome {
+        case .answered: return "answered"
+        case .needsUser: return "needs the user"
+        case .failed: return "failed"
+        case .sent:
+            switch threads[key]?.run?.status {
+            case .queued, .leased, .running: return "still running"
+            case .waitingInput, .waitingTakeover: return "waiting on the user"
+            case .completed: return "finished (reply not yet reported)"
+            case .failed, .cancelled: return "failed"
+            case .none: return "sent"
+            }
+        }
+    }
+
+    func describePeer(_ peer: Bot) -> String {
+        let key = threadKey(for: peer.id)
+        guard let run = threads[key]?.run else { return "\(peer.name) has no run yet." }
+        var lines = ["\(peer.name): \(run.status.rawValue)"]
+        if let pending = threads[key]?.pendingTool {
+            lines.append("Waiting on the user for \(pending.tool)\(pending.detail.isEmpty ? "" : " (\(pending.detail))").")
+        }
+        if let error = run.error, run.status == .failed { lines.append("Error: \(error)") }
+        let reply = latestBotReply(threadKey: key)
+        if !reply.isEmpty {
+            let label = run.status.isActive ? "Latest message so far" : "Latest reply"
+            lines.append("\(label):\n\(reply)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Tell a lead how its background handoffs ended: record the outcome, and when
+    /// the lead is idle post the peer's answer into its thread so the user hears
+    /// about it without having to ask.
+    public func flushDelegationReports() {
+        var changed = false
+        for idx in botChat.indices where botChat[idx].reportedAt == nil && botChat[idx].outcome == .sent {
+            let entry = botChat[idx]
+            let peerKey = threadKey(for: entry.toBotId)
+            guard let status = threads[peerKey]?.run?.status,
+                  status == .completed || status == .failed || status == .cancelled else { continue }
+            let leadKey = threadKey(for: entry.fromBotId)
+            // Never write into a lead mid-run; the next finished run flushes again.
+            guard threads[leadKey]?.run?.status.isActive != true,
+                  var thread = threads[leadKey] ?? threads[entry.fromBotId],
+                  let peer = bots.first(where: { $0.id == entry.toBotId }) else { continue }
+            let reply = latestBotReply(threadKey: peerKey)
+            let ok = status == .completed
+            let text = ok
+                ? "\(peer.name) finished the job you handed over (“\(entry.text.prefix(80))”):\n\n\(reply.isEmpty ? "(no reply)" : reply)"
+                : "\(peer.name) did not finish the job you handed over (“\(entry.text.prefix(80))”): \(threads[peerKey]?.run?.error ?? "no reason recorded")."
+            let message = ThreadMessage(
+                id: Ids.new(),
+                threadId: thread.threadId,
+                seq: thread.nextSeq,
+                role: .bot,
+                blocks: [.text(text)]
+            )
+            thread.messages.append(message)
+            thread.cursor = message.seq
+            threads[leadKey] = thread
+            botChat[idx].outcome = ok ? .answered : .failed
+            botChat[idx].reply = reply.isEmpty ? nil : reply
+            botChat[idx].reportedAt = .now
+            changed = true
+        }
+        if changed { save() }
     }
 
     public func showBotChatPage() {

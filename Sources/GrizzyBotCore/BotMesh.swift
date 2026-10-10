@@ -40,6 +40,9 @@ public struct BotChatEntry: Codable, Sendable, Hashable, Identifiable {
     public var reply: String?
     public var outcome: Outcome
     public var createdAt: Date
+    /// Set once the sender has been told how this handoff ended (in-turn reply
+    /// or a delivered report), so it is never reported twice.
+    public var reportedAt: Date?
 
     public init(
         id: String = Ids.new(),

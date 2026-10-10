@@ -99,10 +99,36 @@ extension AppSettingsOverlayView {
         }
 
         settingsCard(
+            title: "Messages while a bot is working",
+            subtitle: store.appConfig.queueMode.summary
+        ) {
+            Picker("When I send mid-run", selection: Binding(
+                get: { store.appConfig.queueMode },
+                set: { value in
+                    var config = store.appConfig
+                    config.queueMode = value
+                    store.saveAppConfig(config)
+                }
+            )) {
+                ForEach(QueueMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.menu)
+        }
+
+        settingsCard(
             title: "Token counters",
             subtitle: "Prompt, Sent, and Recv on the composer come from this bot’s billed usage. Reset them to start a session from zero. Chat messages are not deleted."
         ) {
             tokenCountersBody
+        }
+
+        settingsCard(
+            title: "Teams",
+            subtitle: "Export your bots as one shareable file, or import someone else's."
+        ) {
+            TeamsSettingsBody()
         }
 
         settingsCard(

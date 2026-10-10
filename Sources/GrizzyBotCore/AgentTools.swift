@@ -338,6 +338,7 @@ public enum AgentToolCatalog {
         .init(id: "read_skill", label: "Read skill", subtitle: "Load a skill's full instructions"),
         .init(id: "import_skills", label: "Import skills", subtitle: "Copy SKILL.md folders into GrizzyBot"),
         .init(id: "search_knowledge", label: "Search knowledge", subtitle: "Search granted knowledge sources"),
+        .init(id: "search_sessions", label: "Search past chats", subtitle: "Find things said in this bot's earlier conversations"),
         .init(id: "present_component", label: "Present component", subtitle: "Show a form, gallery, or audit component"),
         .init(id: "report_decline", label: "Report decline", subtitle: "Audit that this bot declined a request"),
         .init(id: "canvas_list", label: "Canvas list", subtitle: "List shared canvases on this Mac"),
@@ -423,10 +424,15 @@ extension Bot {
         if ArtifactStore.toolIds.contains(toolId) { return true }
         if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
         if toolId == "message_bot", enabledTools.contains("spawn_bot") { return true }
+        if toolId == "check_bot" || toolId == "list_delegations",
+           enabledTools.contains("spawn_bot") || enabledTools.contains("message_bot") { return true }
         if toolId.hasPrefix("shortcuts_"), enabledTools.contains("shell") { return true }
         if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
         if toolId == "import_skills", enabledTools.contains("read_file") { return true }
         if toolId == "search_knowledge", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
+            return true
+        }
+        if toolId == "search_sessions", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
             return true
         }
         if toolId == "capabilities_discover" || toolId == "capabilities_load" { return true }
@@ -517,9 +523,13 @@ extension AgentToolCatalog {
             .union(enabledIds.contains("read_file") ? ["import_skills"] : [])
             .union(
                 (enabledIds.contains("remember") || enabledIds.contains("search_memory"))
-                    ? ["search_knowledge"] : []
+                    ? ["search_knowledge", "search_sessions"] : []
             )
             .union(enabledIds.contains("spawn_bot") ? ["message_bot"] : [])
+            .union(
+                (enabledIds.contains("spawn_bot") || enabledIds.contains("message_bot"))
+                    ? ["check_bot", "list_delegations"] : []
+            )
             // A bot that can run shell commands can already invoke
             // /usr/bin/shortcuts, so the structured tools grant it nothing new —
             // and bots saved before these existed get them without a migration.
@@ -676,6 +686,12 @@ extension AgentToolCatalog {
                 )
             )
         }
+        add(
+            "search_sessions",
+            description: "Search this bot's earlier conversations (all its chats and tasks) for something that was said. Use it when the person refers to past work you no longer see, e.g. \"what did we decide about the pricing page?\". Returns dated excerpts.",
+            properties: ["query": stringProp("Keywords to find")],
+            required: ["query"]
+        )
         add(
             "search_knowledge",
             description: "Search knowledge sources this bot is granted (folders and plugin corpora). Respects per-bot ACLs.",
@@ -948,6 +964,21 @@ extension AgentToolCatalog {
                     "bot_id": stringProp("Optional bot id instead of the name"),
                 ],
                 required: ["name", "task"]
+            )
+            add(
+                "check_bot",
+                description: "Check on a bot you handed work to: its current status, what it is waiting on, and its latest reply. Use after a message_bot timeout or wait:false.",
+                properties: [
+                    "name": stringProp("Name of the bot from the roster"),
+                    "bot_id": stringProp("Optional bot id instead of the name"),
+                ],
+                required: ["name"]
+            )
+            add(
+                "list_delegations",
+                description: "List the jobs you handed to other bots, newest first, with whether each is still running, answered, needs the user, or failed.",
+                properties: [:],
+                required: []
             )
             add(
                 "delete_bot",
