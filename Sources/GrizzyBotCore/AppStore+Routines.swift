@@ -169,8 +169,16 @@ extension AppStore {
         fireRoutine(botId: botId, routine: routine, manual: true)
     }
 
-    func fireRoutine(botId: String, routine: Routine, manual: Bool = false) {
-        if !headlessRoutineTick {
+    func fireRoutine(
+        botId: String,
+        routine: Routine,
+        manual: Bool = false,
+        webhookPayload: String? = nil,
+        viaWebhook: Bool = false
+    ) {
+        // Heartbeats and webhooks run in the background; they must not drag the window around.
+        let quiet = routine.heartbeat || viaWebhook
+        if !headlessRoutineTick, !quiet {
             selectBot(botId)
             showChat()
         }
@@ -178,10 +186,31 @@ extension AppStore {
         guard var thread = threads[key] ?? threads[botId] else {
             threads[botId] = ThreadData(threadId: bots.first(where: { $0.id == botId })?.threadId ?? Ids.new())
             guard var created = threads[botId] else { return }
-            appendRoutineRun(botId: botId, routine: routine, thread: &created, threadKey: botId, manual: manual)
+            appendRoutineRun(
+                botId: botId, routine: routine, thread: &created, threadKey: botId,
+                manual: manual, webhookPayload: webhookPayload, viaWebhook: viaWebhook
+            )
             return
         }
-        appendRoutineRun(botId: botId, routine: routine, thread: &thread, threadKey: key, manual: manual)
+        appendRoutineRun(
+            botId: botId, routine: routine, thread: &thread, threadKey: key,
+            manual: manual, webhookPayload: webhookPayload, viaWebhook: viaWebhook
+        )
+    }
+
+    /// The routine a run belongs to, if it was started by one.
+    func routineForRun(_ run: Run?) -> Routine? {
+        guard let run, RoutineTrigger.isRoutine(run.trigger), let routineId = run.routineId else { return nil }
+        return routines[run.botId]?.first(where: { $0.id == routineId })
+    }
+
+    /// Keeps a continuity routine's last report for its next run. An all-clear heartbeat is not a report.
+    func recordRoutineOutput(botId: String, run: Run?, text: String, failed: Bool) {
+        guard let routine = routineForRun(run), routine.continuity, !failed,
+              !HeartbeatPolicy.isIdle(text),
+              let idx = routines[botId]?.firstIndex(where: { $0.id == routine.id })
+        else { return }
+        routines[botId]?[idx].lastOutput = RoutineContinuity.bounded(text)
     }
 
     private func appendRoutineRun(
@@ -189,7 +218,9 @@ extension AppStore {
         routine: Routine,
         thread: inout ThreadData,
         threadKey: String,
-        manual: Bool
+        manual: Bool,
+        webhookPayload: String? = nil,
+        viaWebhook: Bool = false
     ) {
         let bot = bots.first(where: { $0.id == botId })
         if let bot, let reason = RoutineTickPolicy.skipReason(canRunLLM: canRunLLM(for: bot)) {
@@ -217,22 +248,29 @@ extension AppStore {
             return
         }
 
-        let meta = ThreadMessage(
-            id: Ids.new(),
-            threadId: thread.threadId,
-            seq: thread.nextSeq,
-            role: .system,
-            blocks: [.meta("Routine '\(routine.name)' fired")]
-        )
-        thread.messages.append(meta)
-        thread.cursor = meta.seq
+        if !routine.heartbeat {
+            let meta = ThreadMessage(
+                id: Ids.new(),
+                threadId: thread.threadId,
+                seq: thread.nextSeq,
+                role: .system,
+                blocks: [.meta(viaWebhook
+                    ? "Routine '\(routine.name)' fired by webhook"
+                    : "Routine '\(routine.name)' fired")]
+            )
+            thread.messages.append(meta)
+            thread.cursor = meta.seq
+        }
 
+        let trigger = viaWebhook
+            ? RoutineTrigger.webhook
+            : (manual ? RoutineTrigger.manual : RoutineTrigger.scheduled)
         let run = Run(
             id: Ids.new(),
             botId: botId,
             threadId: thread.threadId,
             status: .running,
-            trigger: manual ? RoutineTrigger.manual : RoutineTrigger.scheduled,
+            trigger: trigger,
             routineId: routine.id
         )
         thread.run = run
@@ -246,7 +284,14 @@ extension AppStore {
         save()
 
         let runId = run.id
-        let prompt = routine.prompt
+        var prompt = routine.heartbeat ? HeartbeatPolicy.prompt(checklist: routine.prompt) : routine.prompt
+        if viaWebhook {
+            prompt = WebhookPrompt.compose(prompt: prompt, payload: webhookPayload, source: routine.name)
+        }
+        if routine.continuity {
+            prompt = RoutineContinuity.compose(prompt: prompt, previous: routine.lastOutput)
+        }
+        runInboxes[runId] = RunInbox()
         let task = Task { [weak self] in
             guard let self else { return }
             await self.runAgent(botId: botId, threadKey: threadKey, runId: runId, prompt: prompt)

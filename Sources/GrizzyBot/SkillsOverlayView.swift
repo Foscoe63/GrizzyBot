@@ -201,6 +201,15 @@ struct SkillsOverlayView: View {
                     Text(skill.source == .bundled ? "bundled" : "user")
                         .font(.system(size: 11.5))
                         .foregroundStyle(Theme.textMuted)
+                    if skill.source == .user {
+                        let report = SkillScanner.scan(skill)
+                        if report.risk > .clean {
+                            Text(report.risk == .danger ? "⚠ dangerous" : "⚠ review")
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(report.risk == .danger ? Theme.orange : Theme.textSecondary)
+                                .help(report.summary)
+                        }
+                    }
                 }
                 Text(skill.description)
                     .font(.system(size: 13.5))

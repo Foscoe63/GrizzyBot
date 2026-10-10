@@ -9,6 +9,7 @@ public enum Cron {
         "Every week",
         "Every month",
         "Interval",
+        "Events only",
         "Advanced",
     ]
 
@@ -48,6 +49,8 @@ public enum Cron {
     }
 
     public static func fromPreset(_ input: Preset) -> String {
+        // No clock at all: the routine runs when a webhook (or the person) fires it.
+        if input.freq == "Events only" { return "" }
         if input.freq == "Advanced" {
             let trimmed = input.cron.trimmingCharacters(in: .whitespaces)
             return trimmed.isEmpty ? "*/3 * * * *" : trimmed
@@ -70,6 +73,9 @@ public enum Cron {
         let base = defaultPreset()
         let trimmed = cron.trimmingCharacters(in: .whitespaces)
         let parts = trimmed.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+        if trimmed.isEmpty {
+            return Preset(freq: "Events only", n: base.n, unit: base.unit, time: base.time, cron: "")
+        }
         if parts.count < 5 {
             return Preset(freq: "Advanced", n: base.n, unit: base.unit, time: base.time, cron: trimmed)
         }
@@ -124,6 +130,8 @@ public enum Cron {
             return ("Every", "\(preset.n) \(preset.unit)")
         case "Every hour":
             return ("Every hour", "")
+        case "Events only":
+            return ("When triggered", "by a webhook or Run now")
         case "Advanced":
             return ("Cron", preset.cron.isEmpty ? "*/3 * * * *" : preset.cron)
         case "Weekdays":
@@ -190,6 +198,8 @@ public enum Cron {
     /// both are restricted, a day matching *either* one qualifies.
     public static func nextDate(_ cron: String, from: Date, timezone: String? = nil) -> Date {
         let parts = cron.trimmingCharacters(in: .whitespaces).split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+        // No schedule at all means an event-only routine: it never comes due on its own.
+        if parts.isEmpty { return .distantFuture }
         guard parts.count >= 5 else { return from.addingTimeInterval(60) }
         let minuteExpr = parts[0]
         let hourExpr = parts[1]
