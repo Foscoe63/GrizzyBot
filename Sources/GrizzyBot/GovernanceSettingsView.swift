@@ -9,6 +9,7 @@ struct GovernanceSettingsView: View {
     @State private var mode: PolicyMode = .enforce
     @State private var stallMs = "60000"
     @State private var auditText = ""
+    @State private var auditVerdict: String?
     @State private var auditAllowed: AuditAllowedFilter = .any
     @State private var auditTypeRaw = ""
 
@@ -160,6 +161,16 @@ struct GovernanceSettingsView: View {
                 title: "Audit trail",
                 subtitle: "Queryable log of the last 2,000 events, including the live boot boundary (policy loaded + computer isolation)."
             )
+            HStack(spacing: 10) {
+                GrizzyButton(title: "Verify audit trail", variant: .cream, size: .sm) {
+                    auditVerdict = AuditChain.verify(store.auditEvents).summary
+                }
+                if let auditVerdict {
+                    Text(auditVerdict)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(auditVerdict.contains("broken") ? Theme.orange : Theme.textSecondary)
+                }
+            }
             GrizzyField(placeholder: "Search type, bot, reason…", text: $auditText)
             HStack {
                 Picker("Result", selection: $auditAllowed) {

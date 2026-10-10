@@ -112,6 +112,14 @@ public struct BotHomeStore: Sendable {
         return URL(fileURLWithPath: expanded)
     }
 
+    /// Absolute location a tool path refers to (host path or inside the home), for checkpoints.
+    public func fileLocation(botId: String, path: String) -> String? {
+        if Self.isHostPath(path) {
+            return (try? Self.hostURL(path))?.path
+        }
+        return (try? resolveWritable(botId: botId, relative: path))?.path
+    }
+
     public func write(botId: String, path: String, content: String) throws {
         let url = try resolveWritable(botId: botId, relative: path)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

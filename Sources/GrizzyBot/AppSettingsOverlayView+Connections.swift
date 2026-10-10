@@ -48,6 +48,20 @@ extension AppSettingsOverlayView {
         }
 
         settingsCard(
+            title: "Telegram",
+            subtitle: "Talk to your bots from your phone. This Mac asks Telegram for new messages, so nothing has to be reachable from the internet, and only chats you approve here are ever answered."
+        ) {
+            TelegramSettingsBody()
+        }
+
+        settingsCard(
+            title: "Webhooks",
+            subtitle: "Let another program or service start a routine."
+        ) {
+            WebhookSettingsBody()
+        }
+
+        settingsCard(
             title: "Google (bypass Composio)",
             subtitle: "Your Google Cloud OAuth Client ID/Secret for Gmail, Calendar, Sheets, Docs, and Drive. Keep using the same credentials if sign-in already worked once."
         ) {

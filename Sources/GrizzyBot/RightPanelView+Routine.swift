@@ -115,6 +115,7 @@ extension RightPanelView {
             .opacity(store.visibleBots.isEmpty ? 0.45 : 1)
 
             if let editingId = store.editingRoutineId {
+                RoutineTriggerOptions(routineId: editingId)
                 HStack(spacing: 12) {
                     Button {
                         store.runRoutine(editingId)

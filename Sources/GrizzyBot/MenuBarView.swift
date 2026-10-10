@@ -42,7 +42,8 @@ struct MenuBarView: View {
     private var statusLine: String {
         let working = store.bots.filter { $0.status == "working" }.count
         if working > 0 { return "\(working) bot\(working == 1 ? "" : "s") working" }
-        if let next = store.allRoutines.first(where: { $0.active })?.nextRunAt {
+        // Event-only routines have no next time; the soonest scheduled one is what's "next".
+        if let next = store.allRoutines.filter({ $0.active && $0.hasSchedule }).compactMap(\.nextRunAt).min() {
             return "Next routine \(next.formatted(date: .omitted, time: .shortened))"
         }
         return "Idle"

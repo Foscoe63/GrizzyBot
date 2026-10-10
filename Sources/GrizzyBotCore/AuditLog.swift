@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public enum AuditEventType: String, Codable, Sendable {
@@ -8,6 +9,9 @@ public enum AuditEventType: String, Codable, Sendable {
     case knowledgeSearched = "knowledge.searched"
     case agentInvoked = "agent.invoked"
     case agentStreamStalled = "agent.stream_stalled"
+    case routineWebhook = "routine.webhook"
+    case channelMessage = "channel.message"
+    case channelPairing = "channel.pairing"
     case mcpCallSucceeded = "mcp.call_succeeded"
     case mcpCallRejected = "mcp.call_rejected"
     case computerActionAllowed = "computer.action_allowed"
@@ -41,6 +45,8 @@ public struct AuditEvent: Codable, Sendable, Hashable, Identifiable {
     public var reason: String
     /// Redacted attributes. Secrets are `{ "chars": N }` only.
     public var attributes: [String: JSONValue]
+    /// Links this event to the one before it (see `AuditChain`). Nil on events saved before chaining.
+    public var chain: String?
 
     public init(
         id: String = Ids.new(),
@@ -68,6 +74,65 @@ public struct AuditEvent: Codable, Sendable, Hashable, Identifiable {
         self.forwarded = forwarded
         self.reason = reason
         self.attributes = AuditRedactor.redact(attributes)
+    }
+}
+
+/// Each event carries a hash of its own content plus the previous event's hash, so deleting, reordering,
+/// or editing an event in the middle of the log breaks every link after it. This catches casual or
+/// accidental changes to `audit.json`; someone who can rewrite the whole file can also rewrite the chain.
+public enum AuditChain {
+    public struct Verification: Equatable, Sendable {
+        public var checked: Int
+        /// Events saved before chaining existed; they are skipped, not failed.
+        public var unchained: Int
+        /// Index of the first event whose link does not hold, if any.
+        public var brokenAt: Int?
+        public var intact: Bool { brokenAt == nil }
+
+        public var summary: String {
+            if let brokenAt { return "Audit trail broken at event \(brokenAt + 1): its contents or position changed after it was recorded." }
+            if checked == 0 { return "No chained events yet." }
+            return "Audit trail intact — \(checked) event\(checked == 1 ? "" : "s") verified."
+        }
+    }
+
+    static func digest(_ event: AuditEvent, previous: String) -> String {
+        var parts: [String] = [
+            previous, event.id, event.type.rawValue, String(Int(event.at.timeIntervalSince1970 * 1000)),
+            event.actorId, event.botId ?? "", event.tool ?? "", event.matched ?? "", event.source ?? "",
+            event.allowed.map { $0 ? "1" : "0" } ?? "", event.forwarded.map { $0 ? "1" : "0" } ?? "", event.reason,
+        ]
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        parts.append((try? encoder.encode(event.attributes)).flatMap { String(data: $0, encoding: .utf8) } ?? "")
+        let hash = SHA256.hash(data: Data(parts.joined(separator: "\u{1F}").utf8))
+        return hash.map { String(format: "%02x", $0) }.joined()
+    }
+
+    public static func stamped(_ event: AuditEvent, after previous: AuditEvent?) -> AuditEvent {
+        var copy = event
+        copy.chain = digest(event, previous: previous?.chain ?? "genesis")
+        return copy
+    }
+
+    public static func verify(_ events: [AuditEvent]) -> Verification {
+        var checked = 0, unchained = 0
+        var previous: String?
+        for (index, event) in events.enumerated() {
+            guard let chain = event.chain else { unchained += 1; previous = nil; continue }
+            if let previous {
+                if digest(event, previous: previous) != chain {
+                    return Verification(checked: checked, unchained: unchained, brokenAt: index)
+                }
+                checked += 1
+            } else if index == 0 || events[index - 1].chain == nil {
+                // The first chained event after the log was trimmed or started: it anchors the chain.
+                // It can still be checked against the genesis value when it is the true first event.
+                if digest(event, previous: "genesis") == chain { checked += 1 }
+            }
+            previous = chain
+        }
+        return Verification(checked: checked, unchained: unchained, brokenAt: nil)
     }
 }
 
@@ -125,7 +190,7 @@ public enum AuditLog {
 
     public static func appending(_ events: [AuditEvent], _ event: AuditEvent) -> [AuditEvent] {
         var next = events
-        next.append(event)
+        next.append(AuditChain.stamped(event, after: events.last))
         if next.count > cap {
             next = Array(next.suffix(cap))
         }

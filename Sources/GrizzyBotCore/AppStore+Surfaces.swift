@@ -53,6 +53,8 @@ extension AppStore {
     public func refreshLocalIntegrations() {
         Task { await self.syncFolderWatchers() }
         Task { await self.syncLocalGateway() }
+        Task { await self.syncWebhookReceiver() }
+        Task { await self.syncTelegram() }
     }
 
     public func reloadFolderWatchers() {

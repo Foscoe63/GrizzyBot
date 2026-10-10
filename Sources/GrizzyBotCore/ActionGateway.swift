@@ -39,7 +39,7 @@ public enum ActionGateway {
             return .writeFile
         case "list_files", "list_files.host":
             return .listFiles
-        case "web_search", "web_fetch", "search_memory", "search_knowledge",
+        case "web_search", "web_fetch", "search_memory", "search_knowledge", "search_sessions",
              "mcp_list_tools", "read_skill", "plugin_call_read", "check_bot", "list_delegations":
             return .read
         case "shell", "shell.exec", "remember", "forget", "import_skills",
