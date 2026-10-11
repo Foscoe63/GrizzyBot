@@ -340,6 +340,53 @@ struct StoreTests {
         #expect(store.messages(for: chief.id).filter { $0.firstText.contains("finished the job") }.count == count)
     }
 
+    @Test("a delegate that only thinks aloud is reported as a failure, not an answer")
+    func scratchpadReplyBecomesFailureNotice() async {
+        let (store, chief, researcher) = rosterStore(email: "roster-scratch@b.com")
+        let ramble = String(repeating: "Wait, that doesn't work. Hmm, let me try another way. Actually, I need to rethink this. ", count: 14)
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"Researcher\",\"task\":\"Find the top repos\",\"wait\":false}"),
+            ChatCompletionResponse(text: "Researcher is on it."),
+            ChatCompletionResponse(text: ramble),
+        ])
+        store.send(botId: chief.id, text: "hand it over")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        #expect(await store.waitForRunCompletion(botId: researcher.id))
+        store.flushDelegationReports()
+        let notice = store.messages(for: chief.id).last { $0.role == .bot }?.firstText ?? ""
+        #expect(notice.contains("did not finish the job"))
+        #expect(notice.contains("narrower job"))
+        #expect(!notice.contains("finished the job you handed over"))
+        #expect(notice.count < 700)
+        #expect(store.botChat[0].outcome == .failed)
+        #expect(store.botChat[0].reply == nil)
+    }
+
+    @Test("the lead sees who it is waiting on while a handoff is running")
+    func waitingOnPeersWhileRunning() async {
+        let (store, chief, researcher) = rosterStore(email: "roster-wait@b.com")
+        let client = GatedChatClient(
+            gating: "Researcher",
+            queue: [
+                messageBotCall("{\"name\":\"Researcher\",\"task\":\"Read every filing\",\"wait\":false}"),
+                ChatCompletionResponse(text: "Handed off."),
+                ChatCompletionResponse(text: "Done reading."),
+            ]
+        )
+        store.chatCompleter = client
+        store.send(botId: chief.id, text: "hand it to Researcher")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        #expect(store.threads[researcher.id]?.run?.status.isActive == true)
+        let waits = store.waitingOnPeers(for: chief.id)
+        #expect(waits.map(\.name) == ["Researcher"])
+        #expect(waits.first?.needsUser == false)
+
+        client.release()
+        #expect(await store.waitForRunCompletion(botId: researcher.id))
+        store.flushDelegationReports()
+        #expect(store.waitingOnPeers(for: chief.id).isEmpty)
+    }
+
     @Test("list_delegations shows what the lead handed off")
     func listDelegations() async {
         let (store, chief, _) = rosterStore(email: "roster-list@b.com")
