@@ -128,6 +128,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var companionPort: Int
     /// Listen beyond loopback so a phone on Tailscale or the same network can reach it.
     public var companionAllowNetwork: Bool
+    /// Optional model that picks the bot for a message the rules can't call. Empty uses rules only.
+    public var routerModel: ModelChoice?
 
     public init(
         profileName: String = "",
@@ -165,8 +167,10 @@ public struct AppConfig: Codable, Sendable, Equatable {
         botColoredChats: Bool = true,
         companionEnabled: Bool = false,
         companionPort: Int = 8802,
-        companionAllowNetwork: Bool = false
+        companionAllowNetwork: Bool = false,
+        routerModel: ModelChoice? = nil
     ) {
+        self.routerModel = routerModel
         self.companionEnabled = companionEnabled
         self.companionPort = companionPort
         self.companionAllowNetwork = companionAllowNetwork
@@ -212,7 +216,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         case themeAppearanceMode, activeThemePresetId, agentStallTimeoutMs
         case privacyFilter, memoryRelevanceMode, queueMode, webhooksEnabled, webhookPort, telegram, localGateway, enableFolderWatchers
         case controlPlaneEnabled, controlPlanePort, otlpEndpoint, botColoredChats
-        case companionEnabled, companionPort, companionAllowNetwork
+        case companionEnabled, companionPort, companionAllowNetwork, routerModel
     }
 
     public init(from decoder: Decoder) throws {
@@ -254,6 +258,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         companionEnabled = try c.decodeIfPresent(Bool.self, forKey: .companionEnabled) ?? false
         companionPort = try c.decodeIfPresent(Int.self, forKey: .companionPort) ?? 8802
         companionAllowNetwork = try c.decodeIfPresent(Bool.self, forKey: .companionAllowNetwork) ?? false
+        routerModel = try c.decodeIfPresent(ModelChoice.self, forKey: .routerModel)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -294,6 +299,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encode(companionEnabled, forKey: .companionEnabled)
         try c.encode(companionPort, forKey: .companionPort)
         try c.encode(companionAllowNetwork, forKey: .companionAllowNetwork)
+        try c.encodeIfPresent(routerModel, forKey: .routerModel)
     }
 
     public var composioConfigured: Bool {
@@ -340,6 +346,9 @@ public enum GroupResponder: Codable, Sendable, Hashable {
     case everyone
     case mentions
     case member(botId: String)
+    /// A message nobody is @mentioned in goes to whichever member fits it best, or the first member
+    /// when none is clearly better.
+    case auto
 }
 
 public struct GroupRoom: Codable, Sendable, Hashable, Identifiable {

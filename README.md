@@ -57,6 +57,14 @@
 
 ## 🆕 What's new
 
+### Delegation — the right bot answers
+
+- **Chief of Staff auto-dispatch.** Turn on *Hand work to the best bot automatically* in the Chief of Staff's settings. A message that clearly belongs to another bot (or that @mentions one) goes straight to them; their answer appears in the Chief of Staff's chat under their name, with a note saying who got it and why. Anything unclear, mixed ("research this and email it"), or small talk stays with the Chief of Staff. Start a message with `!` to keep it there. If the other bot fails, the Chief of Staff does the job itself; if it needs an approval, you're told where to answer it. Stop ends the hand-off and stops that bot too.
+- **Room routing.** New rooms send an un-addressed message to the member that fits it best (menu in the room header: *routing: best fit / first member*); the room says who was picked and why. An @mention always wins; existing rooms keep their old behaviour.
+- **How it decides.** Rules first — free, instant, the same answer every time: the message against each bot's name, role, description, skills and the tools actually switched on for it. An optional **router model** (Settings → General → Delegation) is asked only when the rules can't call it, sees nothing but the message and each bot's role and abilities, and its answer is accepted only if it names a real candidate.
+- **Limits stay with each bot.** A bot only ever uses its own tools and permissions; handing work over never widens them. The roster now shows what each bot can do (`can: web, files`), and a bot that hits a disabled tool is told which bots have it. Bots can opt out of automatic hand-offs.
+- **Outside content can't be laundered through another bot.** If a bot had read a web page or email before it messages a peer, the peer is told and its run starts out untrusted, so memory writes still need your approval.
+
 ### 0.10 — trust, control, and the rest of the Mac
 
 **Trust**

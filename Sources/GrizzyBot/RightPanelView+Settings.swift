@@ -308,6 +308,26 @@ extension RightPanelView {
                 }
                 .padding(.top, 18)
 
+                if bot.chiefOfStaff {
+                    settingsToggle(
+                        title: "Hand work to the best bot automatically",
+                        subtitle: "When a message clearly belongs to another bot (or you @mention one), it goes straight to them and their answer appears here under their name. Anything unclear stays with this bot. Start a message with ! to keep it here.",
+                        isOn: bot.autoDispatch
+                    ) {
+                        store.setAutoDispatch(bot.id, enabled: !bot.autoDispatch)
+                    }
+                }
+
+                if !bot.chiefOfStaff {
+                    settingsToggle(
+                        title: "May be handed work automatically",
+                        subtitle: "Lets the Chief of Staff and room routing pick this bot for messages that fit it. You can always @mention it either way.",
+                        isOn: bot.dispatchable
+                    ) {
+                        store.setDispatchable(bot.id, enabled: !bot.dispatchable)
+                    }
+                }
+
                 settingsToggle(
                     title: "Auto-approve tools",
                     subtitle: "Skip Allow/Deny prompts for shell and file tools.",

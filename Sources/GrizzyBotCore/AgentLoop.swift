@@ -24,8 +24,11 @@ public struct BotRosterEntry: Sendable, Equatable {
     public var isChild: Bool
     /// True when this bot is the workspace chief of staff.
     public var isChiefOfStaff: Bool
+    /// What the bot can actually do ("web, files, shell"), from the tools switched on for it.
+    public var abilities: String
 
-    public init(name: String, title: String = "", isChild: Bool = false, isChiefOfStaff: Bool = false) {
+    public init(name: String, title: String = "", isChild: Bool = false, isChiefOfStaff: Bool = false, abilities: String = "") {
+        self.abilities = abilities
         self.name = name
         self.title = title
         self.isChild = isChild
@@ -620,7 +623,8 @@ public enum AgentLoop {
                 if entry.isChiefOfStaff { tags.append("chief of staff") }
                 if entry.isChild { tags.append("you created it") }
                 let role = entry.title.isEmpty ? "" : " — \(entry.title)"
-                let tag = tags.isEmpty ? "" : " [\(tags.joined(separator: ", "))]"
+                if !entry.abilities.isEmpty { tags.append("can: \(entry.abilities)") }
+                let tag = tags.isEmpty ? "" : " [\(tags.joined(separator: "; "))]"
                 return "- \(entry.name)\(role)\(tag)"
             }
             var text = """
@@ -632,7 +636,7 @@ public enum AgentLoop {
                 text += "\nUse message_bot to hand a job to one of them instead of duplicating its work or spawning a near-copy. It works in its own thread and by default you wait for its answer, so fold that answer into your reply rather than telling the user to go read another thread. Pass wait:false only for long background jobs you are not reporting on this turn. Reach for spawn_bot only when no listed bot fits."
             }
             if isChiefOfStaff {
-                text += "\nYou are the chief of staff: you own coordination across these bots. Route work to the right one, keep track of what you delegated, and say who is doing what."
+                text += "\nYou are the chief of staff: you own coordination across these bots. Route work to the right one, keep track of what you delegated, and say who is doing what. A bot can only use the tools listed after its name (can: …) and its own permissions — hand a job to the bot that has what it needs rather than attempting it yourself without the tool. Messages that clearly belong to one of them may already have been handed over for you; the thread shows who answered."
             }
             return text
         }
