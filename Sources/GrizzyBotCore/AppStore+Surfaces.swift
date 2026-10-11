@@ -709,6 +709,7 @@ extension AppStore {
         for i in bots.indices {
             bots[i].chiefOfStaff = enabled && bots[i].id == botId
         }
+        clearDispatchIfNotChief()
         save()
     }
 
@@ -772,7 +773,7 @@ extension AppStore {
     @discardableResult
     public func createGroup(name: String, memberIds: [String]) -> GroupRoom {
         let members = memberIds.isEmpty ? Array(visibleBots.prefix(2).map(\.id)) : memberIds
-        let group = GroupRoom(name: name, memberIds: members)
+        let group = GroupRoom(name: name, memberIds: members, defaultResponder: .auto)
         groups.append(group)
         threads[group.id] = ThreadData(threadId: group.threadId)
         activeGroupId = group.id
@@ -809,20 +810,36 @@ extension AppStore {
 
         let members = groups[gIdx].memberIds.compactMap { id in bots.first(where: { $0.id == id }) }
         // @mentions pick the responders; without one the room's default applies.
-        let queue: [String] = {
+        var routeByFit = false
+        var queue: [String] = {
             if let mentioned = GroupMentions.responders(for: trimmed, members: members) { return mentioned }
             switch groups[gIdx].defaultResponder {
             case .member(let id):
                 return bots.contains(where: { $0.id == id }) ? [id] : []
             case .everyone, .mentions:
                 return members.first.map { [$0.id] } ?? []
+            case .auto:
+                // The first member answers unless the router finds a clearly better fit below.
+                routeByFit = true
+                return members.first.map { [$0.id] } ?? []
             }
         }()
         guard !queue.isEmpty else { return }
 
         let room = groups[gIdx].name
+        let byFit = routeByFit
+        let lead = queue
+        if byFit { roomRoutingInFlight += 1 }
         Task { [weak self] in
-            await self?.runGroupTurns(groupId: groupId, roomName: room, members: members, initial: queue, userText: trimmed)
+            guard let self else { return }
+            queue = lead
+            if byFit, let decision = await self.roomRoute(text: trimmed, members: members),
+               members.contains(where: { $0.id == decision.botId }) {
+                queue = [decision.botId]
+                self.noteRoomRoute(groupId: groupId, decision: decision)
+            }
+            if byFit { self.roomRoutingInFlight -= 1 }
+            await self.runGroupTurns(groupId: groupId, roomName: room, members: members, initial: queue, userText: trimmed)
         }
     }
 
@@ -886,6 +903,8 @@ extension AppStore {
             for id in pulled where id != botId && !spoken.contains(id) && !queue.contains(id) {
                 queue.append(id)
                 handoffs[id] = (from: bot.name, text: reply)
+                // What a bot says after reading outside content may carry that content's instructions.
+                if let tainters = lastRunTaint[botId] { inheritedTaint[id] = tainters }
             }
         }
     }

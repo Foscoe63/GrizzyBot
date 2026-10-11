@@ -71,6 +71,10 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var lightModel: ModelChoice?
     /// Narrow "always allow" approvals: a tool plus the command/path/host the person actually approved.
     public var allowRules: [AllowRule] = []
+    /// Chief of Staff only: send a message to the clearly best-suited bot instead of answering it.
+    public var autoDispatch: Bool = false
+    /// Whether the Chief of Staff and room routing may hand this bot work without being asked.
+    public var dispatchable: Bool = true
 
     public init(
         id: String,
@@ -157,7 +161,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case pinned, hidden, unread, autoApprove, shellNetwork, speakReplies, notifications, chiefOfStaff
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
         case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, goal
-        case fallbackModels, lightModel, allowRules
+        case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable
     }
 
     public init(from decoder: Decoder) throws {
@@ -203,6 +207,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         fallbackModels = try c.decodeIfPresent([ModelChoice].self, forKey: .fallbackModels) ?? []
         lightModel = try c.decodeIfPresent(ModelChoice.self, forKey: .lightModel)
         allowRules = try c.decodeIfPresent([AllowRule].self, forKey: .allowRules) ?? []
+        autoDispatch = try c.decodeIfPresent(Bool.self, forKey: .autoDispatch) ?? false
+        dispatchable = try c.decodeIfPresent(Bool.self, forKey: .dispatchable) ?? true
     }
 }
 

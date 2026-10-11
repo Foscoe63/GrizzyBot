@@ -920,7 +920,8 @@ extension AppStore {
                     name: $0.name,
                     title: $0.title.isEmpty ? $0.description : $0.title,
                     isChild: $0.parentBotId == bot.id,
-                    isChiefOfStaff: $0.chiefOfStaff
+                    isChiefOfStaff: $0.chiefOfStaff,
+                    abilities: profile(for: $0).abilitySummary
                 )
             }
     }
