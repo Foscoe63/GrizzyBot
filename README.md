@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.9.0-3B82F6?style=for-the-badge" alt="Version 0.9.0">
+  <img src="https://img.shields.io/badge/version-0.10.0-3B82F6?style=for-the-badge" alt="Version 0.9.0">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,13 +49,44 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.9.0** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.10.0** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
 ---
 
 ## 🆕 What's new
+
+### 0.10 — trust, control, and the rest of the Mac
+
+**Trust**
+- **Outside content is fenced.** Web pages, plugin and MCP results, and emails reach the model between `EXTERNAL_CONTENT` markers, flagged when they try to give orders (override-instructions, secrecy, "save this to memory", hidden Unicode). A forged closing marker is defused.
+- **Memory can't be poisoned quietly.** A run that read outside content cannot write shared or pinned memory (or forget anything) without your approval; its other facts are tagged `⟦untrusted⟧`, never overwrite a fact you wrote, and show as *unverified* in **What I remember** (Trust / Pin / Delete per fact).
+- **Pre-compaction save.** Before a long chat is squeezed, the bot gets one quiet turn to `remember` what matters.
+- **Secrets stay secret, both ways.** Outgoing tool calls are blocked if they carry one of your stored secrets or a known key shape; stored secrets are scrubbed from results. `request_secret` opens a private field; the value goes to the Keychain and the bot writes `{{secret:NAME}}` (web_fetch, plugin and MCP calls only).
+- **Stuck tools can't freeze a run.** Every tool call has a hard limit, and Stop returns within seconds even if a tool ignores cancellation.
+
+**Control**
+- **Scoped Always-allow.** "Always allow" on a shell or file approval now adds a rule for that command or folder (`git status*`), never one that matches a chained command. List and remove rules in the bot's settings.
+- **Model fallback chain, a light model, and non-streaming retry.** If the main model fails, the next one answers and the reply says so. Short conversational turns can go to a small or local model; the reply names the model used.
+- **Actionable notifications.** An approval raises a macOS notification with Allow / Always allow / Deny.
+- **Drafts.** Outgoing email and chat posts appear as an editable draft before sending; "Always send" turns drafts off for that bot. **Reconnect cards** replace retry loops when a sign-in expires.
+
+**Learning**
+- **Skill usage, `/learn`, and a curator.** `/learn` has the bot propose a skill (saved switched off); the Skills panel shows proposals to approve, tidy-up suggestions, and an archive (nothing is ever deleted; pinned and bundled skills are untouchable).
+- **Routine pre-checks.** A routine can run a cheap shell command first; if it prints nothing, the model isn't called.
+- **Recipes.** Parameterised tasks in Markdown, run with `/recipe name key=value`.
+- **Library.** Everything a bot shared (artifacts, files, links), grouped by day.
+
+**Reach**
+- **Phone companion.** A mobile web page served from your Mac (scan a QR code, Add to Home Screen): see your bots, read and send messages, stop a run, Allow or Deny an approval. Loopback by default; reaching it from your phone is an explicit setting, with a token, a lockout after repeated wrong tokens, and a warning to use Tailscale. Secrets, "always allow", and settings stay on the Mac.
+- **`grizzybot://` links** (`open`, `ask`, `run-routine`) for Shortcuts, scripts, and launchers. Anything that makes a bot do work is read back to you for a yes first, since a web page can open these too.
+- **1Password.** A saved secret can be an `op://` reference; GrizzyBot reads it through the `op` CLI only at the moment of use.
+- **Secrets in shell commands** work too: `{{secret:NAME}}` becomes `"$GRIZZY_SECRET_NAME"` in the command you approve, and the value reaches the process only through its environment.
+- **Bot-coloured messages, ⌘L to quote a selection into your reply, and read-aloud with a live transcript** (the spoken word highlights; tap a word to start there — system voices only).
+- **MCP server.** Claude Desktop, Cursor, or Claude Code can list your bots, read and search chats, message a bot and wait for the answer, stop a run, or switch a model — over loopback with a token. Approvals, deletion, keys, settings, and the computer are not exposed.
+- **Siri, Shortcuts, Spotlight.** *Ask a Bot* and *Run a Routine* App Intents; bots are indexed in Spotlight.
+- **OpenTelemetry tracing.** Optional OTLP export of run and tool-call spans (timings and counts only).
 
 ### 0.9 — always on
 
