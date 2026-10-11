@@ -362,6 +362,41 @@ public enum AgentToolCatalog {
         .init(id: "clarify", label: "Clarify", subtitle: "Pause and ask the user a question"),
     ]
 
+    /// Always available, whatever is toggled: the loop cannot work without them, so they get no switch.
+    public static let alwaysOnIds: Set<String> = ["capabilities_discover", "capabilities_load", "todo", "complete", "clarify"]
+
+    /// Tools that have no switch in the profile editor.
+    public static var unswitchedIds: Set<String> {
+        alwaysOnIds.union(CanvasBoardStore.toolIds).union(ArtifactStore.toolIds)
+    }
+
+    /// What used to switch on silently when another tool was on. Written out once as real toggles
+    /// (see `AppStore.grantImpliedTools`) so each can be turned off on its own.
+    public static func impliedGrants(from enabled: [String]) -> [String] {
+        var set = Set(enabled)
+        var changed = true
+        while changed {
+            changed = false
+            func grant(_ ids: [String], if condition: Bool) {
+                guard condition else { return }
+                for id in ids where !set.contains(id) { set.insert(id); changed = true }
+            }
+            grant(["import_skills", "skill_propose"], if: set.contains("read_file"))
+            grant(["routine_manage"], if: set.contains("shell") || set.contains("spawn_bot") || set.contains("message_bot"))
+            grant(["request_secret"], if: set.contains("request_takeover") || set.contains("plugin_call"))
+            grant(["search_memory", "forget"], if: set.contains("remember"))
+            grant(["search_knowledge", "search_sessions"], if: set.contains("remember") || set.contains("search_memory"))
+            grant(["message_bot"], if: set.contains("spawn_bot"))
+            grant(["shortcuts_list", "shortcuts_run"], if: set.contains("shell"))
+            grant(["plugin_call"], if: set.contains("destination_write"))
+            grant(
+                ["computer_screenshot", "computer_open", "computer_click", "computer_type", "computer_key", "computer_scroll"],
+                if: set.contains("request_takeover")
+            )
+        }
+        return builtinIds.filter { set.contains($0) && !enabled.contains($0) }
+    }
+
     /// Back-compat alias.
     public static var all: [AgentToolDefinition] { builtin }
 
@@ -422,31 +457,13 @@ extension ScriptedAction {
 extension Bot {
     public func isToolEnabled(_ toolId: String) -> Bool {
         if enabledTools.contains(toolId) { return true }
-        if toolId.hasPrefix("computer_"), enabledTools.contains("request_takeover") { return true }
-        if toolId == "request_secret", enabledTools.contains("request_takeover") || enabledTools.contains("plugin_call") { return true }
+        // Tools with a toggle of their own are on only when switched on. What is left here has no
+        // toggle: the always-available basics and the two delegation read-outs.
         if CanvasBoardStore.toolIds.contains(toolId) { return true }
         if ArtifactStore.toolIds.contains(toolId) { return true }
-        if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
-        if toolId == "message_bot", enabledTools.contains("spawn_bot") { return true }
         if toolId == "check_bot" || toolId == "list_delegations",
            enabledTools.contains("spawn_bot") || enabledTools.contains("message_bot") { return true }
-        if toolId.hasPrefix("shortcuts_"), enabledTools.contains("shell") { return true }
-        if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
-        if toolId == "import_skills" || toolId == "skill_propose", enabledTools.contains("read_file") { return true }
-        // Bots that can run shell commands or coordinate other bots already act on a schedule's behalf;
-        // this gives them the real thing, behind an approval, instead of a cron job in the sandbox.
-        if toolId == "routine_manage",
-           enabledTools.contains("shell") || enabledTools.contains("spawn_bot") || enabledTools.contains("message_bot") {
-            return true
-        }
-        if toolId == "search_knowledge", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
-            return true
-        }
-        if toolId == "search_sessions", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
-            return true
-        }
-        if toolId == "capabilities_discover" || toolId == "capabilities_load" { return true }
-        if toolId == "todo" || toolId == "complete" || toolId == "clarify" { return true }
+        if AgentToolCatalog.alwaysOnIds.contains(toolId) { return true }
         return false
     }
 
@@ -530,28 +547,13 @@ extension AgentToolCatalog {
         mcpAdvertised: [String: [String]] = [:]
     ) -> [ChatTool] {
         let enabled = Set(enabledIds)
-            .union(enabledIds.contains("read_file") ? ["import_skills", "skill_propose"] : [])
-            .union(
-                (enabledIds.contains("shell") || enabledIds.contains("spawn_bot") || enabledIds.contains("message_bot"))
-                    ? ["routine_manage"] : []
-            )
-            .union((enabledIds.contains("request_takeover") || enabledIds.contains("plugin_call")) ? ["request_secret"] : [])
-            .union(
-                (enabledIds.contains("remember") || enabledIds.contains("search_memory"))
-                    ? ["search_knowledge", "search_sessions"] : []
-            )
-            .union(enabledIds.contains("spawn_bot") ? ["message_bot"] : [])
             .union(
                 (enabledIds.contains("spawn_bot") || enabledIds.contains("message_bot"))
                     ? ["check_bot", "list_delegations"] : []
             )
-            // A bot that can run shell commands can already invoke
-            // /usr/bin/shortcuts, so the structured tools grant it nothing new —
-            // and bots saved before these existed get them without a migration.
-            .union(enabledIds.contains("shell") ? ["shortcuts_list", "shortcuts_run"] : [])
             .union(CanvasBoardStore.toolIds)
             .union(ArtifactStore.toolIds)
-            .union(["capabilities_discover", "capabilities_load", "todo", "complete", "clarify"])
+            .union(AgentToolCatalog.alwaysOnIds)
         var tools: [ChatTool] = []
 
         func add(_ id: String, name: String? = nil, description: String, properties: [String: JSONValue], required: [String]) {

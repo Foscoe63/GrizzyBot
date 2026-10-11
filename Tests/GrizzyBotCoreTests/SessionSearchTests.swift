@@ -48,7 +48,7 @@ struct SessionSearchTests {
         let graceHits = SessionSearch.search(docs: store.sessionDocs(for: grace.id), query: "bluebird")
         #expect(!adaHits.isEmpty)
         #expect(graceHits.isEmpty)
-        let tools = AgentToolCatalog.chatTools(enabledIds: ["search_memory", "remember"])
+        let tools = AgentToolCatalog.chatTools(enabledIds: ["search_memory", "remember", "search_sessions"])
         #expect(tools.contains { $0.function.name == "search_sessions" })
         #expect(!AgentToolCatalog.chatTools(enabledIds: ["web_search"]).contains { $0.function.name == "search_sessions" })
     }

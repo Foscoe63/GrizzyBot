@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.11.3-3B82F6?style=for-the-badge" alt="Version 0.11.3">
+  <img src="https://img.shields.io/badge/version-0.11.4-3B82F6?style=for-the-badge" alt="Version 0.11.4">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,13 +49,17 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.3** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.4** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
 ---
 
 ## 🆕 What's new
+
+### 0.11.4 — every tool switch works
+
+- **Switches that wouldn't switch off now do.** Some tools came on silently with another: Shell turned on *List shortcuts*, *Run shortcut* and *Routines*; Remember turned on *Search memory*, *Forget* and the search tools; Spawn bot turned on *Message bot*; Request takeover turned on the Screenshot/Click/Type tools. They showed as on and ignored you. Each tool is now its own switch. Bots you already have keep exactly the tools they had (written out as real switches the first time 0.11.4 opens); after that, turn any of them off individually. Tools the agent can't work without (todo, complete, clarify, capability discovery, canvases and artifacts) no longer show a switch that did nothing.
 
 ### 0.11.3 — a delegate can't run forever
 

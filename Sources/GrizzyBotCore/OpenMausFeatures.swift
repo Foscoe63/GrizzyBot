@@ -90,6 +90,9 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var defaultEnabledTools: [String]
     /// Tool ids already offered for default opt-in. Absent from `defaultEnabledTools` means off — do not revive.
     public var seenToolIds: [String]
+    /// Tools another tool used to switch on silently (Shell → Shortcuts…) have been written out as
+    /// real toggles, so each can now be turned off on its own.
+    public var impliedToolsGranted: Bool
     public var launchAtLogin: Bool
     public var showMenuBar: Bool
     /// Hide the main window at launch; GrizzyBot stays in the menu bar until opened.
@@ -146,6 +149,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         defaultComputerMode: ComputerMode = .auto,
         defaultEnabledTools: [String] = AgentToolCatalog.allIds,
         seenToolIds: [String] = [],
+        impliedToolsGranted: Bool = false,
         launchAtLogin: Bool = false,
         showMenuBar: Bool = true,
         menuBarOnly: Bool = false,
@@ -192,6 +196,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         self.defaultComputerMode = defaultComputerMode
         self.defaultEnabledTools = defaultEnabledTools
         self.seenToolIds = seenToolIds
+        self.impliedToolsGranted = impliedToolsGranted
         self.launchAtLogin = launchAtLogin
         self.showMenuBar = showMenuBar
         self.menuBarOnly = menuBarOnly
@@ -212,7 +217,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case profileName, profileEmail, composioConnectKey, composioApiKey
         case googleClientId, googleClientSecret, boxToken
-        case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
+        case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, impliedToolsGranted, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
         case themeAppearanceMode, activeThemePresetId, agentStallTimeoutMs
         case privacyFilter, memoryRelevanceMode, queueMode, webhooksEnabled, webhookPort, telegram, localGateway, enableFolderWatchers
         case controlPlaneEnabled, controlPlanePort, otlpEndpoint, botColoredChats
@@ -236,6 +241,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         defaultEnabledTools = try c.decodeIfPresent([String].self, forKey: .defaultEnabledTools)
             ?? AgentToolCatalog.allIds
         seenToolIds = try c.decodeIfPresent([String].self, forKey: .seenToolIds) ?? []
+        impliedToolsGranted = try c.decodeIfPresent(Bool.self, forKey: .impliedToolsGranted) ?? false
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         showMenuBar = try c.decodeIfPresent(Bool.self, forKey: .showMenuBar) ?? true
         menuBarOnly = try c.decodeIfPresent(Bool.self, forKey: .menuBarOnly) ?? false
@@ -277,6 +283,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encode(defaultComputerMode, forKey: .defaultComputerMode)
         try c.encode(defaultEnabledTools, forKey: .defaultEnabledTools)
         try c.encode(seenToolIds, forKey: .seenToolIds)
+        try c.encode(impliedToolsGranted, forKey: .impliedToolsGranted)
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
         try c.encode(showMenuBar, forKey: .showMenuBar)
         try c.encode(menuBarOnly, forKey: .menuBarOnly)

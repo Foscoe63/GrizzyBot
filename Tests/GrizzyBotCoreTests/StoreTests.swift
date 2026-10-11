@@ -390,7 +390,7 @@ struct StoreTests {
     @Test("a delegate that runs past the limit is stopped and the lead is told")
     func delegateTimesOut() async {
         let (store, chief, researcher) = rosterStore(email: "roster-timeout@b.com")
-        store.delegateTimeout = 0.3
+        store.delegateTimeout = 3600
         let client = GatedChatClient(
             gating: "Researcher",
             queue: [
@@ -404,7 +404,7 @@ struct StoreTests {
         #expect(await store.waitForRunCompletion(botId: chief.id))
         #expect(store.threads[researcher.id]?.run?.status.isActive == true)
 
-        try? await Task.sleep(for: .seconds(1))
+        store.enforceDelegateTimeout(entryId: store.botChat[0].id)
         #expect(store.threads[researcher.id]?.run?.status == .cancelled)
         store.flushDelegationReports()
         let notice = store.messages(for: chief.id).last { $0.role == .bot }?.firstText ?? ""
@@ -417,7 +417,7 @@ struct StoreTests {
     @Test("a delegate held up for an approval is not timed out")
     func delegateWaitingForUserIsNotKilled() async {
         let (store, chief, researcher) = rosterStore(email: "roster-timeout-wait@b.com")
-        store.delegateTimeout = 2
+        store.delegateTimeout = 3600
         store.chatCompleter = QueueChatClient([
             messageBotCall("{\"name\":\"Researcher\",\"task\":\"Check the disk\"}"),
             ChatCompletionResponse(toolCalls: [LLMToolCall(id: "2", name: "shell", arguments: "{\"command\":\"echo hi\"}")]),
@@ -426,8 +426,30 @@ struct StoreTests {
         store.send(botId: chief.id, text: "ask Researcher to check the disk")
         #expect(await store.waitForRunCompletion(botId: chief.id))
         #expect(store.threads[researcher.id]?.run?.status == .waitingInput)
-        try? await Task.sleep(for: .seconds(3))
+        let entryId = store.botChat[0].id
+        store.enforceDelegateTimeout(entryId: entryId)
         #expect(store.threads[researcher.id]?.run?.status == .waitingInput)
+    }
+
+    @Test("existing bots are given their implied tools once, and can then switch them off")
+    func impliedToolsMigrateOnce() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "implied@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Old", title: "")
+        store.setBotTool(bot.id, toolId: "shell", enabled: true)
+        store.setBotTool(bot.id, toolId: "shortcuts_run", enabled: false)
+        store.appConfig.impliedToolsGranted = false
+        store.grantImpliedTools()
+
+        func tools() -> [String] { store.bots.first { $0.id == bot.id }?.enabledTools ?? [] }
+        #expect(tools().contains("shortcuts_run"))
+        #expect(store.appConfig.impliedToolsGranted)
+
+        // Turned off after the migration, it stays off — the migration does not run again.
+        store.setBotTool(bot.id, toolId: "shortcuts_run", enabled: false)
+        store.grantImpliedTools()
+        #expect(!tools().contains("shortcuts_run"))
+        #expect(tools().contains("shell"))
     }
 
     @Test("list_delegations shows what the lead handed off")
