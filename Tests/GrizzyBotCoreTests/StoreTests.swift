@@ -387,6 +387,49 @@ struct StoreTests {
         #expect(store.waitingOnPeers(for: chief.id).isEmpty)
     }
 
+    @Test("a delegate that runs past the limit is stopped and the lead is told")
+    func delegateTimesOut() async {
+        let (store, chief, researcher) = rosterStore(email: "roster-timeout@b.com")
+        store.delegateTimeout = 0.3
+        let client = GatedChatClient(
+            gating: "Researcher",
+            queue: [
+                messageBotCall("{\"name\":\"Researcher\",\"task\":\"Read every filing\",\"wait\":false}"),
+                ChatCompletionResponse(text: "Handed off."),
+                ChatCompletionResponse(text: "Never delivered."),
+            ]
+        )
+        store.chatCompleter = client
+        store.send(botId: chief.id, text: "hand it to Researcher")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        #expect(store.threads[researcher.id]?.run?.status.isActive == true)
+
+        try? await Task.sleep(for: .seconds(1))
+        #expect(store.threads[researcher.id]?.run?.status == .cancelled)
+        store.flushDelegationReports()
+        let notice = store.messages(for: chief.id).last { $0.role == .bot }?.firstText ?? ""
+        #expect(notice.contains("did not finish the job"))
+        #expect(notice.contains("still working after"))
+        #expect(store.botChat[0].outcome == .failed)
+        client.release()
+    }
+
+    @Test("a delegate held up for an approval is not timed out")
+    func delegateWaitingForUserIsNotKilled() async {
+        let (store, chief, researcher) = rosterStore(email: "roster-timeout-wait@b.com")
+        store.delegateTimeout = 2
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"Researcher\",\"task\":\"Check the disk\"}"),
+            ChatCompletionResponse(toolCalls: [LLMToolCall(id: "2", name: "shell", arguments: "{\"command\":\"echo hi\"}")]),
+            ChatCompletionResponse(text: "Researcher needs your approval."),
+        ])
+        store.send(botId: chief.id, text: "ask Researcher to check the disk")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        #expect(store.threads[researcher.id]?.run?.status == .waitingInput)
+        try? await Task.sleep(for: .seconds(3))
+        #expect(store.threads[researcher.id]?.run?.status == .waitingInput)
+    }
+
     @Test("list_delegations shows what the lead handed off")
     func listDelegations() async {
         let (store, chief, _) = rosterStore(email: "roster-list@b.com")

@@ -299,6 +299,7 @@
 		F99902E5AA8EA9216C152D73 /* BotMeshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB9FD1BA06514D5C326236A /* BotMeshTests.swift */; };
 		FB6710364DF260F35BF115FD /* DelegateReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8533588635D8E813ABD41ED /* DelegateReport.swift */; };
 		FBA638A0587A37203F1A18AD /* BotLookup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F57B3C6AA1237340AF52728 /* BotLookup.swift */; };
+		FE36166D5B76AB759117B14A /* AppStore+DelegateTimeout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 184E642447AA236D906C22A7 /* AppStore+DelegateTimeout.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -429,6 +430,7 @@
 		123816BD5C1D3CE3C8AB8F50 /* LocalMLXView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMLXView.swift; sourceTree = "<group>"; };
 		13D0D4588740BA7792D28644 /* RunQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunQueueTests.swift; sourceTree = "<group>"; };
 		17C94AEAC462E7536F0294E8 /* AppStore+ControlPlane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore+ControlPlane.swift"; sourceTree = "<group>"; };
+		184E642447AA236D906C22A7 /* AppStore+DelegateTimeout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore+DelegateTimeout.swift"; sourceTree = "<group>"; };
 		18AF36B17110508186941B07 /* DeviceCodeAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCodeAuth.swift; sourceTree = "<group>"; };
 		19F5121A2BF172D1C3A8BD26 /* SkillCurator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillCurator.swift; sourceTree = "<group>"; };
 		1A6F60EEC9A41081BF19C4A7 /* AppStore+Plugins.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore+Plugins.swift"; sourceTree = "<group>"; };
@@ -1018,6 +1020,7 @@
 				79C29D8F0D365C3637E9DF45 /* AppStore+Companion.swift */,
 				17C94AEAC462E7536F0294E8 /* AppStore+ControlPlane.swift */,
 				8A8122ABFCFE5D49D41F59B6 /* AppStore+Curator.swift */,
+				184E642447AA236D906C22A7 /* AppStore+DelegateTimeout.swift */,
 				74C21CFC24F3422B61CF6373 /* AppStore+Dispatch.swift */,
 				3A49478013F803544D03896B /* AppStore+HumanGate.swift */,
 				C89B8521C224228C18E3DCE5 /* AppStore+Leaks.swift */,
@@ -1438,6 +1441,7 @@
 				CD665493CBCAAEA21723D23C /* AppStore+Companion.swift in Sources */,
 				2D7B8732B64FB470B6DB4674 /* AppStore+ControlPlane.swift in Sources */,
 				8EA7E869D37444C20B99A8CC /* AppStore+Curator.swift in Sources */,
+				FE36166D5B76AB759117B14A /* AppStore+DelegateTimeout.swift in Sources */,
 				12D012681C3F635BB3256687 /* AppStore+Dispatch.swift in Sources */,
 				91242662620FF0E773B4BEB8 /* AppStore+HumanGate.swift in Sources */,
 				62FB35A26F24248116F7BC18 /* AppStore+Leaks.swift in Sources */,
@@ -1957,7 +1961,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1974,7 +1978,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 0.11.2;
+				MARKETING_VERSION = 0.11.3;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2050,7 +2054,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2071,7 +2075,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 0.11.2;
+				MARKETING_VERSION = 0.11.3;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
