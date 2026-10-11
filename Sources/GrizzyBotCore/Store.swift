@@ -1887,7 +1887,8 @@ public final class AppStore {
                     depth: depth,
                     endpoint: endpoint,
                     client: client,
-                    approved: approved
+                    approved: approved,
+                    scope: scope
                 )
             case .advertised(let serverId, let toolName):
                 var rewritten = args
@@ -1900,7 +1901,8 @@ public final class AppStore {
                     depth: depth,
                     endpoint: endpoint,
                     client: client,
-                    approved: approved
+                    approved: approved,
+                    scope: scope
                 )
             case .missingGateway(let tool):
                 let output = McpToolRouting.missingGatewayMessage(tool: tool, enabled: enabledMcp)
@@ -3186,6 +3188,26 @@ public final class AppStore {
                 return AgentToolCallResult(output: denied)
             }
             let prompt = s("prompt", "query", "text")
+            // Servers only see the folders this bot may use, through roots/list.
+            McpRoots.set(
+                ([effectiveWorkingFolder(for: bot)].compactMap { $0 }.filter { !$0.isEmpty }
+                    + grantedFolders(for: bot).map(\.path)).map(BotHomeStore.expandPath)
+            )
+            if !toolName.isEmpty,
+               McpCatalog.needsApproval(
+                   server: server,
+                   toolName: toolName,
+                   listed: mcpListedTools[server.id]?.first(where: { $0.name == toolName })
+               ),
+               let gated = gatedWrite(
+                   tool: "mcp_call:\(server.id)/\(toolName)",
+                   detail: "\(server.name) → \(toolName)",
+                   argumentsJSON: argumentsJSON,
+                   bot: bot,
+                   approved: approved
+               ) {
+                return gated
+            }
             do {
                 if toolName.isEmpty {
                     if prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -3216,6 +3238,7 @@ public final class AppStore {
                             isError: result.isError,
                             text: result.text
                         ))],
+                        imageJPEGBase64: result.images.lazy.compactMap(McpImageConversion.jpegBase64).first,
                         promotedMcpTools: harvested
                     )
                 }
@@ -3272,6 +3295,7 @@ public final class AppStore {
                         isError: result.isError,
                         text: result.text
                     ))],
+                    imageJPEGBase64: result.images.lazy.compactMap(McpImageConversion.jpegBase64).first,
                     promotedMcpTools: harvested
                 )
             } catch {

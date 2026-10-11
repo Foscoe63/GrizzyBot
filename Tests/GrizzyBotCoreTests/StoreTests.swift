@@ -391,6 +391,32 @@ struct StoreTests {
         #expect(store.threads[chief.id]?.run?.status == .waitingInput)
     }
 
+    @Test("an MCP tool its server marks destructive stops for approval; a read-only one does not")
+    func mcpWriteNeedsApproval() async throws {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "mcp-gate@b.com", password: "password1") == nil)
+        let server = try #require(store.addMcpServer(
+            name: "files", transport: .stdio, command: "/nonexistent/mcp", args: [], env: [:], url: "", headers: [:]
+        ))
+        let bot = store.createBot(name: "Worker", title: "")
+        store.setBotTool(bot.id, toolId: "mcp_call", enabled: true)
+        store.setBotTool(bot.id, toolId: server.toolId, enabled: true)
+        store.mcpAdvertisedTools[server.id] = ["wipe", "peek"]
+        store.mcpListedTools[server.id] = [
+            McpToolInfo(name: "wipe", destructiveHint: true),
+            McpToolInfo(name: "peek", readOnlyHint: true),
+        ]
+        store.chatCompleter = QueueChatClient([
+            toolCall("mcp_call", "{\"server\":\"files\",\"tool\":\"peek\"}"),
+            toolCall("mcp_call", "{\"server\":\"files\",\"tool\":\"wipe\"}", id: "2"),
+        ])
+        store.send(botId: bot.id, text: "look then wipe")
+        #expect(await store.waitForRunStatus(botId: bot.id, status: .waitingInput))
+        let results = (store.threads[bot.id]?.llmMessages ?? []).filter { $0.role == "tool" }.compactMap(\.content)
+        #expect(results.contains { $0.contains("MCP call failed") })
+        #expect(results.contains { $0.contains("Need approval to run mcp_call:") && $0.contains("wipe") })
+    }
+
     @Test("message_bot refuses an unknown name and lists the real ones")
     func messageBotUnknown() async {
         let store = tempStore()

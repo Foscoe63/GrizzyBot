@@ -860,7 +860,9 @@ extension AppStore {
         case "edit_file.host": return "edit_file"
         case "move_file.host": return "move_file"
         case "delete_file.host": return "delete_file"
-        default: return tool
+        default:
+            // Per-tool approvals are keyed `mcp_call:<server>/<tool>` but run as `mcp_call`.
+            return tool.hasPrefix("mcp_call:") ? "mcp_call" : tool
         }
     }
 

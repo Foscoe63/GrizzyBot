@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 
 // MARK: - Errors
 
@@ -32,11 +33,46 @@ public struct McpToolInfo: Sendable, Hashable {
     public var name: String
     public var description: String
     public var inputSchema: [String: AnyCodableMCP]
+    /// `annotations.readOnlyHint` / `destructiveHint` from tools/list. Nil when the server didn't say.
+    public var readOnlyHint: Bool?
+    public var destructiveHint: Bool?
 
-    public init(name: String, description: String = "", inputSchema: [String: AnyCodableMCP] = [:]) {
+    public init(
+        name: String,
+        description: String = "",
+        inputSchema: [String: AnyCodableMCP] = [:],
+        readOnlyHint: Bool? = nil,
+        destructiveHint: Bool? = nil
+    ) {
         self.name = name
         self.description = description
         self.inputSchema = inputSchema
+        self.readOnlyHint = readOnlyHint
+        self.destructiveHint = destructiveHint
+    }
+}
+
+/// An image a tool returned, still base64 in the server's own format.
+public struct McpImagePart: Sendable, Hashable {
+    public var base64: String
+    public var mimeType: String
+
+    public init(base64: String, mimeType: String) {
+        self.base64 = base64
+        self.mimeType = mimeType
+    }
+}
+
+/// A tools/call result with its content blocks sorted into text and media.
+public struct McpToolOutput: Sendable {
+    public var text: String
+    public var isError: Bool
+    public var images: [McpImagePart]
+
+    public init(text: String, isError: Bool = false, images: [McpImagePart] = []) {
+        self.text = text
+        self.isError = isError
+        self.images = images
     }
 }
 
@@ -45,12 +81,20 @@ public struct McpCallResult: Sendable {
     public var text: String
     public var isError: Bool
     public var listedTools: [McpToolInfo]
+    public var images: [McpImagePart]
 
-    public init(toolName: String, text: String, isError: Bool = false, listedTools: [McpToolInfo] = []) {
+    public init(
+        toolName: String,
+        text: String,
+        isError: Bool = false,
+        listedTools: [McpToolInfo] = [],
+        images: [McpImagePart] = []
+    ) {
         self.toolName = toolName
         self.text = text
         self.isError = isError
         self.listedTools = listedTools
+        self.images = images
     }
 }
 
@@ -163,8 +207,10 @@ public enum McpClient {
             guard !tools.isEmpty else { throw McpError.noTools }
             let tool = selectTool(from: tools, prompt: prompt)
             let args = buildArguments(for: tool, prompt: prompt)
-            let (text, isError) = try await toolsCall(session: session, name: tool.name, arguments: args)
-            return McpCallResult(toolName: tool.name, text: text, isError: isError, listedTools: tools)
+            let out = try await toolsCall(session: session, name: tool.name, arguments: args)
+            return McpCallResult(
+                toolName: tool.name, text: out.text, isError: out.isError, listedTools: tools, images: out.images
+            )
         }
     }
 
@@ -177,12 +223,12 @@ public enum McpClient {
     ) async throws -> McpCallResult {
         // Unwrapped inside the closure: `[String: Any]` is not Sendable, `[String: JSONValue` is.
         try await pooled(server: server, timeout: timeout) { session in
-            let (text, isError) = try await toolsCall(
+            let out = try await toolsCall(
                 session: session,
                 name: toolName,
                 arguments: arguments.mapValues(\.any)
             )
-            return McpCallResult(toolName: toolName, text: text, isError: isError)
+            return McpCallResult(toolName: toolName, text: out.text, isError: out.isError, images: out.images)
         }
     }
 
@@ -234,14 +280,16 @@ public enum McpClient {
         guard !tools.isEmpty else { throw McpError.noTools }
         let tool = selectTool(from: tools, prompt: prompt)
         let args = buildArguments(for: tool, prompt: prompt)
-        let (text, isError) = try await toolsCall(session: session, name: tool.name, arguments: args)
-        return McpCallResult(toolName: tool.name, text: text, isError: isError, listedTools: tools)
+        let out = try await toolsCall(session: session, name: tool.name, arguments: args)
+        return McpCallResult(
+            toolName: tool.name, text: out.text, isError: out.isError, listedTools: tools, images: out.images
+        )
     }
 
     static func initialize(session: any McpSession) async throws -> [String: Any] {
         let params: [String: Any] = [
             "protocolVersion": protocolVersion,
-            "capabilities": [String: Any](),
+            "capabilities": ["roots": ["listChanged": false]],
             "clientInfo": [
                 "name": clientName,
                 "version": clientVersion,
@@ -252,18 +300,35 @@ public enum McpClient {
         return (result as? [String: Any]) ?? [:]
     }
 
+    /// Pages through `tools/list` so servers that paginate don't look like they have few tools.
     static func toolsList(session: any McpSession) async throws -> [McpToolInfo] {
-        let raw = try await session.sendRequest(method: "tools/list", params: [:])
-        let obj = raw as? [String: Any] ?? [:]
+        var tools: [McpToolInfo] = []
+        var cursor: String?
+        var seen = Set<String>()
+        for _ in 0..<50 {
+            let params: [String: Any] = cursor.map { ["cursor": $0] } ?? [:]
+            let raw = try await session.sendRequest(method: "tools/list", params: params)
+            let obj = raw as? [String: Any] ?? [:]
+            tools.append(contentsOf: parseToolList(obj))
+            guard let next = obj["nextCursor"] as? String, !next.isEmpty, seen.insert(next).inserted else { break }
+            cursor = next
+        }
+        return tools
+    }
+
+    public static func parseToolList(_ obj: [String: Any]) -> [McpToolInfo] {
         let list = obj["tools"] as? [[String: Any]] ?? []
         return list.compactMap { item in
             guard let name = item["name"] as? String, !name.isEmpty else { return nil }
             let description = item["description"] as? String ?? ""
             let schema = (item["inputSchema"] as? [String: Any]) ?? [:]
+            let annotations = item["annotations"] as? [String: Any]
             return McpToolInfo(
                 name: name,
                 description: description,
-                inputSchema: schema.mapValues(AnyCodableMCP.init)
+                inputSchema: schema.mapValues(AnyCodableMCP.init),
+                readOnlyHint: annotations?["readOnlyHint"] as? Bool,
+                destructiveHint: annotations?["destructiveHint"] as? Bool
             )
         }
     }
@@ -272,7 +337,7 @@ public enum McpClient {
         session: any McpSession,
         name: String,
         arguments: [String: Any]
-    ) async throws -> (text: String, isError: Bool) {
+    ) async throws -> McpToolOutput {
         let raw = try await session.sendRequest(
             method: "tools/call",
             params: [
@@ -280,21 +345,49 @@ public enum McpClient {
                 "arguments": arguments,
             ]
         )
-        let obj = raw as? [String: Any] ?? [:]
+        return parseToolResult(raw as? [String: Any] ?? [:])
+    }
+
+    /// Sorts content blocks into text and media. Images are kept as images rather than pasted
+    /// into the transcript as base64; other binary content is named, not dumped.
+    public static func parseToolResult(_ obj: [String: Any]) -> McpToolOutput {
         let isError = (obj["isError"] as? Bool) ?? false
         let content = obj["content"] as? [[String: Any]] ?? []
-        let texts = content.compactMap { block -> String? in
-            if let t = block["text"] as? String { return t }
-            if let data = block["data"] as? String { return data }
-            return nil
+        var texts: [String] = []
+        var images: [McpImagePart] = []
+        for block in content {
+            switch block["type"] as? String ?? "" {
+            case "image":
+                if let data = block["data"] as? String, !data.isEmpty {
+                    let mime = block["mimeType"] as? String ?? "image/png"
+                    images.append(McpImagePart(base64: data, mimeType: mime))
+                    texts.append("[image \(mime) returned]")
+                }
+            case "audio":
+                texts.append("[audio \(block["mimeType"] as? String ?? "") returned; not playable here]")
+            case "resource":
+                let resource = block["resource"] as? [String: Any] ?? [:]
+                let uri = resource["uri"] as? String ?? ""
+                if let text = resource["text"] as? String {
+                    texts.append(uri.isEmpty ? text : "[resource \(uri)]\n\(text)")
+                } else {
+                    texts.append("[binary resource \(uri) \(resource["mimeType"] as? String ?? "")]")
+                }
+            case "resource_link":
+                let name = block["name"] as? String ?? ""
+                let uri = block["uri"] as? String ?? ""
+                texts.append("[resource link \(name) \(uri)]")
+            default:
+                if let t = block["text"] as? String { texts.append(t) }
+            }
         }
         if !texts.isEmpty {
-            return (texts.joined(separator: "\n\n"), isError)
+            return McpToolOutput(text: texts.joined(separator: "\n\n"), isError: isError, images: images)
         }
         if let structured = obj["structuredContent"] {
-            return (stringifyJSON(structured), isError)
+            return McpToolOutput(text: stringifyJSON(structured), isError: isError, images: images)
         }
-        return (stringifyJSON(obj), isError)
+        return McpToolOutput(text: stringifyJSON(obj), isError: isError, images: images)
     }
 
     public static func selectTool(from tools: [McpToolInfo], prompt: String) -> McpToolInfo {
@@ -499,6 +592,22 @@ public enum McpClient {
         return nil
     }
 
+    /// Answers a request the server sent us. Nil means "method not found".
+    public static func serverRequestResult(method: String) -> [String: Any]? {
+        switch method {
+        case "ping":
+            return [:]
+        case "roots/list":
+            let roots = McpRoots.current.map { path -> [String: Any] in
+                let url = URL(fileURLWithPath: path)
+                return ["uri": url.absoluteString, "name": url.lastPathComponent]
+            }
+            return ["roots": roots]
+        default:
+            return nil
+        }
+    }
+
     static func jsonRPCId(_ object: [String: Any]) -> Int? {
         if let i = object["id"] as? Int { return i }
         if let n = object["id"] as? NSNumber { return n.intValue }
@@ -652,6 +761,8 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
     private var buffer = Data()
     private var stderrBytes = Data()
     private var pending: [Int: CheckedContinuation<SendableJSON, Error>] = [:]
+    /// When each pending request gives up; progress notifications push these out.
+    private var deadlines: [Int: Date] = [:]
     private var closed = false
     private var didFail = false
     private var lastError: Error?
@@ -762,18 +873,60 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
     private func handleLine(_ line: Data) {
         do {
             let obj = try McpClient.decodeJSONObject(line)
+            // A message carrying `method` is the server talking to us (ping, roots/list,
+            // progress), not a reply. Its id lives in the server's id space and must not be
+            // matched against our pending requests.
+            if let method = obj["method"] as? String {
+                handleServerMessage(method: method, id: obj["id"])
+                return
+            }
             guard let id = McpClient.jsonRPCId(obj) else { return }
             if let error = obj["error"] as? [String: Any] {
                 let code = error["code"] as? Int ?? -1
                 let message = error["message"] as? String ?? "unknown"
+                deadlines.removeValue(forKey: id)
                 pending.removeValue(forKey: id)?.resume(throwing: McpError.remote(code: code, message: message))
             } else if let result = obj["result"] {
+                deadlines.removeValue(forKey: id)
                 pending.removeValue(forKey: id)?.resume(returning: SendableJSON(result))
             } else {
                 pending.removeValue(forKey: id)?.resume(returning: SendableJSON([String: Any]()))
             }
         } catch {
             // Skip malformed / log lines.
+        }
+    }
+
+    /// Fires at the request's deadline; if progress moved it, waits for the new one.
+    private func armDeadline(for id: Int) {
+        guard let due = deadlines[id] else { return }
+        queue.asyncAfter(deadline: .now() + max(0.01, due.timeIntervalSinceNow)) { [weak self] in
+            guard let self, let current = self.deadlines[id] else { return }
+            if current > Date().addingTimeInterval(0.005) {
+                self.armDeadline(for: id)
+                return
+            }
+            self.deadlines.removeValue(forKey: id)
+            self.pending.removeValue(forKey: id)?.resume(throwing: McpError.timeout)
+        }
+    }
+
+    private func handleServerMessage(method: String, id: Any?) {
+        if method == "notifications/progress" {
+            // Long tools report progress; treat it as liveness and push the deadlines out.
+            let renewed = Date().addingTimeInterval(timeout)
+            for key in pending.keys { deadlines[key] = renewed }
+            return
+        }
+        guard let id else { return }  // other notifications need no answer
+        var reply: [String: Any] = ["jsonrpc": "2.0", "id": id]
+        if let result = McpClient.serverRequestResult(method: method) {
+            reply["result"] = result
+        } else {
+            reply["error"] = ["code": -32601, "message": "Method not found: \(method)"]
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: reply) {
+            try? stdin.write(contentsOf: data + Data([0x0A]))
         }
     }
 
@@ -824,11 +977,8 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
                     return
                 }
                 self.pending[id] = cont
-
-                self.queue.asyncAfter(deadline: .now() + self.timeout) {
-                    guard let timedOut = self.pending.removeValue(forKey: id) else { return }
-                    timedOut.resume(throwing: McpError.timeout)
-                }
+                self.deadlines[id] = Date().addingTimeInterval(self.timeout)
+                self.armDeadline(for: id)
 
                 do {
                     try self.stdin.write(contentsOf: data)
@@ -1200,5 +1350,38 @@ final class McpHTTPSession: McpSession, @unchecked Sendable {
             applyUserHeaders(to: &request)
             _ = try? await URLSession.shared.data(for: request)
         }
+    }
+}
+
+/// Folders offered to MCP servers through `roots/list` (the bot's working and granted folders).
+public enum McpRoots {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var paths: [String] = []
+
+    public static var current: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return paths
+    }
+
+    public static func set(_ newPaths: [String]) {
+        lock.lock(); defer { lock.unlock() }
+        paths = newPaths
+    }
+}
+
+public enum McpImageConversion {
+    /// The agent loop sends screenshots as JPEG, so re-encode other formats.
+    public static func jpegBase64(_ image: McpImagePart) -> String? {
+        if image.mimeType.lowercased().contains("jpeg") || image.mimeType.lowercased().contains("jpg") {
+            return image.base64
+        }
+        guard let data = Data(base64Encoded: image.base64),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cg = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        let out = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(out, "public.jpeg" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, cg, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return (out as Data).base64EncodedString()
     }
 }

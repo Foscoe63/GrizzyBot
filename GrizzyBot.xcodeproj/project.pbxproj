@@ -65,6 +65,7 @@
 		3A7BD9E28B22AE20A6CECE4D /* PrivacyFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20ED2EB103BBE287E0CA1CCD /* PrivacyFilter.swift */; };
 		3B91AC90C681D794785E8CDD /* DeviceCodeAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18AF36B17110508186941B07 /* DeviceCodeAuth.swift */; };
 		3D0B35968BEC5EB94C0BC298 /* AguiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F89AB1C5DBB68A861D07FE7 /* AguiClient.swift */; };
+		3DA7A6504AF9E2DFF27C4E4B /* McpProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AC19A94F213411EF46E95D7 /* McpProtocolTests.swift */; };
 		3DFB9720E670A7D1E10DFE9D /* ArtifactViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B702235E880FE29D8EFBD0D /* ArtifactViews.swift */; };
 		3F0AA37F81977773F44A1610 /* SplashModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82CA1F47803E559865A2E65D /* SplashModels.swift */; };
 		3F42D29D2D8CE095C23E7EDF /* LocalMLXTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C2556BD681BD545F3174B8 /* LocalMLXTests.swift */; };
@@ -380,6 +381,7 @@
 		399CF9C4F90564BD9E964847 /* GrizzyBot.Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GrizzyBot.Release.entitlements; sourceTree = "<group>"; };
 		3A13665DC7A54059575E9646 /* LocalProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProviders.swift; sourceTree = "<group>"; };
 		3A8DD9E826E36CC502640AE4 /* AppSettingsOverlayView+Connections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppSettingsOverlayView+Connections.swift"; sourceTree = "<group>"; };
+		3AC19A94F213411EF46E95D7 /* McpProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpProtocolTests.swift; sourceTree = "<group>"; };
 		3B837C583BDF40F274396CBB /* MLXLocalGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXLocalGenerator.swift; sourceTree = "<group>"; };
 		3BBF57FBBC6ACB5D1E8E3F15 /* ComposerImageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerImageTests.swift; sourceTree = "<group>"; };
 		3C22124F7FE82A7C71958B52 /* GrizzyBotCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GrizzyBotCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -623,6 +625,7 @@
 				90E608627E9ED8C81E3D90D8 /* LocalProvidersTests.swift */,
 				38404F696EB8978F298A22AA /* McpCatalogPromoteTests.swift */,
 				CC7102D998178BBA84298757 /* McpClientTests.swift */,
+				3AC19A94F213411EF46E95D7 /* McpProtocolTests.swift */,
 				FFC55BFA06E6A3A173425561 /* McpSessionPoolTests.swift */,
 				4C32D41A012DB909866A195E /* McpTimeoutTests.swift */,
 				3FBF69FD6337797E70B66E27 /* McpToolGateTests.swift */,
@@ -1308,6 +1311,7 @@
 				E06758F1CD11E18D1E5496C2 /* LocalProvidersTests.swift in Sources */,
 				B8D670CD267FCA1B92942DA4 /* McpCatalogPromoteTests.swift in Sources */,
 				1BDD175C76D18C304B93A79F /* McpClientTests.swift in Sources */,
+				3DA7A6504AF9E2DFF27C4E4B /* McpProtocolTests.swift in Sources */,
 				24B6783D982875017DD5C21C /* McpSessionPoolTests.swift in Sources */,
 				E17F1AF61B7E088741C0A355 /* McpTimeoutTests.swift in Sources */,
 				2AEE356C81F8B4EB09783D8F /* McpToolGateTests.swift in Sources */,
