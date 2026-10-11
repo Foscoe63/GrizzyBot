@@ -120,6 +120,9 @@ public struct AgentToolCallResult: Sendable {
     public var loadedSkillBodies: [(id: String, body: String)]
     /// When true, end the agent loop after this tool (complete).
     public var endTurn: Bool
+    /// Tokens spent by work this tool ran (a helper's own model calls).
+    public var extraInputTokens: Int
+    public var extraOutputTokens: Int
 
     public init(
         output: String,
@@ -128,8 +131,12 @@ public struct AgentToolCallResult: Sendable {
         imageJPEGBase64: String? = nil,
         promotedMcpTools: [McpPromotedTool] = [],
         loadedSkillBodies: [(id: String, body: String)] = [],
-        endTurn: Bool = false
+        endTurn: Bool = false,
+        extraInputTokens: Int = 0,
+        extraOutputTokens: Int = 0
     ) {
+        self.extraInputTokens = extraInputTokens
+        self.extraOutputTokens = extraOutputTokens
         self.output = output
         self.blocks = blocks
         self.pause = pause
@@ -673,6 +680,7 @@ public enum AgentLoop {
         "web_search", "web_fetch", "read_file", "list_files", "search_memory",
         "computer_screenshot", "mcp_list_tools", "read_skill", "search_knowledge",
         "canvas_list", "artifact_list", "artifact_read",
+        "run_subagent", "check_bot", "list_delegations",
     ]
 
     /// Runs the loop and mirrors its lifecycle to ai-memory (see `AiMemoryBridge`).
@@ -922,6 +930,8 @@ public enum AgentLoop {
             var finish: (text: String, pause: AgentPause?)?
             for (call, result) in zip(response.toolCalls, results) {
                 blocks.append(contentsOf: result.blocks)
+                inputTokens += result.extraInputTokens
+                outputTokens += result.extraOutputTokens
                 let raw = result.output.isEmpty ? "(empty tool result)" : result.output
                 var output = (call.name != "mcp_list_tools" && raw.count > 3_500)
                     ? ContextCompactor.summarizePayload(raw, head: 2_000, tail: 1_000)

@@ -165,6 +165,8 @@ struct StoreTests {
             ChatCompletionResponse(text: "The filing closes on the 30th."),
             ChatCompletionResponse(text: "Researcher says the filing closes on the 30th."),
         ])
+        let bystander = store.createBot(name: "Bystander", title: "")
+        store.activeBotId = bystander.id
         store.send(botId: chief.id, text: "get me a brief")
         #expect(await store.waitForRunCompletion(botId: chief.id))
 
@@ -177,7 +179,8 @@ struct StoreTests {
         let toolResults = (store.threads[chief.id]?.llmMessages ?? []).filter { $0.role == "tool" }
         #expect(toolResults.contains { ($0.content ?? "").contains("The filing closes on the 30th.") })
         #expect(childBotStatus(in: store.messages(for: chief.id), botId: researcher.id) == .answered)
-        #expect(store.activeBotId == chief.id)
+        // Delegating must not yank the user off the bot they are reading.
+        #expect(store.activeBotId == bystander.id)
         #expect(store.bots.filter { $0.name == "Researcher" }.count == 1)
     }
 
@@ -309,6 +312,83 @@ struct StoreTests {
 
         client.release()
         #expect(await store.waitForRunCompletion(botId: researcher.id))
+    }
+
+    private func toolCall(_ name: String, _ arguments: String, id: String = "1") -> ChatCompletionResponse {
+        ChatCompletionResponse(toolCalls: [LLMToolCall(id: id, name: name, arguments: arguments)])
+    }
+
+    @Test("a finished background handoff is reported back into the lead's thread")
+    func delegationReportIsDelivered() async {
+        let (store, chief, researcher) = rosterStore(email: "roster-report@b.com")
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"Researcher\",\"task\":\"Run the morning brief\",\"wait\":false}"),
+            ChatCompletionResponse(text: "Researcher is on it."),
+            ChatCompletionResponse(text: "Brief done: three items."),
+        ])
+        store.send(botId: chief.id, text: "kick off the brief")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        #expect(await store.waitForRunCompletion(botId: researcher.id))
+        store.flushDelegationReports()
+        #expect(store.messages(for: chief.id).contains {
+            $0.role == .bot && $0.firstText.contains("finished the job") && $0.firstText.contains("three items")
+        })
+        #expect(store.botChat[0].outcome == .answered)
+        #expect(store.botChat[0].reportedAt != nil)
+        let count = store.messages(for: chief.id).filter { $0.firstText.contains("finished the job") }.count
+        store.flushDelegationReports()
+        #expect(store.messages(for: chief.id).filter { $0.firstText.contains("finished the job") }.count == count)
+    }
+
+    @Test("list_delegations shows what the lead handed off")
+    func listDelegations() async {
+        let (store, chief, _) = rosterStore(email: "roster-list@b.com")
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"Researcher\",\"task\":\"Brief me on the filing\"}"),
+            ChatCompletionResponse(text: "The filing closes on the 30th."),
+            toolCall("list_delegations", "{}", id: "2"),
+            ChatCompletionResponse(text: "ok"),
+        ])
+        store.send(botId: chief.id, text: "get me a brief, then list what you delegated")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        let results = (store.threads[chief.id]?.llmMessages ?? []).filter { $0.role == "tool" }
+        #expect(results.contains {
+            let text = $0.content ?? ""
+            return text.contains("Researcher") && text.contains("answered") && text.contains("Brief me on the filing")
+        })
+    }
+
+    @Test("message_bot will not pile a second job on a peer that is waiting on the user")
+    func messageBotRefusesBusyPeer() async {
+        let (store, chief, researcher) = rosterStore(email: "roster-busy@b.com")
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"Researcher\",\"task\":\"Check the disk\"}"),
+            toolCall("shell", "{\"command\":\"echo hi\"}", id: "2"),
+            toolCall("message_bot", "{\"name\":\"Researcher\",\"task\":\"Also check memory\"}", id: "3"),
+            ChatCompletionResponse(text: "Researcher is blocked."),
+        ])
+        store.send(botId: chief.id, text: "check the disk and memory")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        #expect(store.threads[researcher.id]?.run?.status == .waitingInput)
+        let results = (store.threads[chief.id]?.llmMessages ?? []).filter { $0.role == "tool" }
+        #expect(results.contains { ($0.content ?? "").contains("waiting on the user") })
+        #expect(!store.messages(for: researcher.id).contains { $0.firstText.contains("Also check memory") })
+    }
+
+    @Test("a helper keeps its own checklist and a helper's approval pauses the lead")
+    func subagentScopeAndPause() async {
+        let (store, chief, _) = rosterStore(email: "roster-helper@b.com")
+        store.chatCompleter = QueueChatClient([
+            toolCall("todo", "{\"markdown\":\"- [ ] lead item\"}"),
+            toolCall("run_subagent", "{\"name\":\"scout\",\"task\":\"look\"}", id: "2"),
+            toolCall("todo", "{\"markdown\":\"- [ ] helper item\"}", id: "3"),
+            toolCall("shell", "{\"command\":\"echo hi\"}", id: "4"),
+        ])
+        store.send(botId: chief.id, text: "plan then delegate")
+        #expect(await store.waitForRunStatus(botId: chief.id, status: .waitingInput))
+        let lead = await AgentTodoStore.shared.todo(for: chief.id)
+        #expect(lead?.markdown.contains("lead item") == true)
+        #expect(store.threads[chief.id]?.run?.status == .waitingInput)
     }
 
     @Test("message_bot refuses an unknown name and lists the real ones")

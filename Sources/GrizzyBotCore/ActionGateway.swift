@@ -40,7 +40,7 @@ public enum ActionGateway {
         case "list_files", "list_files.host":
             return .listFiles
         case "web_search", "web_fetch", "search_memory", "search_knowledge",
-             "mcp_list_tools", "read_skill", "plugin_call_read":
+             "mcp_list_tools", "read_skill", "plugin_call_read", "check_bot", "list_delegations":
             return .read
         case "shell", "shell.exec", "remember", "forget", "import_skills",
              "plugin_call", "spawn_bot", "message_bot", "delete_bot":
