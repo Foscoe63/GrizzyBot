@@ -531,6 +531,6 @@ public enum ElevenLabsError: Error, LocalizedError, Sendable {
 
 extension AgentLoopRequest {
     public static func charBudget(provider: String?) -> Int {
-        LocalProviders.isLocal(provider ?? "") ? 24_000 : 80_000
+        LocalProviders.isLocal(provider ?? "") ? 24_000 : 320_000
     }
 }
