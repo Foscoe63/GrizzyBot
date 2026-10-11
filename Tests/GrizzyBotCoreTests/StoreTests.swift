@@ -440,7 +440,7 @@ struct StoreTests {
         let tools = store.threads[chief.id]?.llmMessages.filter { $0.role == "tool" } ?? []
         #expect(tools.contains {
             let text = $0.content ?? ""
-            return text.contains("No bot named Analyst") && text.contains("Researcher")
+            return text.contains("No bot matches “Analyst”") && text.contains("Researcher")
         })
     }
 

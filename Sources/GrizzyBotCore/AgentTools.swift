@@ -339,6 +339,7 @@ public enum AgentToolCatalog {
         .init(id: "read_skill", label: "Read skill", subtitle: "Load a skill's full instructions"),
         .init(id: "import_skills", label: "Import skills", subtitle: "Copy SKILL.md folders into GrizzyBot"),
         .init(id: "skill_propose", label: "Propose skill", subtitle: "Draft a reusable skill for you to review"),
+        .init(id: "routine_manage", label: "Routines", subtitle: "Create, list, pause, or delete this bot's scheduled routines"),
         .init(id: "search_knowledge", label: "Search knowledge", subtitle: "Search granted knowledge sources"),
         .init(id: "search_sessions", label: "Search past chats", subtitle: "Find things said in this bot's earlier conversations"),
         .init(id: "present_component", label: "Present component", subtitle: "Show a form, gallery, or audit component"),
@@ -432,6 +433,12 @@ extension Bot {
         if toolId.hasPrefix("shortcuts_"), enabledTools.contains("shell") { return true }
         if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
         if toolId == "import_skills" || toolId == "skill_propose", enabledTools.contains("read_file") { return true }
+        // Bots that can run shell commands or coordinate other bots already act on a schedule's behalf;
+        // this gives them the real thing, behind an approval, instead of a cron job in the sandbox.
+        if toolId == "routine_manage",
+           enabledTools.contains("shell") || enabledTools.contains("spawn_bot") || enabledTools.contains("message_bot") {
+            return true
+        }
         if toolId == "search_knowledge", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
             return true
         }
@@ -524,6 +531,10 @@ extension AgentToolCatalog {
     ) -> [ChatTool] {
         let enabled = Set(enabledIds)
             .union(enabledIds.contains("read_file") ? ["import_skills", "skill_propose"] : [])
+            .union(
+                (enabledIds.contains("shell") || enabledIds.contains("spawn_bot") || enabledIds.contains("message_bot"))
+                    ? ["routine_manage"] : []
+            )
             .union((enabledIds.contains("request_takeover") || enabledIds.contains("plugin_call")) ? ["request_secret"] : [])
             .union(
                 (enabledIds.contains("remember") || enabledIds.contains("search_memory"))
@@ -894,6 +905,20 @@ extension AgentToolCatalog {
             description: "Import every SKILL.md under a folder into GrizzyBot’s skill library so bots can use them. Path may be absolute (e.g. ~/.agents/skills) or inside the bot home.",
             properties: ["path": stringProp("Folder that contains SKILL.md files")],
             required: ["path"]
+        )
+        add(
+            "routine_manage",
+            description: "Make something run on a schedule, or look after this bot's scheduled routines. Use this whenever the person asks for a \"routine\", something that \"runs every …\", or \"N times a week\" — never crontab, launchd, or a script. Actions: create, list, pause, resume, delete. For create give a name, a prompt (what the bot should do each time, self-contained), and a schedule: cron (five fields, e.g. \"0 9 * * 1,3,5\") or days (\"mon,wed,fri\", \"weekdays\", \"daily\") plus time (\"9:00\", \"6:30 PM\"). Not more often than every 15 minutes. The person approves each new routine. A routine runs this bot with this bot's own tools.",
+            properties: [
+                "action": stringProp("create, list, pause, resume, or delete"),
+                "name": stringProp("Routine name (create), or the routine to act on"),
+                "prompt": stringProp("What to do on each run (create)"),
+                "cron": stringProp("Cron schedule, five fields (create)"),
+                "days": stringProp("Days instead of cron, e.g. mon,wed,fri or weekdays"),
+                "time": stringProp("Time of day with days, e.g. 9:00 or 6:30 PM"),
+                "id": stringProp("Routine id or name (pause, resume, delete)"),
+            ],
+            required: ["action"]
         )
         add(
             "skill_propose",

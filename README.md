@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.11.0-3B82F6?style=for-the-badge" alt="Version 0.11.0">
+  <img src="https://img.shields.io/badge/version-0.11.1-3B82F6?style=for-the-badge" alt="Version 0.11.1">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,13 +49,20 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.0** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.1** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
 ---
 
 ## 🆕 What's new
+
+### 0.11.1 — fixes from a real run
+
+- **Bots can make routines.** The new `routine_manage` tool lets a bot create, list, pause, resume, and delete its own routines — "make that a routine, three times a week" now makes a real one instead of a cron job in the sandbox. The schedule is `cron` or `days` + `time` (`mon,wed,fri` at `9:00`), validated before anything is created, and never more often than every 15 minutes. You approve each new routine; a run that has read outside content needs you every time, whatever the bot's auto-approve setting. Bots only touch their own routines.
+- **Auto-approve no longer covers the memory gate.** A run that read the web used to be able to write shared memory on an auto-approve bot. Now an unattended or auto-approve bot keeps such a fact as its own *unverified* memory, never shared or pinned, and cannot forget memory at all; an attended bot asks you. *Always allow* is no longer offered on these cards, a stored one is ignored, and the routine gate works the same way.
+- **`message_bot` finds a bot by name or id in either field.** It used to say "No bot named Researcher. Bots: …, Researcher" when a model put the name in the id field. Partial names work when they're unambiguous.
+- **Model reasoning stays out of the chat.** Providers that put the opening `<think>` in the prompt send reasoning followed by a bare `</think>`; that reasoning no longer appears in the progress bubble.
 
 ### 0.11 — the right bot answers
 
@@ -309,6 +316,7 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 🧩 | **MCP** | First-class `server-slug__tool` names plus `mcp_list_tools` / `mcp_call` — see [Plugins, MCP & destinations](#-plugins-mcp--destinations). |
 | 🔗 | **Shortcuts** | `shortcuts_list` names every Shortcut in your library; `shortcuts_run` runs one by name with optional text input and returns what it produced. Structured system automation instead of clicking a menu that moves between OS versions. Approval-gated as `shortcuts.run`, and granted by the **Shell** switch since a shell can already invoke `/usr/bin/shortcuts`. |
 | 🔌 | **Plugins & skills** | `plugin_call` (`action=search` / `write` / `delete`), `destination_write`, `read_skill`, `import_skills`, `skill_propose` (a draft skill that stays off until you approve it), plus any custom tools you add. |
+| 📅 | **Routines** | `routine_manage` — `create`, `list`, `pause`, `resume`, `delete` for this bot's own routines. Schedule by `cron` or by `days` + `time`; at least 15 minutes apart; each new routine needs your approval, and always does after the run has read outside content. |
 | 🔑 | **Secrets** | `request_secret` asks you for a key or password in a private field (or an `op://` 1Password reference). The bot never sees the value: it writes `{{secret:NAME}}` in a `web_fetch`, `plugin_call`, MCP, or `shell` call and GrizzyBot fills it in at the last moment. In a shell command the placeholder becomes `"$GRIZZY_SECRET_NAME"`, so the approval card never shows the value. |
 
 If a builtin file or web tool is off, the loop routes to a **connected MCP server that actually has that tool** (for example fast-filesystem or a search server). It does **not** send those calls to Toolport unless Toolport is enabled and listed.
@@ -453,7 +461,7 @@ Editing a bundled skill saves a user copy under the same id, which then override
 
 `remember` upserts similar facts instead of duplicating. Standing rules go under `## Pin` (`pin: true` or `scope: pin`) and always load in the prompt. Recent facts go under `## Facts`. `search_memory` is hybrid BM25 + salience RRF over this bot plus shared — sibling bots are not leaked. Secret-shaped strings (API keys, passwords) are refused.
 
-**Provenance.** A fact saved by a run that had read outside content (a web page, email, plugin result, or work handed over by a bot that had) is tagged `⟦untrusted⟧`, never overwrites a fact you wrote, and shows as *unverified*. That run cannot write shared or pinned memory, or forget anything, without your approval. In the bot's settings, **What I remember** lists every fact with where it lives and whether it is pinned or unverified, with Trust, Pin, and Delete on each. Before a long chat is compacted, the bot gets a turn to save what matters.
+**Provenance.** A fact saved by a run that had read outside content (a web page, email, plugin result, or work handed over by a bot that had) is tagged `⟦untrusted⟧`, never overwrites a fact you wrote, and shows as *unverified*. That run cannot write shared or pinned memory, or forget anything, without your approval — and auto-approve does not count as approval: an unattended bot keeps such a fact as its own unverified memory instead, and cannot forget at all. In the bot's settings, **What I remember** lists every fact with where it lives and whether it is pinned or unverified, with Trust, Pin, and Delete on each. Before a long chat is compacted, the bot gets a turn to save what matters.
 
 Lean inject (Settings → Privacy): heuristic mode skips stuffing Facts on greetings; Settings can merge near-duplicate Facts.
 
@@ -735,7 +743,8 @@ Fallback when nothing is promoted yet: search once → `mcp_call` with the exact
 | 🧱 | Web, plugin, MCP, and email results are fenced as untrusted data and flagged when they try to give orders; a run that has read them cannot write shared or pinned memory without approval, and that taint follows work handed to another bot. |
 | 🔍 | Outgoing tool calls are checked for your stored secrets and well-known key shapes and blocked if they carry one; stored secrets are scrubbed from results. `{{secret:NAME}}` values (Keychain, or read from 1Password only at the moment of use) are filled in at the last step and never enter a prompt, transcript, or approval card. |
 | ⏱️ | Every tool call has a hard time limit and Stop works even on a tool that ignores cancellation. |
-| 🔁 | "Always allow" is scoped to the command or folder you approved and never matches a chained shell command. |
+| 🔁 | "Always allow" is scoped to the command or folder you approved and never matches a chained shell command. It is not offered, and a stored one is ignored, for the gates that exist to make you look every time: memory writes after reading outside content, routines created by such a run, and secret requests. |
+| 📅 | A routine is standing automation, so a bot's `routine_manage` needs your approval to create one; a run that read outside content needs it every time, even for an auto-approve bot. Schedules are validated (no more often than every 15 minutes) and bots can only touch their own routines. |
 | 🌐 | The MCP server and phone companion are off by default, token-authenticated, and bound to loopback unless you switch on network access for the companion (plain HTTP — use Tailscale); five wrong tokens lock the companion's API for a minute. The MCP server offers no approvals, deletion, credentials, settings, or computer; the companion can Allow or Deny but never *always allow*, answer a secret request, or change settings. |
 | 🔗 | `grizzybot://` links that make a bot do something are read back to you for a yes first, since any web page can open one. |
 

@@ -482,12 +482,18 @@ public enum ContextCompactor {
 }
 
 public enum StreamText {
-    /// Drop model chain-of-thought tags so they never show in chat.
+    /// Drop model chain-of-thought so it never shows in chat.
+    ///
+    /// Handles `<think>…</think>` pairs, an unfinished `<think>…`, and the case some providers produce: the
+    /// opening tag is already in the prompt, so the reply is just reasoning followed by a bare `</think>`
+    /// and then the answer. Everything before the last bare closer is reasoning.
     public static func visible(_ raw: String) -> String {
         var text = raw
         text = text.replacing(/<think>[\s\S]*?<\/think>/, with: "")
         text = text.replacing(/<think>[\s\S]*/, with: "")
-        text = text.replacing(/<\/think>/, with: "")
+        if let closer = text.range(of: "</think>", options: .backwards) {
+            text = String(text[closer.upperBound...])
+        }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

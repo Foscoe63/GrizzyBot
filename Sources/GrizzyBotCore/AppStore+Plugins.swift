@@ -862,6 +862,7 @@ extension AppStore {
         case "move_file.host": return "move_file"
         case "delete_file.host": return "delete_file"
         case DraftPreview.tool: return "plugin_call"
+        case "routine.change", "routine.untrusted": return "routine_manage"
         case "memory.untrusted_write": return "remember"
         case "memory.untrusted_forget": return "forget"
         default:
