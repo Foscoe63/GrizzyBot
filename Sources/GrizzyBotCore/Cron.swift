@@ -156,7 +156,7 @@ public enum Cron {
 
     // MARK: - Helpers (mirroring the TS implementation)
 
-    static func parseClock(_ time: String) -> (hour: Int, minute: Int) {
+    public static func parseClock(_ time: String) -> (hour: Int, minute: Int) {
         let pieces = time.split(separator: ":", maxSplits: 1).map(String.init)
         let rawH = pieces.first ?? "9"
         let rest = pieces.count > 1 ? pieces[1] : "00"

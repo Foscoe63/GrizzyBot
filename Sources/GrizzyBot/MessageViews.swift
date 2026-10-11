@@ -468,7 +468,9 @@ struct MessageView: View {
             if status == .pending {
                 HStack(spacing: 8) {
                     approvalButton("Allow", decision: .allow)
-                    approvalButton("Always allow", decision: .alwaysAllow)
+                    if AllowRule.alwaysAllowOffered(tool: tool) {
+                        approvalButton("Always allow", decision: .alwaysAllow)
+                    }
                     approvalButton("Deny", decision: .deny, danger: true)
                 }
                 if AllowRule.narrows(tool: tool) {

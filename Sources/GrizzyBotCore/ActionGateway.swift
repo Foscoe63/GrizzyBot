@@ -42,7 +42,7 @@ public enum ActionGateway {
         case "web_search", "web_fetch", "search_memory", "search_knowledge", "search_sessions",
              "mcp_list_tools", "read_skill", "plugin_call_read", "check_bot", "list_delegations":
             return .read
-        case "shell", "shell.exec", "remember", "forget", "import_skills", "skill_propose",
+        case "shell", "shell.exec", "remember", "forget", "import_skills", "skill_propose", "routine_manage",
              "plugin_call", "spawn_bot", "message_bot", "delete_bot":
             return .writeFile
         case "mcp_call":

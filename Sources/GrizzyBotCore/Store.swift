@@ -2550,19 +2550,27 @@ public final class AppStore {
             let content = s("content", "text")
             guard !content.isEmpty else { return AgentToolCallResult(output: "content is required") }
             let scope = s("scope").lowercased()
-            let shared = scope == "shared" || scope == "workspace"
-            let pin = s("pin").lowercased() == "true" || scope == "pin"
+            var shared = scope == "shared" || scope == "workspace"
+            var pin = s("pin").lowercased() == "true" || scope == "pin"
             let untrusted = !approved && taint?.isTainted == true
-            if untrusted, shared || pin,
-               let gated = gatedWrite(
-                   tool: "memory.untrusted_write",
-                   detail: "Save to \(shared ? "shared" : "pinned") memory after reading \(taint?.tainters.joined(separator: ", ") ?? "outside content"): \(String(content.prefix(160)))",
-                   argumentsJSON: argumentsJSON,
-                   bot: bot,
-                   approved: false
-               ) {
-                recordAudit(type: .memoryWriteHeld, botId: botId, tool: "remember", reason: "write after reading \(taint?.tainters.joined(separator: ", ") ?? "outside content")", allowed: nil, forwarded: false)
-                return gated
+            var keptLocal = ""
+            if untrusted, shared || pin {
+                let sources = taint?.tainters.joined(separator: ", ") ?? "outside content"
+                if bot.autoApprove || headlessRoutineTick {
+                    // Nobody is here to ask, and "auto-approve" was never meant to cover this. Rather than
+                    // stall the run or write to memory every bot reads, keep it as this bot's own unverified fact.
+                    recordAudit(type: .memoryWriteHeld, botId: botId, tool: "remember", reason: "kept out of shared/pinned memory after reading \(sources) (unattended)", allowed: false, forwarded: false)
+                    shared = false
+                    pin = false
+                    keptLocal = " It was saved to this bot's own memory as unverified, not to shared or pinned memory: that needs the person's approval after reading outside content."
+                } else {
+                    recordAudit(type: .memoryWriteHeld, botId: botId, tool: "remember", reason: "write after reading \(sources)", allowed: nil, forwarded: false)
+                    return humanGate(
+                        tool: "memory.untrusted_write",
+                        detail: "Save to \(shared ? "shared" : "pinned") memory after reading \(sources): \(String(content.prefix(160)))",
+                        argumentsJSON: argumentsJSON
+                    )
+                }
             }
             let result = rememberFact(botId: botId, text: content, shared: shared, pin: pin, untrusted: untrusted)
             switch result {
@@ -2590,7 +2598,7 @@ public final class AppStore {
                 )
             case .inserted:
                 return AgentToolCallResult(
-                    output: shared ? "Remembered in shared workspace memory." : "Remembered.",
+                    output: (shared ? "Remembered in shared workspace memory." : "Remembered.") + keptLocal,
                     blocks: [.card(lines: [
                         CardLine(k: "memory", v: String(content.prefix(200))),
                         CardLine(k: "scope", v: shared ? "shared" : "bot"),
@@ -2604,15 +2612,16 @@ public final class AppStore {
             guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
             let scope = s("scope").lowercased()
             let shared = scope == "shared" || scope == "workspace"
-            if !approved, taint?.isTainted == true,
-               let gated = gatedWrite(
-                   tool: "memory.untrusted_forget",
-                   detail: "Forget “\(String(query.prefix(120)))” after reading \(taint?.tainters.joined(separator: ", ") ?? "outside content")",
-                   argumentsJSON: argumentsJSON,
-                   bot: bot,
-                   approved: false
-               ) {
-                return gated
+            if !approved, taint?.isTainted == true {
+                let sources = taint?.tainters.joined(separator: ", ") ?? "outside content"
+                if bot.autoApprove || headlessRoutineTick {
+                    return AgentToolCallResult(output: "Not done: forgetting memory after reading \(sources) needs the person's approval, and nobody is here to give it. Ask them to do it, or do it in a run that hasn't read outside content.")
+                }
+                return humanGate(
+                    tool: "memory.untrusted_forget",
+                    detail: "Forget “\(String(query.prefix(120)))” after reading \(sources)",
+                    argumentsJSON: argumentsJSON
+                )
             }
             let removed = forgetFacts(botId: botId, query: query, shared: shared)
             if removed.isEmpty {
@@ -2935,6 +2944,9 @@ public final class AppStore {
                 blocks: [.card(lines: [CardLine(k: "skill", v: skill.id)])]
             )
 
+        case "routine_manage":
+            return routineManage(bot: bot, argumentsJSON: argumentsJSON, approved: approved, taint: taint)
+
         case "skill_propose":
             return proposeSkill(
                 botId: botId,
@@ -3185,18 +3197,22 @@ public final class AppStore {
             if depth > 0 {
                 return AgentToolCallResult(output: "Helpers cannot hand work to other bots. Do it yourself or report back.")
             }
-            let peer: Bot? = {
-                if !targetId.isEmpty {
-                    return bots.first(where: { $0.id == targetId })
-                }
-                return bots.first(where: { $0.name.caseInsensitiveCompare(targetName) == .orderedSame })
-            }()
-            guard let peer else {
-                let known = bots.filter { $0.id != botId && !$0.hidden }.map(\.name).joined(separator: ", ")
+            let others = bots.filter { $0.id != botId }
+            let asked = [targetId, targetName].first { !$0.isEmpty } ?? ""
+            let peer: Bot
+            switch BotLookup.resolve([targetId, s("id"), targetName, s("bot")], in: bots) {
+            case .found(let match):
+                peer = match
+            case .ambiguous(let matches):
+                return AgentToolCallResult(
+                    output: "“\(asked)” matches more than one bot: \(matches.map(\.name).joined(separator: ", ")). Use the exact name."
+                )
+            case .none:
+                let known = others.filter { !$0.hidden }.map(\.name).joined(separator: ", ")
                 return AgentToolCallResult(
                     output: known.isEmpty
                         ? "No other bots exist yet. Use spawn_bot to create one."
-                        : "No bot named \(targetName.isEmpty ? targetId : targetName). Bots: \(known)."
+                        : "No bot matches “\(asked)”. Bots you can message: \(known)."
                 )
             }
             if peer.id == botId {
@@ -3271,10 +3287,9 @@ public final class AppStore {
 
         case "check_bot":
             let wanted = s("bot_id", "id", "name", "bot")
-            guard let peer = bots.first(where: {
-                $0.id == wanted || $0.name.caseInsensitiveCompare(wanted) == .orderedSame
-            }) else {
-                return AgentToolCallResult(output: "No bot named \(wanted).")
+            guard case .found(let peer) = BotLookup.resolve([s("bot_id"), s("id"), s("name"), s("bot")], in: bots) else {
+                let known = bots.filter { $0.id != botId && !$0.hidden }.map(\.name).joined(separator: ", ")
+                return AgentToolCallResult(output: "No bot matches “\(wanted)”. Bots: \(known).")
             }
             return AgentToolCallResult(output: describePeer(peer))
 
@@ -3292,11 +3307,15 @@ public final class AppStore {
         case "delete_bot":
             let confirm = s("confirm_name", "name")
             let targetId = s("bot_id", "id")
+            // Deleting is exact on purpose: an id or a full name, in either field, never a partial match.
             let target: Bot? = {
-                if !targetId.isEmpty {
-                    return bots.first(where: { $0.id == targetId })
+                for query in [targetId, confirm] where !query.isEmpty {
+                    if let hit = bots.first(where: { $0.id == query })
+                        ?? bots.first(where: { $0.name.caseInsensitiveCompare(query) == .orderedSame }) {
+                        return hit
+                    }
                 }
-                return bots.first(where: { $0.name.caseInsensitiveCompare(confirm) == .orderedSame })
+                return nil
             }()
             guard let target else {
                 return AgentToolCallResult(output: "No bot named \(confirm).")
@@ -5198,7 +5217,9 @@ public final class AppStore {
                 case .deny: status = .denied
                 case .alwaysAllow:
                     status = .alwaysAllowed
-                    if let bIdx = bots.firstIndex(where: { $0.id == botId }) {
+                    if AppStore.humanOnlyTools.contains(tool) {
+                        // Allowed this once; never a standing yes for something that exists to stop standing yeses.
+                    } else if let bIdx = bots.firstIndex(where: { $0.id == botId }) {
                         if AllowRule.narrows(tool: tool) {
                             // Shell and file approvals become a rule for what was approved, not a blanket yes.
                             let rule = AllowRule.suggested(tool: tool, detail: detail)
@@ -5663,6 +5684,10 @@ public final class AppStore {
         for botId in routines.keys {
             guard let idx = routines[botId]?.firstIndex(where: { $0.id == routineId }) else { continue }
             routines[botId]?[idx].active = active
+            if active, let routine = routines[botId]?[idx], routine.hasSchedule {
+                // A routine switched back on must not wake up to a "next run" from before it was paused.
+                routines[botId]?[idx].nextRunAt = Cron.nextDate(routine.cron, from: .now, timezone: routine.timezone)
+            }
             save()
             return
         }

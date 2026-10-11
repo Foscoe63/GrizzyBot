@@ -123,6 +123,12 @@ public struct AllowRule: Codable, Sendable, Equatable, Identifiable, Hashable {
         pattern.isEmpty ? "\(tool) — anything" : "\(tool) — \(pattern)"
     }
 
+    /// Whether the approval card may offer "Always allow". Not for the gates that exist to make sure a
+    /// person looks every time.
+    public static func alwaysAllowOffered(tool: String) -> Bool {
+        !["memory.untrusted_write", "memory.untrusted_forget", "routine.untrusted", "secret.request"].contains(tool)
+    }
+
     /// Tools where "always allow" should mean "this command / this folder", not "anything".
     public static func narrows(tool: String) -> Bool {
         tool == "shell.exec" || tool.hasSuffix(".host")
