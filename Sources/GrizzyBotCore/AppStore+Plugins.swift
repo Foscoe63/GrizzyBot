@@ -863,6 +863,7 @@ extension AppStore {
         case "delete_file.host": return "delete_file"
         case DraftPreview.tool: return "plugin_call"
         case "routine.change", "routine.untrusted": return "routine_manage"
+        case "delegate.lend": return "message_bot"
         case "memory.untrusted_write": return "remember"
         case "memory.untrusted_forget": return "forget"
         default:

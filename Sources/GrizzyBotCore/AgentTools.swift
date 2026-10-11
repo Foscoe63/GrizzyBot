@@ -1007,12 +1007,14 @@ extension AgentToolCatalog {
             )
             add(
                 "message_bot",
-                description: "Hand a task to a bot already listed in your roster. It works in its own thread; by default you wait and its answer comes back to you here. Prefer this over spawn_bot when a listed bot already does the job.",
+                description: "Hand a task to a bot already listed in your roster. It works in its own thread; by default you wait and its answer comes back to you here. Prefer this over spawn_bot when a listed bot already does the job. Check each bot's [can: …] first: if it lacks a tool the job needs, hand the job to a bot that has it, or pass grant_tools.",
                 properties: [
                     "name": stringProp("Name of the bot from the roster"),
                     "task": stringProp("What you want that bot to do, written as a full request"),
                     "wait": boolProp("Default true: wait for its answer and use it in your reply. Pass false only for long background jobs you are not going to report on this turn."),
                     "bot_id": stringProp("Optional bot id instead of the name"),
+                    "grant_tools": stringProp("Optional, comma-separated: tools you have that the bot lacks and the job needs (shell, read_file, write_file, edit_file, list_files, web_search). Lent for this one job only; the person is asked first and approves each use."),
+                    "anyway": boolProp("Pass true to send even though the bot lacks a tool the task seems to need."),
                 ],
                 required: ["name", "task"]
             )

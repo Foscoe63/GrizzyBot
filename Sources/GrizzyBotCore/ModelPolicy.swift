@@ -126,7 +126,7 @@ public struct AllowRule: Codable, Sendable, Equatable, Identifiable, Hashable {
     /// Whether the approval card may offer "Always allow". Not for the gates that exist to make sure a
     /// person looks every time.
     public static func alwaysAllowOffered(tool: String) -> Bool {
-        !["memory.untrusted_write", "memory.untrusted_forget", "routine.untrusted", "secret.request"].contains(tool)
+        !["memory.untrusted_write", "memory.untrusted_forget", "routine.untrusted", "delegate.lend", "secret.request"].contains(tool)
     }
 
     /// Tools where "always allow" should mean "this command / this folder", not "anything".

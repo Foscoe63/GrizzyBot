@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.11.4-3B82F6?style=for-the-badge" alt="Version 0.11.4">
+  <img src="https://img.shields.io/badge/version-0.11.5-3B82F6?style=for-the-badge" alt="Version 0.11.5">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,13 +49,18 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.4** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.5** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
 ---
 
 ## 🆕 What's new
+
+### 0.11.5 — delegates get the right tools
+
+- **A job that needs a tool the bot lacks is caught before it starts.** Handing a job to a bot with no shell that says "run npm install" now comes straight back to the lead: which tool is missing, which bots have it, and what else to do — instead of the delegate flailing for twenty minutes. The check uses a short list of unmistakable phrases, so ordinary wording never blocks a handoff; `anyway=true` sends it regardless.
+- **Lend a tool for one job.** `message_bot` takes `grant_tools` (`shell`, `read_file`, `write_file`, `edit_file`, `list_files`, `web_search`). The lead can only lend what it has itself, you are asked first — auto-approve doesn't skip that — and the loan ends when the job does. While a bot is running on a loan it asks you before *every* approval-gated action, whatever its own auto-approve or allow rules say. Memory, secrets, routines, delegation, plugins and the computer can't be lent.
 
 ### 0.11.4 — every tool switch works, and agents import from folders
 
@@ -84,7 +89,7 @@
 - **Chief of Staff auto-dispatch.** Turn on *Hand work to the best bot automatically* in the Chief of Staff's settings. A message that clearly belongs to another bot (or that @mentions one) goes straight to them; their answer appears in the Chief of Staff's chat under their name, with a note saying who got it and why. Anything unclear, mixed ("research this and email it"), or small talk stays with the Chief of Staff. Start a message with `!` to keep it there. If the other bot fails, the Chief of Staff does the job itself; if it needs an approval, you're told where to answer it. Stop ends the hand-off and stops that bot too.
 - **Room routing.** New rooms send an un-addressed message to the member that fits it best (menu in the room header: *routing: best fit / first member*); the room says who was picked and why. An @mention always wins; existing rooms keep their old behaviour.
 - **How it decides.** Rules first — free, instant, the same answer every time: the message against each bot's name, role, description, skills and the tools actually switched on for it. An optional **router model** (Settings → General → Delegation) is asked only when the rules can't call it, sees nothing but the message and each bot's role and abilities, and its answer is accepted only if it names a real candidate.
-- **Limits stay with each bot.** A bot only ever uses its own tools and permissions; handing work over never widens them. The roster now shows what each bot can do (`can: web, files`), and a bot that hits a disabled tool is told which bots have it. Bots can opt out of automatic hand-offs.
+- **Limits stay with each bot.** A bot uses its own tools and permissions; handing work over never widens them on its own. The one exception is a tool the lead *lends* for a single job (`grant_tools`), which you approve first and which asks you at every use. The roster now shows what each bot can do (`can: web, files`), and a bot that hits a disabled tool is told which bots have it. Bots can opt out of automatic hand-offs.
 - **Outside content can't be laundered through another bot.** If a bot had read a web page or email before it messages a peer, the peer is told and its run starts out untrusted, so memory writes still need your approval.
 
 ### 0.10 — trust, control, and the rest of the Mac
@@ -325,7 +330,7 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 🖥️ | **Computer** | `computer_open`, `computer_screenshot`, `computer_click`, `computer_scroll`, `computer_type`, `computer_key`, `request_takeover`. |
 | 🖼️ | **Canvas** | `canvas_list`, `canvas_open`, `canvas_save`, `canvas_delete`, `canvas_place_image` — shared boards on this Mac (not the bot home). `canvas_open` after a screenshot places the last capture. |
 | 🧩 | **Artifacts** | `artifact_create`, `artifact_update`, `artifact_rewrite`, `artifact_list`, `artifact_read`, `artifact_delete` — shared on this Mac, versioned, and mirrored into the working folder as files. See [Artifacts](#-artifacts). |
-| 👥 | **Team** | `spawn_bot`, `message_bot`, `delete_bot`, `run_subagent`. Every bot's system prompt carries the **roster** — the other bots on this Mac, their roles, and which ones it created — so `message_bot` can hand a job to an existing bot instead of spawning a near-copy. It **waits** for that bot by default (120s) and folds the answer into its own reply; if the peer stops for an approval, fails, or is still going at the cap, the caller is told exactly that and the work carries on in the peer's thread. `wait:false` dispatches without holding the turn open. The chief of staff is told it owns coordination. The roster lists what each bot can do, and a bot that hits a tool it doesn't have is told which bots do. If the sender had read outside content, the peer is told and its run starts untrusted. A bot only ever uses its own tools and permissions; handing work over never widens them. |
+| 👥 | **Team** | `spawn_bot`, `message_bot`, `delete_bot`, `run_subagent`. Every bot's system prompt carries the **roster** — the other bots on this Mac, their roles, and which ones it created — so `message_bot` can hand a job to an existing bot instead of spawning a near-copy. It **waits** for that bot by default (120s) and folds the answer into its own reply; if the peer stops for an approval, fails, or is still going at the cap, the caller is told exactly that and the work carries on in the peer's thread. `wait:false` dispatches without holding the turn open. The chief of staff is told it owns coordination. The roster lists what each bot can do, and a bot that hits a tool it doesn't have is told which bots do. If the sender had read outside content, the peer is told and its run starts untrusted. A bot uses its own tools and permissions; handing work over never widens them on its own. The one exception is a tool the lead *lends* for a single job (`grant_tools`), which you approve first and which asks you at every use. |
 | 🃏 | **UI** | `present_component` (form, gallery, activity, refusals, or a published card), `report_decline`. |
 | ♾️ | **Loop** | `capabilities_discover`, `capabilities_load`, `todo`, `complete`, `clarify`. |
 | 🧩 | **MCP** | First-class `server-slug__tool` names plus `mcp_list_tools` / `mcp_call` — see [Plugins, MCP & destinations](#-plugins-mcp--destinations). |
