@@ -638,76 +638,77 @@ public struct OpenAIChatClient: ChatCompleting {
         _ request: ChatCompletionRequest,
         onDelta: @escaping @Sendable (String) -> Void
     ) async throws -> ChatCompletionResponse {
-        // Anthropic streaming uses a different event shape; fall back to a full request and emit once.
-        let response = try await completeAnthropic(request)
-        if !response.text.isEmpty { onDelta(response.text) }
-        return response
+        let urlString = request.endpoint.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            + "/messages"
+        guard let url = URL(string: urlString) else { throw LLMError.invalidURL(urlString) }
+        var urlRequest = URLRequest(url: url, timeoutInterval: request.timeout)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        urlRequest.setValue(request.endpoint.apiKey, forHTTPHeaderField: "x-api-key")
+        urlRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        urlRequest.httpBody = try JSONSerialization.data(
+            withJSONObject: AnthropicWire.body(for: request, stream: true)
+        )
+        ModelTransport.prepare(&urlRequest)
+
+        let bytes: URLSession.AsyncBytes
+        let response: URLResponse
+        do {
+            (bytes, response) = try await session(for: url).bytes(for: urlRequest)
+        } catch {
+            throw LLMError.transport(error, url: url)
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if !(200..<300).contains(status) {
+            var snippet = ""
+            for try await line in bytes.lines {
+                snippet += line
+                if snippet.count > 800 { break }
+            }
+            throw LLMError.http(status, Self.extractErrorMessage(snippet))
+        }
+
+        let monitor = StallMonitor(stallMs: request.stallMs)
+        let streamTask = Task { () -> AnthropicStreamAccumulator in
+            var acc = AnthropicStreamAccumulator()
+            for try await line in bytes.lines {
+                await monitor.touch()
+                if acc.consume(line: line, onDelta: onDelta) { break }
+            }
+            return acc
+        }
+        let watchTask = Task {
+            do {
+                try await monitor.watchUntilStall()
+            } catch is CancellationError {
+                return
+            } catch {
+                streamTask.cancel()
+            }
+        }
+        do {
+            let acc = try await streamTask.value
+            watchTask.cancel()
+            return try acc.result()
+        } catch is CancellationError {
+            watchTask.cancel()
+            let snap = await monitor.snapshot()
+            if snap.stalled {
+                throw LLMError.stalled(silentForMs: snap.silentForMs, chunks: snap.chunks)
+            }
+            throw CancellationError()
+        } catch {
+            watchTask.cancel()
+            throw error
+        }
     }
 
     private func completeAnthropic(_ request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
         let urlString = request.endpoint.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             + "/messages"
         guard let url = URL(string: urlString) else { throw LLMError.invalidURL(urlString) }
-
-        var system = ""
-        var messages: [[String: Any]] = []
-        for message in request.messages {
-            if message.role == "system" {
-                if let content = message.content, !content.isEmpty {
-                    system += (system.isEmpty ? "" : "\n\n") + content
-                }
-                continue
-            }
-            if message.role == "tool" {
-                messages.append([
-                    "role": "user",
-                    "content": [[
-                        "type": "tool_result",
-                        "tool_use_id": message.toolCallId ?? "",
-                        "content": message.content ?? "",
-                    ]],
-                ])
-                continue
-            }
-            if message.role == "assistant", !message.toolCalls.isEmpty {
-                var content: [[String: Any]] = []
-                if let text = message.content, !text.isEmpty {
-                    content.append(["type": "text", "text": text])
-                }
-                for call in message.toolCalls {
-                    let parsed = JSONValue.parseObject(call.arguments)
-                    content.append([
-                        "type": "tool_use",
-                        "id": call.id,
-                        "name": call.name,
-                        "input": parsed.isEmpty ? [String: Any]() : parsed.mapValues(\.any),
-                    ])
-                }
-                messages.append(["role": "assistant", "content": content])
-                continue
-            }
-            messages.append([
-                "role": message.role == "assistant" ? "assistant" : "user",
-                "content": message.content ?? "",
-            ])
-        }
-
-        var body: [String: Any] = [
-            "model": request.endpoint.model,
-            "max_tokens": 4096,
-            "messages": messages,
-        ]
-        if !system.isEmpty { body["system"] = system }
-        if !request.tools.isEmpty {
-            body["tools"] = request.tools.map { tool in
-                [
-                    "name": tool.function.name,
-                    "description": tool.function.description,
-                    "input_schema": tool.function.parameters.any,
-                ]
-            }
-        }
-
+        let body = AnthropicWire.body(for: request, stream: false)
         let data = try await postJSON(url: url, body: body, request: request, extra: [:]) { req in
             req.setValue(request.endpoint.apiKey, forHTTPHeaderField: "x-api-key")
             req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
@@ -811,7 +812,7 @@ public struct OpenAIChatClient: ChatCompleting {
             throw LLMError.decoding("not an object")
         }
         let usage = root["usage"] as? [String: Any]
-        let input = intValue(usage?["input_tokens"])
+        let input = AnthropicWire.inputTokens(from: usage)
         let output = intValue(usage?["output_tokens"])
         let blocks = root["content"] as? [[String: Any]] ?? []
         var text = ""
