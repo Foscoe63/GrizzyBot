@@ -162,3 +162,48 @@ struct TelegramPureTests {
         #expect(!updates[1].isPrivate)
     }
 }
+
+@Suite("Routine gate")
+struct RoutineGateTests {
+    @Test("output wakes the model, silence does not")
+    func verdicts() {
+        #expect(RoutineGate.verdict(exitCode: 0, output: "3 new invoices\n") == .wake(context: "3 new invoices"))
+        #expect(RoutineGate.verdict(exitCode: 0, output: "") == .skip(reason: "nothing to do"))
+        #expect(RoutineGate.verdict(exitCode: 0, output: " skip \n") == .skip(reason: "nothing to do"))
+    }
+
+    @Test("a broken or slow check is reported, never treated as a wake")
+    func failures() {
+        guard case .failed(let reason) = RoutineGate.verdict(exitCode: 2, output: "boom") else {
+            Issue.record("expected failure"); return
+        }
+        #expect(reason.contains("exited 2"))
+        guard case .failed = RoutineGate.verdict(exitCode: 0, output: "x", timedOut: true) else {
+            Issue.record("expected timeout failure"); return
+        }
+    }
+
+    @Test("long gate output is bounded and framed as data")
+    func bounded() {
+        let long = String(repeating: "x", count: 10_000)
+        guard case .wake(let context) = RoutineGate.verdict(exitCode: 0, output: long) else {
+            Issue.record("expected wake"); return
+        }
+        #expect(context.count < 4_100)
+        let prompt = RoutineGate.compose(prompt: "Check mail", context: context)
+        #expect(prompt.hasPrefix("Check mail"))
+        #expect(prompt.contains("not instructions"))
+    }
+
+    @Test("old routines decode without a gate")
+    func codable() throws {
+        var routine = Routine(id: "r", botId: "b", name: "n", prompt: "p", cron: "0 9 * * *")
+        routine.gate = "test -n \"$(ls inbox)\" && ls inbox"
+        let data = try JSONEncoder().encode(routine)
+        #expect(try JSONDecoder().decode(Routine.self, from: data).gate == routine.gate)
+        var json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        json.removeValue(forKey: "gate"); json.removeValue(forKey: "gateSkips")
+        let old = try JSONDecoder().decode(Routine.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(old.gate == nil && old.gateSkips == 0)
+    }
+}

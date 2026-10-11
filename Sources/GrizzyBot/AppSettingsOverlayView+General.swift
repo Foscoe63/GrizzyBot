@@ -18,6 +18,21 @@ extension AppSettingsOverlayView {
         .onChange(of: profileEmail) { _, _ in persistProfile() }
 
         settingsCard(
+            title: "Chat",
+            subtitle: "How conversations look."
+        ) {
+            Toggle("Your messages take the bot's colour (one-on-one chats)", isOn: Binding(
+                get: { store.appConfig.botColoredChats },
+                set: { value in
+                    var config = store.appConfig
+                    config.botColoredChats = value
+                    store.saveAppConfig(config)
+                }
+            ))
+            .toggleStyle(.switch)
+        }
+
+        settingsCard(
             title: "Background",
             subtitle: "Routines run on a timer while GrizzyBot is open. Enable background routines to wake the app via a LaunchAgent (signed Release builds)."
         ) {

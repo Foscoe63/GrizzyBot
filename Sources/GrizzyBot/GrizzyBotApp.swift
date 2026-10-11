@@ -1,7 +1,9 @@
 import AppKit
 import GrizzyBotCore
 import GrizzyBotMLX
+import CoreSpotlight
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -69,6 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @main
 struct GrizzyBotApp: App {
+    /// Held for the life of the app: the notification center keeps only a weak reference to its delegate.
+    @MainActor static var notificationResponder: NotificationResponder?
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var themeManager = ThemeManager()
     @State private var store: AppStore = {
@@ -89,6 +93,7 @@ struct GrizzyBotApp: App {
         if AppDelegate.isHeadlessRoutineTick {
             store.headlessRoutineTick = true
         }
+        MacBridge.store = store
         return store
     }()
 
@@ -103,6 +108,15 @@ struct GrizzyBotApp: App {
                 guard !UITestLaunch.isTestHost else { return }
                 themeManager.load(from: store.appConfig)
                 appDelegate.onRoutineTick = { store.tickDueRoutines() }
+                MacBridge.indexBots(store.bots)
+            }
+            .onOpenURL { url in
+                handleDeepLink(url)
+            }
+            .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                if let id = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String {
+                    MacBridge.openBot(id: id)
+                }
             }
             .onChange(of: store.appConfig.activeThemePresetId) { _, _ in
                 themeManager.load(from: store.appConfig)
@@ -174,6 +188,10 @@ struct GrizzyBotApp: App {
                 store.openChatSearch()
             }
             .keyboardShortcut("f", modifiers: .command)
+            Button("Quote Selection in Reply") {
+                quoteSelection()
+            }
+            .keyboardShortcut("l", modifiers: .command)
             Button("Undo Send") {
                 if let botId = store.activeBotId {
                     _ = store.undoSend(botId: botId)
@@ -188,11 +206,52 @@ struct GrizzyBotApp: App {
         }
     }
 
+    /// A `grizzybot://` link. Anything that does work is read back to the person first, because a web
+    /// page can open these too.
+    @MainActor
+    private func handleDeepLink(_ url: URL) {
+        guard let link = DeepLink.parse(url) else { return }
+        if link.needsConfirmation {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.messageText = "Something asked GrizzyBot to do this"
+            alert.informativeText = link.summary + "\n\nOnly continue if you started it."
+            alert.addButton(withTitle: "Do it")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        if let problem = store.perform(link) {
+            let alert = NSAlert()
+            alert.messageText = problem
+            alert.runModal()
+        }
+    }
+
+    /// Copies whatever is selected in the window, quotes it into the reply box, and puts the
+    /// clipboard back the way it was.
+    @MainActor
+    private func quoteSelection() {
+        let pasteboard = NSPasteboard.general
+        let saved = pasteboard.string(forType: .string)
+        let before = pasteboard.changeCount
+        NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+        guard pasteboard.changeCount != before, let selection = pasteboard.string(forType: .string) else { return }
+        store.pendingQuote = selection
+        pasteboard.clearContents()
+        if let saved { pasteboard.setString(saved, forType: .string) }
+    }
+
     @MainActor
     private func configureMainWindow() {
         UITestLaunch.apply(store)
         CrashReporting.install(dsn: store.appConfig.sentryDSN)
         FinishNotifier.requestAccess()
+        let responder = NotificationResponder(store: store)
+        UNUserNotificationCenter.current().delegate = responder
+        Self.notificationResponder = responder
+        store.onApprovalNeeded = { bot, tool, detail in
+            FinishNotifier.notifyApproval(botId: bot.id, bot: bot.name, tool: tool, detail: detail)
+        }
         store.onRunFinished = { bot, text in
             if bot.speakReplies {
                 ReplySpeaker.speak(

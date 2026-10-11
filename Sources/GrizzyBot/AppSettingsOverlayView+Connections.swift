@@ -55,6 +55,27 @@ extension AppSettingsOverlayView {
         }
 
         settingsCard(
+            title: "MCP server",
+            subtitle: "Drive your bots from Claude Desktop, Cursor, or Claude Code."
+        ) {
+            ControlPlaneSettingsBody()
+        }
+
+        settingsCard(
+            title: "Phone companion",
+            subtitle: "Check on your bots and answer approvals from your iPhone."
+        ) {
+            CompanionSettingsBody()
+        }
+
+        settingsCard(
+            title: "Tracing",
+            subtitle: "Send run and tool timings to an OpenTelemetry collector."
+        ) {
+            TracingSettingsBody()
+        }
+
+        settingsCard(
             title: "Webhooks",
             subtitle: "Let another program or service start a routine."
         ) {

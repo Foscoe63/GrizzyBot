@@ -116,6 +116,18 @@ public struct AppConfig: Codable, Sendable, Equatable {
     /// Local OpenAI-compatible gateway for Cursor / external clients.
     public var localGateway: LocalOpenAIGateway.Settings
     public var enableFolderWatchers: Bool
+    /// Let MCP clients (Claude Desktop, Cursor, Claude Code) drive your bots over loopback with a token.
+    public var controlPlaneEnabled: Bool
+    public var controlPlanePort: Int
+    /// OTLP/HTTP endpoint (e.g. http://localhost:4318) that receives one span per run and tool call. Empty is off.
+    public var otlpEndpoint: String
+    /// In a 1:1 chat, your messages take the bot's colour. Off keeps them neutral.
+    public var botColoredChats: Bool
+    /// A phone-friendly web companion served from this Mac (add it to the Home Screen).
+    public var companionEnabled: Bool
+    public var companionPort: Int
+    /// Listen beyond loopback so a phone on Tailscale or the same network can reach it.
+    public var companionAllowNetwork: Bool
 
     public init(
         profileName: String = "",
@@ -146,8 +158,22 @@ public struct AppConfig: Codable, Sendable, Equatable {
         webhookPort: Int = WebhookReceiver.defaultPort,
         telegram: TelegramSettings = .default,
         localGateway: LocalOpenAIGateway.Settings = .default,
-        enableFolderWatchers: Bool = true
+        enableFolderWatchers: Bool = true,
+        controlPlaneEnabled: Bool = false,
+        controlPlanePort: Int = ControlPlaneServer.defaultPort,
+        otlpEndpoint: String = "",
+        botColoredChats: Bool = true,
+        companionEnabled: Bool = false,
+        companionPort: Int = 8802,
+        companionAllowNetwork: Bool = false
     ) {
+        self.companionEnabled = companionEnabled
+        self.companionPort = companionPort
+        self.companionAllowNetwork = companionAllowNetwork
+        self.botColoredChats = botColoredChats
+        self.controlPlaneEnabled = controlPlaneEnabled
+        self.controlPlanePort = controlPlanePort
+        self.otlpEndpoint = otlpEndpoint
         self.profileName = profileName
         self.profileEmail = profileEmail
         self.composioConnectKey = composioConnectKey
@@ -185,6 +211,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
         case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
         case themeAppearanceMode, activeThemePresetId, agentStallTimeoutMs
         case privacyFilter, memoryRelevanceMode, queueMode, webhooksEnabled, webhookPort, telegram, localGateway, enableFolderWatchers
+        case controlPlaneEnabled, controlPlanePort, otlpEndpoint, botColoredChats
+        case companionEnabled, companionPort, companionAllowNetwork
     }
 
     public init(from decoder: Decoder) throws {
@@ -219,6 +247,13 @@ public struct AppConfig: Codable, Sendable, Equatable {
         telegram = try c.decodeIfPresent(TelegramSettings.self, forKey: .telegram) ?? .default
         localGateway = try c.decodeIfPresent(LocalOpenAIGateway.Settings.self, forKey: .localGateway) ?? .default
         enableFolderWatchers = try c.decodeIfPresent(Bool.self, forKey: .enableFolderWatchers) ?? true
+        controlPlaneEnabled = try c.decodeIfPresent(Bool.self, forKey: .controlPlaneEnabled) ?? false
+        controlPlanePort = try c.decodeIfPresent(Int.self, forKey: .controlPlanePort) ?? ControlPlaneServer.defaultPort
+        otlpEndpoint = try c.decodeIfPresent(String.self, forKey: .otlpEndpoint) ?? ""
+        botColoredChats = try c.decodeIfPresent(Bool.self, forKey: .botColoredChats) ?? true
+        companionEnabled = try c.decodeIfPresent(Bool.self, forKey: .companionEnabled) ?? false
+        companionPort = try c.decodeIfPresent(Int.self, forKey: .companionPort) ?? 8802
+        companionAllowNetwork = try c.decodeIfPresent(Bool.self, forKey: .companionAllowNetwork) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -252,6 +287,13 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encode(telegram, forKey: .telegram)
         try c.encode(localGateway, forKey: .localGateway)
         try c.encode(enableFolderWatchers, forKey: .enableFolderWatchers)
+        try c.encode(controlPlaneEnabled, forKey: .controlPlaneEnabled)
+        try c.encode(controlPlanePort, forKey: .controlPlanePort)
+        try c.encode(otlpEndpoint, forKey: .otlpEndpoint)
+        try c.encode(botColoredChats, forKey: .botColoredChats)
+        try c.encode(companionEnabled, forKey: .companionEnabled)
+        try c.encode(companionPort, forKey: .companionPort)
+        try c.encode(companionAllowNetwork, forKey: .companionAllowNetwork)
     }
 
     public var composioConfigured: Bool {

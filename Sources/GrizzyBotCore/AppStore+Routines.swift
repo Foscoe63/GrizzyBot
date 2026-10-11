@@ -169,12 +169,86 @@ extension AppStore {
         fireRoutine(botId: botId, routine: routine, manual: true)
     }
 
+    /// Scheduled ticks pass through the routine's gate first; manual runs and webhook events do not,
+    /// since a person or an event has already said there is something to do.
     func fireRoutine(
         botId: String,
         routine: Routine,
         manual: Bool = false,
         webhookPayload: String? = nil,
         viaWebhook: Bool = false
+    ) {
+        let gate = routine.gate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !gate.isEmpty, !manual, !viaWebhook else {
+            fireRoutineUngated(botId: botId, routine: routine, manual: manual, webhookPayload: webhookPayload, viaWebhook: viaWebhook)
+            return
+        }
+        if let idx = routines[botId]?.firstIndex(where: { $0.id == routine.id }) {
+            routines[botId]?[idx].inProgress = true
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            let verdict = await self.evaluateGate(botId: botId, command: gate)
+            switch verdict {
+            case .wake(let context):
+                var woken = routine
+                woken.prompt = RoutineGate.compose(prompt: routine.prompt, context: context)
+                if let idx = self.routines[botId]?.firstIndex(where: { $0.id == routine.id }) {
+                    self.routines[botId]?[idx].gateSkips = 0
+                }
+                self.fireRoutineUngated(botId: botId, routine: woken, manual: false, webhookPayload: nil, viaWebhook: false)
+            case .skip(let reason):
+                self.recordGateOutcome(botId: botId, routine: routine, note: "skipped — \(reason)", error: nil)
+            case .failed(let reason):
+                self.recordGateOutcome(botId: botId, routine: routine, note: "gate failed — \(reason)", error: reason)
+            }
+        }
+    }
+
+    func evaluateGate(botId: String, command: String) async -> RoutineGate.Verdict {
+        guard let bot = bots.first(where: { $0.id == botId }) else { return .failed(reason: "no such bot") }
+        do {
+            let result = try await botHome.runShell(
+                botId: botId,
+                command: command,
+                timeout: RoutineGate.timeout,
+                extraWriteRoots: extraShellWriteRoots(for: bot),
+                allowNetwork: bot.shellNetwork
+            )
+            return RoutineGate.verdict(exitCode: result.exitCode, output: result.stdout, timedOut: result.timedOut)
+        } catch {
+            return .failed(reason: error.localizedDescription)
+        }
+    }
+
+    private func recordGateOutcome(botId: String, routine: Routine, note: String, error: String?) {
+        guard let idx = routines[botId]?.firstIndex(where: { $0.id == routine.id }) else { return }
+        routines[botId]?[idx].inProgress = false
+        routines[botId]?[idx].lastRunAt = .now
+        routines[botId]?[idx].nextRunAt = Cron.nextDate(routine.cron, from: .now, timezone: routine.timezone)
+        routines[botId]?[idx].gateSkips += 1
+        routines[botId]?[idx].lastError = error
+        appendRunLog(botId: botId, kind: "routine", text: "Routine '\(routine.name)' \(note)")
+        save()
+    }
+
+    public func setRoutineGate(_ routineId: String, gate: String?) {
+        for (botId, list) in routines {
+            guard let idx = list.firstIndex(where: { $0.id == routineId }) else { continue }
+            let trimmed = gate?.trimmingCharacters(in: .whitespacesAndNewlines)
+            routines[botId]?[idx].gate = (trimmed?.isEmpty ?? true) ? nil : trimmed
+            routines[botId]?[idx].gateSkips = 0
+            save()
+            return
+        }
+    }
+
+    func fireRoutineUngated(
+        botId: String,
+        routine: Routine,
+        manual: Bool,
+        webhookPayload: String?,
+        viaWebhook: Bool
     ) {
         // Heartbeats and webhooks run in the background; they must not drag the window around.
         let quiet = routine.heartbeat || viaWebhook

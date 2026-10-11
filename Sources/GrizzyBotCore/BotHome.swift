@@ -281,7 +281,8 @@ public struct BotHomeStore: Sendable {
         cwd: String = "",
         timeout: TimeInterval = ShellTimeout.default,
         extraWriteRoots: [String] = [],
-        allowNetwork: Bool = false
+        allowNetwork: Bool = false,
+        extraEnvironment: [String: String] = [:]
     ) async throws -> ShellResult {
         let home = try homeURL(botId: botId)
         let directory = try containedURL(home: home, relative: cwd)
@@ -301,7 +302,8 @@ public struct BotHomeStore: Sendable {
             home: home,
             extraWriteRoots: Self.sanitizedWriteRoots(extraWriteRoots),
             allowNetwork: allowNetwork,
-            timeout: timeout
+            timeout: timeout,
+            extraEnvironment: extraEnvironment
         )
     }
 
@@ -325,7 +327,8 @@ public struct BotHomeStore: Sendable {
         home: URL,
         extraWriteRoots: [URL],
         allowNetwork: Bool,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        extraEnvironment: [String: String] = [:]
     ) async throws -> ShellResult {
         let handle = ShellProcessHandle()
         let result: ShellResult = try await withTaskCancellationHandler {
@@ -339,6 +342,7 @@ public struct BotHomeStore: Sendable {
                             extraWriteRoots: extraWriteRoots,
                             allowNetwork: allowNetwork,
                             timeout: timeout,
+                            extraEnvironment: extraEnvironment,
                             handle: handle
                         ))
                     } catch {
@@ -364,6 +368,7 @@ public struct BotHomeStore: Sendable {
         extraWriteRoots: [URL],
         allowNetwork: Bool,
         timeout: TimeInterval,
+        extraEnvironment: [String: String] = [:],
         handle: ShellProcessHandle
     ) throws -> ShellResult {
         var executable = "/usr/bin/sandbox-exec"
@@ -381,7 +386,7 @@ public struct BotHomeStore: Sendable {
             "TMPDIR=\(NSTemporaryDirectory())",
             "PATH=/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
             "LANG=en_US.UTF-8",
-        ]
+        ] + extraEnvironment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
 
         var outFds: [Int32] = [0, 0]
         var errFds: [Int32] = [0, 0]

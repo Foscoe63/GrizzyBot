@@ -18,6 +18,7 @@ public enum Panel: String, Sendable, Equatable {
     case routine
     case canvas
     case artifact
+    case library
 }
 
 /// Heart of the app: local store mirroring rakazo Shell.tsx state + API behavior.
@@ -73,6 +74,8 @@ public final class AppStore {
     public var chatSearchOpen: Bool = false
     public var highlightMessageId: String?
     public var pendingComposerText: String?
+    /// Text to quote into the reply box (⌘L on a selection, or Quote on a message).
+    public var pendingQuote: String?
     /// Prefills Sign in when the user picks an existing account on Welcome.
     public var pendingAuthEmail: String = ""
 
@@ -117,6 +120,8 @@ public final class AppStore {
     public var showHostPrompt: Bool = false
     /// App layer: speak replies and local notifications.
     public var onRunFinished: ((Bot, String) -> Void)?
+    /// Called when a run stops for an approval, so the app can raise a notification with Allow / Deny.
+    public var onApprovalNeeded: ((Bot, _ tool: String, _ detail: String) -> Void)?
     public var editingRoutineId: String? = nil
     public var routineDraft: RoutineDraft = RoutineDraft()
 
@@ -209,6 +214,14 @@ public final class AppStore {
     var heldSends: [String: [QueuedSend]] = [:]
     /// Loopback receiver that lets outside systems fire routines.
     let webhookReceiver = WebhookReceiver()
+    /// Loopback MCP server that lets Claude Desktop / Cursor / Claude Code drive the bots.
+    let controlPlane = ControlPlaneServer()
+    /// Ships run and tool spans to an OpenTelemetry collector when one is configured.
+    let traceExporter = TraceExporter()
+    /// Phone-friendly web companion.
+    let companionServer = CompanionServer()
+    /// Reads `op://` references saved as secrets. Replaceable so tests never call the real tool.
+    public var secretReader: any SecretReferenceReading = OnePasswordCLI()
     /// When each webhook last fired, to keep a chatty sender from flooding a bot.
     var webhookLastFire: [String: Date] = [:]
     /// Long-poll loop for Telegram while it is switched on.
@@ -1085,7 +1098,7 @@ public final class AppStore {
         save()
     }
 
-    private func extraShellWriteRoots(for bot: Bot) -> [String] {
+    func extraShellWriteRoots(for bot: Bot) -> [String] {
         var roots = GrantedFolders.writeRoots(grantedFolders(for: bot))
         guard let folder = effectiveWorkingFolder(for: bot)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !folder.isEmpty
@@ -1389,9 +1402,23 @@ public final class AppStore {
         thread.cursor = progressMsg.seq
         threads[threadKey] = thread
 
-        let provider = bot.modelProvider ?? modelProvider
-        let providerSettings = modelProviderSettings(for: provider ?? ModelCatalog.defaultProvider)
-        let selectedModel = bot.modelId ?? providerSettings.modelId ?? modelId
+        var provider = bot.modelProvider ?? modelProvider
+        var providerSettings = modelProviderSettings(for: provider ?? ModelCatalog.defaultProvider)
+        var selectedModel = bot.modelId ?? providerSettings.modelId ?? modelId
+        // Short, conversational turns go to the bot's light model when it has one; the reply says so.
+        let route = ModelRouter.route(
+            prompt: prompt,
+            hasImage: promptImageJPEGBase64?.isEmpty == false,
+            isCommand: prompt.trimmingCharacters(in: .whitespaces).hasPrefix("/"),
+            hasLightModel: bot.lightModel != nil
+        )
+        var routedNote: String?
+        if route.isLight, let light = bot.lightModel {
+            provider = light.provider
+            providerSettings = modelProviderSettings(for: light.provider)
+            selectedModel = light.modelId
+            routedNote = "light model \(light.label)"
+        }
         let client: any ChatCompleting = chatCompleter ?? Self.defaultClient(for: provider)
         await warmMcpCatalog(bot: bot, prompt: prompt)
         hydratePromotedFromAdvertised(bot: bot)
@@ -1445,6 +1472,8 @@ public final class AppStore {
         case .builtin(let command, let argument):
             switch command {
             case .plan: agentPromptRaw = BuiltinCommands.planPrompt(task: argument)
+            case .learn: agentPromptRaw = SkillLearning.prompt(topic: argument)
+            case .recipe: agentPromptRaw = recipePrompt(argument: argument) ?? prompt
             case .goal: agentPromptRaw = BuiltinCommands.goalKickoff(goal: bot.goal ?? argument)
             default: agentPromptRaw = prompt
             }
@@ -1483,6 +1512,7 @@ public final class AppStore {
             settleQueue(botId: botId, threadKey: threadKey, runId: runId)
             return
         }
+        for skill in injected { recordSkillUse(skill.id) }
         let skillText = SkillMarkdown.catalogPrompt(from: botSkills, injected: injected)
         let homePath = (try? botHome.homeURL(botId: botId).path) ?? ""
         let computerNote = self.computerNote(for: bot)
@@ -1501,37 +1531,11 @@ public final class AppStore {
         var failed = false
         var failureReason: String?
         var transcript: [ChatMessage] = []
+        let runStartedAt = Date()
 
         do {
-            let endpoint: ModelEndpoint
-            if chatCompleter != nil {
-                endpoint = (try? LLMRouting.endpoint(
-                    provider: provider,
-                    modelId: selectedModel,
-                    apiKey: providerSettings.apiKey,
-                    baseUrl: providerSettings.baseUrl
-                )) ?? ModelEndpoint(
-                    provider: provider ?? "injected",
-                    model: selectedModel ?? "test",
-                    baseURL: "https://localhost/v1",
-                    apiKey: "local"
-                )
-            } else {
-                var resolvedKey = providerSettings.apiKey
-                if let token = await DeviceCodeAuth.resolveAccessToken(
-                    apiKey: providerSettings.apiKey,
-                    oauthJSON: providerSettings.oauthJSON,
-                    provider: provider ?? ""
-                ) {
-                    resolvedKey = token
-                }
-                endpoint = try LLMRouting.endpoint(
-                    provider: provider,
-                    modelId: selectedModel,
-                    apiKey: resolvedKey,
-                    baseUrl: providerSettings.baseUrl
-                )
-            }
+            let endpoint = try await resolveEndpoint(provider: provider, modelId: selectedModel)
+            let fallbacks = await resolveFallbacks(for: bot, excluding: endpoint)
             let progressId = progressMsg.id
             let stallMs = max(0, appConfig.agentStallTimeoutMs)
             var steerPoll: (@Sendable () -> [String])?
@@ -1541,7 +1545,7 @@ public final class AppStore {
                     return items.map { $0.text }
                 }
             }
-            let loopRequest = AgentLoopRequest(
+            var loopRequest = AgentLoopRequest(
                 endpoint: endpoint,
                 botName: bot.name,
                 botTitle: bot.title,
@@ -1565,18 +1569,26 @@ public final class AppStore {
                 steer: steerPoll,
                 goal: bot.goal ?? ""
             )
+            loopRequest.fallbacks = fallbacks
+            loopRequest.secretNames = botSecretNames(botId: botId)
+            let taint = RunTaint()
             let execute: @Sendable (String, String) async -> AgentToolCallResult = { [weak self] name, arguments in
                 guard let self else {
                     return AgentToolCallResult(output: "store released")
                 }
-                return await self.executeAgentTool(
-                    name: name,
-                    argumentsJSON: arguments,
-                    botId: botId,
-                    depth: 0,
-                    endpoint: endpoint,
-                    client: client
-                )
+                let result = await self.guardedExecute(name: name, arguments: arguments, botId: botId, runId: runId) { finalArguments in
+                    await self.executeAgentTool(
+                        name: name,
+                        argumentsJSON: finalArguments,
+                        botId: botId,
+                        depth: 0,
+                        endpoint: endpoint,
+                        client: client,
+                        taint: taint
+                    )
+                }
+                if UntrustedContent.taints(tool: name) { taint.mark(tool: name) }
+                return result
             }
             let result: AgentLoopResult
             if bot.runtime == .agui, let agui = bot.aguiURL?.trimmingCharacters(in: .whitespacesAndNewlines), !agui.isEmpty {
@@ -1649,6 +1661,11 @@ public final class AppStore {
                 }
             })
             replyText = result.text
+            if let answered = result.answeredBy {
+                routedNote = "answered by \(answered) after \(result.failedOver.joined(separator: ", ")) failed"
+                appendRunLog(botId: botId, kind: "error", text: "Model failover: \(result.failedOver.joined(separator: " → ")) → \(answered)")
+                recordAudit(type: .modelFailover, botId: botId, tool: nil, reason: "\(result.failedOver.joined(separator: ", ")) failed; \(answered) answered", allowed: true, forwarded: true)
+            }
             pause = result.pause
             inputTokens = result.inputTokens
             outputTokens = result.outputTokens
@@ -1672,6 +1689,20 @@ public final class AppStore {
             appendRunLog(botId: botId, kind: "error", text: error.localizedDescription)
         }
 
+        if !appConfig.otlpEndpoint.isEmpty {
+            let span = TraceSpan(
+                traceId: Tracing.traceId(forRun: runId),
+                spanId: Tracing.runSpanId(forRun: runId),
+                name: "run \(bot.name)",
+                start: runStartedAt,
+                end: Date(),
+                ok: !failed,
+                attributes: ["bot.name": bot.name, "model": "\(provider ?? "?")/\(selectedModel ?? "?")"],
+                counts: ["steps": steps, "tokens.input": inputTokens, "tokens.output": outputTokens]
+            )
+            let exporter = traceExporter
+            Task { await exporter.record(span) }
+        }
         guard !Task.isCancelled else {
             finishCancelled(botId: botId, threadKey: threadKey, runId: runId)
             runTasks.removeValue(forKey: runId)
@@ -1689,7 +1720,8 @@ public final class AppStore {
             blocks.append(.text("done."))
         }
         if inputTokens > 0 || outputTokens > 0 || steps > 0 {
-            blocks.append(.meta("\(steps) steps · \(inputTokens) in / \(outputTokens) out"))
+            let modelNote = routedNote.map { " · \($0)" } ?? ""
+            blocks.append(.meta("\(steps) steps · \(inputTokens) in / \(outputTokens) out\(modelNote)"))
         }
 
         let botMsg = ThreadMessage(
@@ -1722,6 +1754,9 @@ public final class AppStore {
                 tool: tool,
                 detail: detail
             )
+            if tool != AppStore.secretRequestTool, let waiting = bots.first(where: { $0.id == botId }), waiting.notifications {
+                onApprovalNeeded?(waiting, tool, detail)
+            }
         } else if pause == .waitingInput || blocks.contains(where: {
             if case .approval(_, _, .pending) = $0 { return true }
             if case .choice = $0 { return true }
@@ -1964,7 +1999,8 @@ public final class AppStore {
         endpoint: ModelEndpoint,
         client: any ChatCompleting,
         approved: Bool = false,
-        scope: String? = nil
+        scope: String? = nil,
+        taint: RunTaint? = nil
     ) async -> AgentToolCallResult {
         let args = JSONValue.parseObject(argumentsJSON)
         func s(_ keys: String...) -> String {
@@ -2457,7 +2493,8 @@ public final class AppStore {
                     cwd: cwd,
                     timeout: timeout,
                     extraWriteRoots: extraShellWriteRoots(for: bot),
-                    allowNetwork: bot.shellNetwork
+                    allowNetwork: bot.shellNetwork,
+                    extraEnvironment: await shellSecretEnvironment(botId: botId, command: command)
                 )
                 let status: ApprovalStatus = allowed ? .alwaysAllowed : .allowed
                 return AgentToolCallResult(
@@ -2481,7 +2518,19 @@ public final class AppStore {
             let scope = s("scope").lowercased()
             let shared = scope == "shared" || scope == "workspace"
             let pin = s("pin").lowercased() == "true" || scope == "pin"
-            let result = rememberFact(botId: botId, text: content, shared: shared, pin: pin)
+            let untrusted = !approved && taint?.isTainted == true
+            if untrusted, shared || pin,
+               let gated = gatedWrite(
+                   tool: "memory.untrusted_write",
+                   detail: "Save to \(shared ? "shared" : "pinned") memory after reading \(taint?.tainters.joined(separator: ", ") ?? "outside content"): \(String(content.prefix(160)))",
+                   argumentsJSON: argumentsJSON,
+                   bot: bot,
+                   approved: false
+               ) {
+                recordAudit(type: .memoryWriteHeld, botId: botId, tool: "remember", reason: "write after reading \(taint?.tainters.joined(separator: ", ") ?? "outside content")", allowed: nil, forwarded: false)
+                return gated
+            }
+            let result = rememberFact(botId: botId, text: content, shared: shared, pin: pin, untrusted: untrusted)
             switch result {
             case .rejectedSecret:
                 return AgentToolCallResult(output: "Refused — that looks like a secret. Store keys in Settings, not memory.")
@@ -2521,6 +2570,16 @@ public final class AppStore {
             guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
             let scope = s("scope").lowercased()
             let shared = scope == "shared" || scope == "workspace"
+            if !approved, taint?.isTainted == true,
+               let gated = gatedWrite(
+                   tool: "memory.untrusted_forget",
+                   detail: "Forget “\(String(query.prefix(120)))” after reading \(taint?.tainters.joined(separator: ", ") ?? "outside content")",
+                   argumentsJSON: argumentsJSON,
+                   bot: bot,
+                   approved: false
+               ) {
+                return gated
+            }
             let removed = forgetFacts(botId: botId, query: query, shared: shared)
             if removed.isEmpty {
                 return AgentToolCallResult(output: "No memory matched \(query).")
@@ -2836,9 +2895,19 @@ public final class AppStore {
                 let available = skills(for: bot).map(\.id).joined(separator: ", ")
                 return AgentToolCallResult(output: "Unknown or disabled skill \(id). Available: \(available.isEmpty ? "none" : available)")
             }
+            recordSkillUse(skill.id)
             return AgentToolCallResult(
                 output: skill.body,
                 blocks: [.card(lines: [CardLine(k: "skill", v: skill.id)])]
+            )
+
+        case "skill_propose":
+            return proposeSkill(
+                botId: botId,
+                id: s("id", "name"),
+                description: s("description"),
+                body: s("body", "content"),
+                keywords: s("keywords")
             )
 
         case "capabilities_discover":
@@ -2875,6 +2944,7 @@ public final class AppStore {
             for id in ids {
                 if let skill = botSkills.first(where: { $0.id == id || $0.name.lowercased() == id }) {
                     skillBodies.append((skill.id, skill.body))
+                    recordSkillUse(skill.id)
                     notes.append("loaded skill \(skill.id)")
                     continue
                 }
@@ -2976,6 +3046,22 @@ public final class AppStore {
             } catch {
                 return AgentToolCallResult(output: "Import failed: \(error.localizedDescription)")
             }
+
+        case "request_secret":
+            let secretName = s("name")
+            let purpose = s("purpose")
+            guard SecretPlaceholders.isValidName(secretName) else {
+                return AgentToolCallResult(output: "name must be 1–64 letters, digits, _ . or -.")
+            }
+            if botSecretNames(botId: botId).contains(secretName) {
+                return AgentToolCallResult(output: "\(secretName) is already saved. Use {{secret:\(secretName)}} in a web_fetch, plugin_call or MCP argument.")
+            }
+            recordSecretEvent(requested: true, label: secretName, characterCount: 0, botId: botId)
+            return AgentToolCallResult(
+                output: "Asked the person for \(secretName). Wait for them; once saved you can use {{secret:\(secretName)}}.",
+                blocks: [.approval(tool: AppStore.secretRequestTool, detail: "\(secretName)\n\(purpose)", status: .pending)],
+                pause: .approval(tool: AppStore.secretRequestTool, detail: "\(secretName)\n\(purpose)", arguments: argumentsJSON)
+            )
 
         case "request_takeover":
             let reason = s("reason")
@@ -3210,6 +3296,7 @@ public final class AppStore {
                     mcpAdvertised: mcpAdvertisedTools
                 )
                 let provider = endpoint.provider
+                let helperTaint = RunTaint()
                 let nested = try await AgentLoop.run(
                     client: client,
                     request: AgentLoopRequest(
@@ -3242,17 +3329,24 @@ public final class AppStore {
                     guard let self else {
                         return AgentToolCallResult(output: "store released")
                     }
-                    return await self.executeAgentTool(
-                        name: nestedName,
-                        argumentsJSON: nestedArgs,
-                        botId: botId,
-                        depth: depth + 1,
-                        endpoint: endpoint,
-                        client: client,
-                        // The helper's checklist is its own, not the lead's.
-                        scope: "\(threadKey(for: botId)):helper:\(helperId)"
-                    )
+                    let nestedResult = await self.guardedExecute(name: nestedName, arguments: nestedArgs, botId: botId) { finalArguments in
+                        await self.executeAgentTool(
+                            name: nestedName,
+                            argumentsJSON: finalArguments,
+                            botId: botId,
+                            depth: depth + 1,
+                            endpoint: endpoint,
+                            client: client,
+                            // The helper's checklist is its own, not the lead's.
+                            scope: "\(self.threadKey(for: botId)):helper:\(helperId)",
+                            taint: helperTaint
+                        )
+                    }
+                    if UntrustedContent.taints(tool: nestedName) { helperTaint.mark(tool: nestedName) }
+                    return nestedResult
                 }
+                // What a helper read reaches the lead through its report, so the lead is tainted too.
+                if helperTaint.isTainted { taint?.mark(tool: "run_subagent") }
                 let helperBlock = MessageBlock.subagent(
                     agentId: helperId,
                     name: helperName,
@@ -3622,9 +3716,12 @@ public final class AppStore {
             let action = s("action").lowercased()
             let isDelete = action == "delete" || action == "remove" || action == "cancel"
             let isWrite = !isDelete && (action.isEmpty || action == "write")
+            // Outgoing messages show up as an editable draft; "Always send" on that card is the
+            // per-bot way to turn drafts off.
+            let isDraft = isWrite && DraftPreview.isOutbound(slug: slug)
             if isWrite, let gated = gatedWrite(
-                tool: "plugin_call",
-                detail: "\(slug) \(s("title"))",
+                tool: isDraft ? DraftPreview.tool : "plugin_call",
+                detail: isDraft ? DraftPreview.detail(slug: slug, argumentsJSON: argumentsJSON) : "\(slug) \(s("title"))",
                 argumentsJSON: argumentsJSON,
                 bot: bot,
                 approved: approved
@@ -4268,11 +4365,11 @@ public final class AppStore {
     }
 
     @discardableResult
-    private func rememberFact(botId: String, text: String, shared: Bool, pin: Bool = false) -> MemoryWriteResult {
+    private func rememberFact(botId: String, text: String, shared: Bool, pin: Bool = false, untrusted: Bool = false) -> MemoryWriteResult {
         let title = shared ? MemoryLedger.sharedTitle : MemoryLedger.botTitle
         let current = shared ? sharedMemory : botMemory(botId: botId)
         let seed = MemoryLedger.isSparse(current) ? MemoryLedger.template(shared: shared) : current
-        let written = MemoryLedger.upsert(content: seed, fact: text, title: title, pin: pin)
+        let written = MemoryLedger.upsert(content: seed, fact: text, title: title, pin: pin, untrusted: untrusted)
         guard written.result != .rejectedSecret, written.result != .empty else { return written.result }
         if shared {
             replaceMemoryDocument(scope: "workspace", botId: nil, path: MemoryFiles.sharedFileName, content: written.text)
@@ -4351,7 +4448,7 @@ public final class AppStore {
         replaceMemoryDocument(scope: "bot", botId: botId, path: MemoryFiles.botFileName, content: text)
     }
 
-    private func replaceMemoryDocument(scope: String, botId: String?, path: String, content: String) {
+    func replaceMemoryDocument(scope: String, botId: String?, path: String, content: String) {
         let idx: Int?
         if path == MemoryFiles.sharedFileName {
             idx = memory.firstIndex(where: { $0.scope == "workspace" && $0.path == path })
@@ -5034,6 +5131,19 @@ public final class AppStore {
         save()
     }
 
+    public func answerApproval(botId: String, messageId: String, decision: ApprovalDecision, editedBody: String?) {
+        // An edited draft replaces the message text the tool will send.
+        if let editedBody, decision != .deny {
+            let key = threadKey(for: botId)
+            if var thread = threads[key], var pending = thread.pendingTool, pending.tool == DraftPreview.tool {
+                pending.arguments = DraftPreview.applying(editedBody: editedBody, to: pending.arguments)
+                thread.pendingTool = pending
+                threads[key] = thread
+            }
+        }
+        answerApproval(botId: botId, messageId: messageId, decision: decision)
+    }
+
     public func answerApproval(botId: String, messageId: String, decision: ApprovalDecision) {
         let key = threadKey(for: botId)
         guard var thread = threads[key],
@@ -5047,7 +5157,13 @@ public final class AppStore {
                 case .alwaysAllow:
                     status = .alwaysAllowed
                     if let bIdx = bots.firstIndex(where: { $0.id == botId }) {
-                        if !bots[bIdx].alwaysAllowTools.contains(tool) {
+                        if AllowRule.narrows(tool: tool) {
+                            // Shell and file approvals become a rule for what was approved, not a blanket yes.
+                            let rule = AllowRule.suggested(tool: tool, detail: detail)
+                            if !bots[bIdx].allowRules.contains(where: { $0.tool == rule.tool && $0.pattern == rule.pattern }) {
+                                bots[bIdx].allowRules.append(rule)
+                            }
+                        } else if !bots[bIdx].alwaysAllowTools.contains(tool) {
                             bots[bIdx].alwaysAllowTools.append(tool)
                         }
                     }
@@ -5101,9 +5217,12 @@ public final class AppStore {
                             ?? self.modelProvider),
                     approved: true
                 )
+                let shown = UntrustedContent.isExternal(tool: pending.name)
+                    ? UntrustedContent.wrap(result.output, tool: pending.name)
+                    : result.output
                 self.send(
                     botId: botId,
-                    text: "Approved \(pending.tool). Tool result:\n\(result.output)\nContinue the task."
+                    text: "Approved \(pending.tool). Tool result:\n\(shown)\nContinue the task."
                 )
             }
             return

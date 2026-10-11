@@ -34,7 +34,7 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "15.0"
     CLANG_ENABLE_MODULES: YES
     ENABLE_TESTABILITY: YES
-    MARKETING_VERSION: "0.9.0"
+    MARKETING_VERSION: "0.10.0"
     CURRENT_PROJECT_VERSION: "11"
     # Match Xcode 27 recommended project settings (stops "Update to recommended settings").
     ENABLE_USER_SCRIPT_SANDBOXING: YES
@@ -196,6 +196,10 @@ targets:
         NSBonjourServices:
           - "_http._tcp"
         SentryDSN: "$(SENTRY_DSN)"
+        CFBundleURLTypes:
+          - CFBundleURLName: com.grizzybot.app
+            CFBundleURLSchemes:
+              - grizzybot
     configFiles:
       Debug: Configs/Debug.xcconfig
       Release: Configs/Release.xcconfig

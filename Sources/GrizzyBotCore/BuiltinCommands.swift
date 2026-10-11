@@ -14,6 +14,10 @@ public enum BuiltinCommand: String, CaseIterable, Sendable {
     case usage
     /// Undo the file changes a run made.
     case rollback
+    /// Propose a reusable skill from this conversation.
+    case learn
+    /// Run a saved, parameterised task.
+    case recipe
 
     public var summary: String {
         switch self {
@@ -23,6 +27,8 @@ public enum BuiltinCommand: String, CaseIterable, Sendable {
         case .compact: return "shrink the conversation to free up context"
         case .usage: return "tokens this bot has used"
         case .rollback: return "undo the last file changes (/rollback list to see them)"
+        case .learn: return "propose a skill from the work in this chat (you review it before it is used)"
+        case .recipe: return "run a saved recipe: /recipe name key=value (/recipe alone lists them)"
         }
     }
 
@@ -30,7 +36,7 @@ public enum BuiltinCommand: String, CaseIterable, Sendable {
     public var isLocal: Bool {
         switch self {
         case .context, .compact, .usage, .rollback: return true
-        case .goal, .plan: return false
+        case .goal, .plan, .learn, .recipe: return false
         }
     }
 }

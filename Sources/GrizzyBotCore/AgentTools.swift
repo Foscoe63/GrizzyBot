@@ -323,6 +323,7 @@ public enum AgentToolCatalog {
         .init(id: "search_memory", label: "Search memory", subtitle: "Retrieve facts from bot and shared memory"),
         .init(id: "forget", label: "Forget", subtitle: "Remove a durable memory fact"),
         .init(id: "request_takeover", label: "Request takeover", subtitle: "Hand the computer to you for sign-in"),
+        .init(id: "request_secret", label: "Request secret", subtitle: "Ask you for a key or password without seeing it"),
         .init(id: "spawn_bot", label: "Spawn bot", subtitle: "Create a child bot"),
         .init(id: "message_bot", label: "Message bot", subtitle: "Hand a task to another bot in the workspace"),
         .init(id: "delete_bot", label: "Delete bot", subtitle: "Permanently remove a spawned bot"),
@@ -337,6 +338,7 @@ public enum AgentToolCatalog {
         .init(id: "plugin_call", label: "Plugin call", subtitle: "Search or write through a connected plugin"),
         .init(id: "read_skill", label: "Read skill", subtitle: "Load a skill's full instructions"),
         .init(id: "import_skills", label: "Import skills", subtitle: "Copy SKILL.md folders into GrizzyBot"),
+        .init(id: "skill_propose", label: "Propose skill", subtitle: "Draft a reusable skill for you to review"),
         .init(id: "search_knowledge", label: "Search knowledge", subtitle: "Search granted knowledge sources"),
         .init(id: "search_sessions", label: "Search past chats", subtitle: "Find things said in this bot's earlier conversations"),
         .init(id: "present_component", label: "Present component", subtitle: "Show a form, gallery, or audit component"),
@@ -420,6 +422,7 @@ extension Bot {
     public func isToolEnabled(_ toolId: String) -> Bool {
         if enabledTools.contains(toolId) { return true }
         if toolId.hasPrefix("computer_"), enabledTools.contains("request_takeover") { return true }
+        if toolId == "request_secret", enabledTools.contains("request_takeover") || enabledTools.contains("plugin_call") { return true }
         if CanvasBoardStore.toolIds.contains(toolId) { return true }
         if ArtifactStore.toolIds.contains(toolId) { return true }
         if toolId == "plugin_call", enabledTools.contains("destination_write") { return true }
@@ -428,7 +431,7 @@ extension Bot {
            enabledTools.contains("spawn_bot") || enabledTools.contains("message_bot") { return true }
         if toolId.hasPrefix("shortcuts_"), enabledTools.contains("shell") { return true }
         if toolId == "search_memory" || toolId == "forget", enabledTools.contains("remember") { return true }
-        if toolId == "import_skills", enabledTools.contains("read_file") { return true }
+        if toolId == "import_skills" || toolId == "skill_propose", enabledTools.contains("read_file") { return true }
         if toolId == "search_knowledge", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
             return true
         }
@@ -520,7 +523,8 @@ extension AgentToolCatalog {
         mcpAdvertised: [String: [String]] = [:]
     ) -> [ChatTool] {
         let enabled = Set(enabledIds)
-            .union(enabledIds.contains("read_file") ? ["import_skills"] : [])
+            .union(enabledIds.contains("read_file") ? ["import_skills", "skill_propose"] : [])
+            .union((enabledIds.contains("request_takeover") || enabledIds.contains("plugin_call")) ? ["request_secret"] : [])
             .union(
                 (enabledIds.contains("remember") || enabledIds.contains("search_memory"))
                     ? ["search_knowledge", "search_sessions"] : []
@@ -759,6 +763,15 @@ extension AgentToolCatalog {
             required: ["reason"]
         )
         add(
+            "request_secret",
+            description: "Ask the person for a key, token or password you need. They type it into a private field (or give a 1Password op:// reference); you never see the value. Afterwards write {{secret:NAME}} wherever the value belongs in a web_fetch, plugin_call or MCP tool argument and GrizzyBot fills it in. In a shell command it becomes an environment variable reference, so the value never appears in the command shown for approval. It cannot be used in file contents.",
+            properties: [
+                "name": stringProp("Short id such as GITHUB_TOKEN (letters, digits, _ . -)"),
+                "purpose": stringProp("One sentence telling the person what it is for"),
+            ],
+            required: ["name", "purpose"]
+        )
+        add(
             "destination_write",
             description: "Write a record to a connected plugin (GitHub gist, Slack, Linear, …) and the local destination log.",
             properties: [
@@ -881,6 +894,17 @@ extension AgentToolCatalog {
             description: "Import every SKILL.md under a folder into GrizzyBot’s skill library so bots can use them. Path may be absolute (e.g. ~/.agents/skills) or inside the bot home.",
             properties: ["path": stringProp("Folder that contains SKILL.md files")],
             required: ["path"]
+        )
+        add(
+            "skill_propose",
+            description: "Propose a reusable skill from work you just did. It is saved switched off for the person to review and enable; you cannot enable it yourself. Only propose a repeatable procedure with no secrets or personal data.",
+            properties: [
+                "id": stringProp("Short kebab-case id, e.g. weekly-invoice-summary"),
+                "description": stringProp("One line specific enough to pick this skill from a catalog"),
+                "body": stringProp("Concise numbered steps naming the tools to use"),
+                "keywords": stringProp("Optional comma-separated discovery keywords"),
+            ],
+            required: ["id", "description", "body"]
         )
         add(
             "capabilities_discover",

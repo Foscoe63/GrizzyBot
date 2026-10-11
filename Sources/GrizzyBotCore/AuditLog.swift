@@ -29,6 +29,9 @@ public enum AuditEventType: String, Codable, Sendable {
     case componentRefused = "component.refused"
     case connectorSyncSucceeded = "connector.sync_succeeded"
     case connectorSyncFailed = "connector.sync_failed"
+    case secretLeakBlocked = "secret.leak_blocked"
+    case modelFailover = "model.failover"
+    case memoryWriteHeld = "memory.write_held"
 }
 
 public struct AuditEvent: Codable, Sendable, Hashable, Identifiable {

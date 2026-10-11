@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import Foundation
 import GrizzyBotCore
@@ -65,8 +66,19 @@ enum ReplySpeaker {
 
 @MainActor
 enum FinishNotifier {
+    static let approvalCategory = "grizzybot.approval"
+
     static func requestAccess() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        let actions = [
+            UNNotificationAction(identifier: "allow", title: "Allow", options: []),
+            UNNotificationAction(identifier: "always", title: "Always allow", options: []),
+            UNNotificationAction(identifier: "deny", title: "Deny", options: [.destructive]),
+        ]
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: approvalCategory, actions: actions, intentIdentifiers: [], options: [])
+        ])
     }
 
     static func notify(bot: String, text: String) {
@@ -80,6 +92,58 @@ enum FinishNotifier {
             trigger: nil
         )
         UNUserNotificationCenter.current().add(request)
+    }
+
+    /// An approval the bot is waiting on, with buttons that answer it without opening the app.
+    static func notifyApproval(botId: String, bot: String, tool: String, detail: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "\(bot) is waiting for you"
+        content.body = "\(tool): \(String(detail.prefix(140)))"
+        content.sound = .default
+        content.categoryIdentifier = approvalCategory
+        content.userInfo = ["botId": botId]
+        content.interruptionLevel = .timeSensitive
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "approval-\(botId)", content: content, trigger: nil)
+        )
+    }
+}
+
+/// Turns a tap on a notification button into an answer in the store.
+@MainActor
+final class NotificationResponder: NSObject, UNUserNotificationCenterDelegate {
+    private let store: AppStore
+
+    init(store: AppStore) {
+        self.store = store
+        super.init()
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let action = response.actionIdentifier
+        guard let botId = response.notification.request.content.userInfo["botId"] as? String else { return }
+        await MainActor.run {
+            switch action {
+            case "allow": store.answerPendingApproval(botId: botId, decision: .allow)
+            case "always": store.answerPendingApproval(botId: botId, decision: .alwaysAllow)
+            case "deny": store.answerPendingApproval(botId: botId, decision: .deny)
+            default:
+                store.selectBot(botId)
+                store.showChat()
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+        }
+    }
+
+    /// Show approval banners even while the app is frontmost on another bot.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
     }
 }
 

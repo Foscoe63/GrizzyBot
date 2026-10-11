@@ -41,6 +41,8 @@ struct RightPanelView: View {
                             CanvasPanelView()
                         case .artifact:
                             ArtifactPanelView()
+                        case .library:
+                            LibraryPanelView()
                         }
                     }
                     .padding(.horizontal, 16)

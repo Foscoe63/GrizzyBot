@@ -29,6 +29,16 @@ public enum MemoryLedger {
 
     """
 
+    /// Marks a fact saved by a run that had read outside content (a web page, an email, a plugin).
+    public static let untrustedTag = "⟦untrusted⟧"
+
+    public static func isUntrusted(_ fact: String) -> Bool { fact.contains(untrustedTag) }
+
+    /// The fact without its provenance tag.
+    public static func plain(_ fact: String) -> String {
+        fact.replacingOccurrences(of: untrustedTag, with: "").trimmingCharacters(in: .whitespaces)
+    }
+
     public static func template(shared: Bool) -> String {
         shared ? sharedTemplate : botTemplate
     }
@@ -56,13 +66,34 @@ public enum MemoryLedger {
         return text
     }
 
-    public static func upsert(content: String, fact raw: String, title: String = botTitle, pin: Bool = false) -> (text: String, result: MemoryWriteResult) {
-        let fact = normalizeFact(raw)
-        guard !fact.isEmpty else { return (content, .empty) }
-        if looksLikeSecret(fact) { return (content, .rejectedSecret) }
+    /// `untrusted` marks a fact written after the run read outside content. Such a fact is tagged, and
+    /// it never replaces a fact the person (or a trusted run) wrote: it is added beside it instead, so
+    /// a poisoned page cannot quietly rewrite what the bot believes.
+    public static func upsert(
+        content: String,
+        fact raw: String,
+        title: String = botTitle,
+        pin: Bool = false,
+        untrusted: Bool = false
+    ) -> (text: String, result: MemoryWriteResult) {
+        let bare = normalizeFact(raw)
+        guard !bare.isEmpty else { return (content, .empty) }
+        if looksLikeSecret(bare) { return (content, .rejectedSecret) }
+        let fact = untrusted && !isUntrusted(bare) ? "\(bare) \(untrustedTag)" : bare
 
         var parsed = parse(content)
         if parsed.title.isEmpty { parsed.title = title }
+        if untrusted {
+            // Never overwrite or promote a trusted fact; only refresh an earlier untrusted one.
+            if let idx = parsed.facts.firstIndex(where: { isUntrusted($0) && similar($0, fact) }) {
+                let previous = parsed.facts[idx]
+                if previous == fact { return (compose(parsed), .unchanged) }
+                parsed.facts[idx] = fact
+                return (compose(parsed), .updated(previous: previous))
+            }
+            parsed.facts.append(fact)
+            return (compose(parsed), .inserted)
+        }
         if pin {
             if let idx = parsed.pin.firstIndex(where: { similar($0, fact) }) {
                 let previous = parsed.pin[idx]
@@ -109,6 +140,47 @@ public enum MemoryLedger {
         parsed.pin = parsed.pin.filter(keep)
         parsed.facts = parsed.facts.filter(keep)
         return (compose(parsed), removed)
+    }
+
+    // MARK: - Editing one item (the memory timeline)
+
+    /// Remove exactly this line, pinned or not. Returns false when it is not there.
+    public static func remove(content: String, exact fact: String) -> (text: String, removed: Bool) {
+        var parsed = parse(content)
+        let before = parsed.pin.count + parsed.facts.count
+        parsed.pin.removeAll { $0 == fact }
+        parsed.facts.removeAll { $0 == fact }
+        let removed = parsed.pin.count + parsed.facts.count < before
+        return (removed ? compose(parsed) : content, removed)
+    }
+
+    /// The person vouches for an untrusted fact: its tag goes away and it reads as their own.
+    public static func trust(content: String, exact fact: String) -> (text: String, changed: Bool) {
+        var parsed = parse(content)
+        var changed = false
+        for i in parsed.facts.indices where parsed.facts[i] == fact && isUntrusted(fact) {
+            parsed.facts[i] = plain(fact); changed = true
+        }
+        for i in parsed.pin.indices where parsed.pin[i] == fact && isUntrusted(fact) {
+            parsed.pin[i] = plain(fact); changed = true
+        }
+        return (changed ? compose(parsed) : content, changed)
+    }
+
+    /// Move a fact between Pin and Facts.
+    public static func setPinned(content: String, exact fact: String, pinned: Bool) -> (text: String, changed: Bool) {
+        var parsed = parse(content)
+        if pinned, let idx = parsed.facts.firstIndex(of: fact) {
+            parsed.facts.remove(at: idx)
+            parsed.pin.append(isUntrusted(fact) ? plain(fact) : fact) // pinning is the person's decision
+            return (compose(parsed), true)
+        }
+        if !pinned, let idx = parsed.pin.firstIndex(of: fact) {
+            parsed.pin.remove(at: idx)
+            parsed.facts.append(fact)
+            return (compose(parsed), true)
+        }
+        return (content, false)
     }
 
     public static func looksLikeSecret(_ text: String) -> Bool {
@@ -239,8 +311,8 @@ public enum MemoryLedger {
     }
 
     static func similar(_ a: String, _ b: String) -> Bool {
-        let ta = Set(MemoryIndex.tokenize(a))
-        let tb = Set(MemoryIndex.tokenize(b))
+        let ta = Set(MemoryIndex.tokenize(plain(a)))
+        let tb = Set(MemoryIndex.tokenize(plain(b)))
         guard !ta.isEmpty, !tb.isEmpty else { return false }
         let inter = Double(ta.intersection(tb).count)
         let union = Double(ta.union(tb).count)

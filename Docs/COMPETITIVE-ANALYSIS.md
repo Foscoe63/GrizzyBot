@@ -152,3 +152,86 @@ Ranked by value ÷ effort, with a one-line "how" anchored in the existing code.
 - OpenClaw: [architecture part 1](https://theagentstack.substack.com/p/openclaw-architecture-part-1-control), [security / malicious skills](https://thehackernews.com/2026/02/openclaw-integrates-virustotal-scanning.html), [features overview](https://blog.openreplay.com/openclaw-open-source-ai-assistant/)
 - Hermes Agent: [ScriptByAI review](https://www.scriptbyai.com/hermes-agent/), [docs](https://hermes-agent.nousresearch.com/docs)
 - Alternatives: [7 best OpenClaw alternatives](https://www.scriptbyai.com/best-openclaw-alternatives/), [10 best open-source agents](https://www.scriptbyai.com/best-ai-agents/)
+
+---
+
+# Round 2 (Oct 11, 2026) — after 0.9.0
+
+Baseline: v0.9.0 (`ba06c8f`). Re-checked Grok Bot's changelog through **0.68.1**, plus Meta Muse / OpenAI Dots, OpenClaw's memory and security docs, Hermes (curator, kanban), ZeroClaw, IronClaw, NanoClaw, Goose. Source claims about GrizzyBot below were grep-verified against `Sources/GrizzyBotCore`; competitor claims come from READMEs/docs/blogs, not their code.
+
+## New since round 1
+
+| Source | What's new |
+|---|---|
+| **Grok Bot 0.59–0.68** | **Auto-review cards** with "Always allow" that become named *Custom Rules*, editable from the card; approval cards quote the instruction and name the bot; **a busy bot answers you before its queued background updates**; hung-step watchdog (Stop or new message frees a stuck bot in ~30s); **reconnect card** when an OAuth token expires instead of retrying; **Library tab** of everything a bot shared; word-synced voice-memo transcripts; per-bot accent colour; quote-selection-into-prompt (⌘L); **Disable drafts for this bot**; automatic **model routing** (cheap model for easy turns, strong model for hard ones; no visibility yet, a complaint); 1Password as the login source before falling back to a secure form; per-bot inbox (rolling out). |
+| **Meta Muse / OpenAI Dots** | Memory the user can **inspect and edit** is the differentiator reviewers cite (Dots can't; disconnecting a plugin doesn't delete what was learned). |
+| **OpenClaw** | **Pre-compaction memory flush** (silent turn: "save what matters before it's summarised"), background "dreaming" consolidation, **memory writes from network-tainted turns are quarantined / marked untrusted**, MEMORY.md compaction that preserves user-authored headings, forgotten content must not resurface via retries or consolidation, `security audit` command, session keys with a secure-DM scope. |
+| **Hermes** | **Curator**: background pass that consolidates/archives agent-made skills, never deletes (archive + restore + pin + backup/rollback), tracks per-skill usage, skips bundled skills. **Kanban**: durable SQLite board with heartbeats, reclaim, retry budgets, circuit breaker, "budget warning at 90% of iterations". `environments:` frontmatter hides context-specific skills from the index. |
+| **IronClaw** | Host-side credential injection plus **bidirectional leak scanning** (outbound requests and inbound responses), prompt-injection detection with Block/Warn/Review/Sanitize tiers, tool output wrapped before it reaches the model, per-tool rate limits, RRF hybrid search. |
+| **ZeroClaw** | Seatbelt on macOS (GrizzyBot already has), **provider fallback chains**, **streaming → non-streaming retry**, resumable SOPs with approval gates, `launchctl` service (GrizzyBot already has via SMAppService). |
+| **NanoClaw** | Per-agent credential gateway; **script gates** (a cheap script decides whether to wake the agent at all); per-agent templates with no secrets. |
+| **Goose** | Recipes (parameterised, shareable task definitions), custom distributions. |
+
+## Re-verified GrizzyBot gaps (grep on 0.9.0)
+
+| Gap | Evidence |
+|---|---|
+| No untrusted-content boundary for **web pages, MCP/plugin results, emails** | "untrusted" appears only for webhook payloads (`RoutineEvents.swift:68`) and the ai-memory handoff (`AgentLoop.swift:502`). Tool results enter context raw. |
+| Memory can be poisoned by injected content | `remember` has secret refusal but no provenance/taint; a bot that just read a web page can write to `MEMORY.md`/`SHARED.md`, which every later turn trusts. |
+| No pre-compaction memory flush | `AgentLoop.compact` / `/compact` summarise; no "save facts first" turn. |
+| No provider fallback / non-streaming retry | `LLMClient` has no failover chain; only 429/5xx retry. |
+| No model routing | A bot has one model; no cheap-for-easy / strong-for-hard policy. |
+| Always-allow is per tool name | `alwaysAllowTools: [String]` — not scoped by host, path or argument pattern, and not editable as a rule from the approval card. |
+| Skills never refine themselves | Scanner exists; no curator, usage counts, or `/learn`. |
+| No OS notifications with actions | `UNUserNotification` absent. Approvals only work while the window is in view. |
+| No App Intents / Spotlight / Siri / Shortcuts-as-trigger | Not present. Nobody else has this either. |
+| No tracing export | No OTLP. |
+
+## Recommendations, ranked
+
+### Tier 1 — close real exposures first
+1. **Untrusted-content envelope.** Wrap `web_search`, MCP, plugin and email results in a delimited block ("data, not instructions") and strip/flag instruction-shaped text; extend the existing `SkillScanner` phrase list to runtime content. Cheapest large safety win.
+2. **Memory provenance + taint.** Stamp each fact with source (user / web / tool / routine). A turn that ingested untrusted content cannot write `## Pin` or `SHARED.md` without approval; surface provenance in the memory editor. (OpenClaw 2026.8 does this.)
+3. **Pre-compaction memory flush.** One silent turn before `compact` that offers the bot a chance to `remember`. Small change in the compaction path; large effect on long threads.
+4. **Scoped Always-allow → Custom Rules.** Turn `alwaysAllowTools` into rules (tool + host/path/arg pattern + bot), created from the approval card, listed and editable in Settings. Reuse CEL. Matches Grok Bot's Custom Rules and keeps your governance lead.
+5. **Provider fallback chain + streaming→non-streaming retry** in `LLMClient`; per-bot "if this fails, try…". Local MLX as the last link makes an offline story no rival has.
+6. **Hung-step watchdog beyond the stream**: 30s unblock on Stop for stuck tools/computer actions (the shell runner already kills process groups; extend to MCP/computer calls).
+
+### Tier 2 — product depth
+7. **Model routing.** Rule-based first (short/simple turn, no tools → small/local model), with the chosen model *shown in the tool card* (fixes Grok Bot's main complaint).
+8. **Skill curator + usage counts.** Track skill loads; `/learn` proposes a skill after a ≥N-step success; a weekly curator pass proposes merges and **archives, never deletes**; pinned and bundled skills are untouchable. Always human-approved writes.
+9. **Script gates for routines.** A routine can run a cheap shell/CEL check first and skip the model call when nothing changed. Directly cuts cost for heartbeats.
+10. **Actionable macOS notifications** (Approve/Deny/Open, Focus-aware) via `UNUserNotificationCenter`. Makes approvals work when the app is backgrounded and is the groundwork for any later iPhone companion.
+11. **Library view** (everything a bot shared: artifacts, files, links, by day). You already hold the data.
+12. **Reconnect cards** for expired OAuth/MCP auth instead of retry loops; **draft cards** for outbound email/Slack with a per-bot "disable drafts" toggle.
+13. **Memory UI parity with Muse**: an inspectable timeline of what each bot learned, with per-item delete that survives consolidation.
+
+### Tier 3 — differentiate as the best Mac citizen
+14. App Intents ("Ask Researcher…"), Spotlight, Shortcuts *as a trigger*, Share extension.
+15. Recipes: parameterised routine/team templates (builds on Team packages).
+16. MCP control-plane server (stdio) with the bounded surface from round 1.
+17. OTLP/Langfuse export from the hash-chained audit.
+18. Secure form / 1Password-style credential handoff (Keychain-backed), host-side secret injection into plugin calls with request/response leak scanning.
+
+### Still not worth copying
+Docker/cloud VMs, 20-channel sprawl, an open registry without signing, 0.0.0.0 listeners, Kanban-as-separate-OS-processes (your in-process `BotMesh` + run queue is the right shape on one Mac), removal of `/` skills menu.
+
+## Suggested next releases
+| Release | Items |
+|---|---|
+| **0.9.1 — Trust** | 1 untrusted envelope, 2 memory taint, 3 pre-compaction flush, 6 watchdog |
+| **0.10 — Control** | 4 Custom Rules, 5 fallback chain, 7 routing with visible model, 10 notifications |
+| **0.11 — Learning** | 8 curator, 9 script gates, 11 Library, 13 memory timeline |
+| **1.0 — Mac-native** | 14 App Intents/Spotlight, 12 draft/reconnect cards, 16 MCP server |
+
+## Round 2 sources
+[Grok Bot changelog](https://x.ai/changelog/bot) · [Grok Bot model routing](https://www.mindstudio.ai/blog/grok-bot-model-routing-upgrade) · [OpenClaw architecture](https://theagentstack.substack.com/p/openclaw-architecture-part-1-control) · [OpenClaw memory docs](https://docs.openclaw.ai/concepts/memory) · [OpenClaw 2026.8.1 memory notes](https://docs.openclaw.ai/releases/2026.8.1/memory) · [Hermes curator/kanban](https://github.com/nousresearch/hermes-agent) · [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) · [IronClaw](https://github.com/nearai/ironclaw) · [NanoClaw](https://github.com/qwibitai/nanoclaw) · [Goose](https://github.com/block/goose) · [Muse vs Dots](https://www.tomsguide.com/ai/meta-muse-vs-chatgpt-dots-i-compared-the-new-ai-agents-and-theyre-not-as-similar-as-they-look)
+
+
+## Round 2 implementation status (v0.10.0)
+
+Built: untrusted-content envelope (1), memory provenance and taint with approval gate (2), pre-compaction memory save (3), scoped allow rules edited from the card and in settings (4), provider fallback chain and non-streaming retry (5), tool watchdog (6), light-model routing with the answering model shown (7), skill usage counts, `/learn`, proposals and curator (8), routine script gates (9), actionable notifications (10), Library (11), reconnect and draft cards with per-bot "always send" (12), inspectable memory with Trust/Pin/Delete (13), App Intents and Spotlight (14), recipes (15), MCP control plane (16), OTLP tracing (17), request_secret with `{{secret:NAME}}` injection and two-way leak scanning (18).
+
+Not built, and why: Grok Bot's per-bot accent colour, quote-selection-into-prompt, word-synced voice memos and 1Password hookup (polish, not safety or control); a Shortcuts *trigger* that fires without the app running (needs a separate helper); injection of secrets into shell commands (would show in the approval card); an iPhone companion.
+
+**Follow-up (also v0.10.0):** per-bot accent colour, ⌘L quote-into-reply, read-aloud with a word-synced transcript (system voices), 1Password via `op://` references, `grizzybot://` links (the trigger that wakes the app from Shortcuts, scripts, and launchers), secrets in shell commands via environment variables, and a phone companion (mobile web app, not a native iOS app). Still open: a native iOS app with push notifications.

@@ -42,7 +42,7 @@ public enum ActionGateway {
         case "web_search", "web_fetch", "search_memory", "search_knowledge", "search_sessions",
              "mcp_list_tools", "read_skill", "plugin_call_read", "check_bot", "list_delegations":
             return .read
-        case "shell", "shell.exec", "remember", "forget", "import_skills",
+        case "shell", "shell.exec", "remember", "forget", "import_skills", "skill_propose",
              "plugin_call", "spawn_bot", "message_bot", "delete_bot":
             return .writeFile
         case "mcp_call":
@@ -57,7 +57,7 @@ public enum ActionGateway {
             return .read
         case "artifact_create", "artifact_update", "artifact_rewrite", "artifact_delete":
             return .writeFile
-        case "report_decline", "request_takeover":
+        case "report_decline", "request_takeover", "request_secret":
             return .read
         default:
             if tool.hasPrefix("computer_") { return .activate }

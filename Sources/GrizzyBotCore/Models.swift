@@ -65,6 +65,12 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var avatarShape: String?
     /// Bumped whenever an uploaded avatar image changes; nil means no image.
     public var avatarImageRev: Int?
+    /// Tried in order when the bot's model fails (provider down, bad key, rate limit).
+    public var fallbackModels: [ModelChoice] = []
+    /// A small, cheap or local model for short conversational turns. Nil sends every turn to the main model.
+    public var lightModel: ModelChoice?
+    /// Narrow "always allow" approvals: a tool plus the command/path/host the person actually approved.
+    public var allowRules: [AllowRule] = []
 
     public init(
         id: String,
@@ -151,6 +157,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case pinned, hidden, unread, autoApprove, shellNetwork, speakReplies, notifications, chiefOfStaff
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
         case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, goal
+        case fallbackModels, lightModel, allowRules
     }
 
     public init(from decoder: Decoder) throws {
@@ -193,6 +200,9 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         goal = try c.decodeIfPresent(String.self, forKey: .goal)
         avatarShape = try c.decodeIfPresent(String.self, forKey: .avatarShape)
         avatarImageRev = try c.decodeIfPresent(Int.self, forKey: .avatarImageRev)
+        fallbackModels = try c.decodeIfPresent([ModelChoice].self, forKey: .fallbackModels) ?? []
+        lightModel = try c.decodeIfPresent(ModelChoice.self, forKey: .lightModel)
+        allowRules = try c.decodeIfPresent([AllowRule].self, forKey: .allowRules) ?? []
     }
 }
 
@@ -238,6 +248,8 @@ public enum ChildBotStatus: String, Codable, Sendable {
 public enum ConnectStatus: String, Codable, Sendable {
     case pending
     case connected
+    /// The connection exists but its sign-in expired; the person needs to sign in again.
+    case reconnect
 }
 
 public enum MessageBlock: Codable, Sendable, Hashable {
@@ -557,6 +569,11 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
     public var continuity: Bool
     /// The last run's final reply, kept (bounded) for `continuity`.
     public var lastOutput: String?
+    /// A cheap shell check run before each scheduled tick. If it reports nothing to do, the model is
+    /// never called. See `RoutineGate`.
+    public var gate: String?
+    /// Scheduled ticks the gate has skipped since the routine last ran for real.
+    public var gateSkips: Int = 0
 
     /// True when the clock fires this routine. A routine with no cron runs only on events.
     public var hasSchedule: Bool {
@@ -607,7 +624,7 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, botId, name, prompt, cron, timezone, active, notify
         case lastRunAt, nextRunAt, createdAt, inProgress, failCount, lastError
-        case webhookEnabled, heartbeat, continuity, lastOutput
+        case webhookEnabled, heartbeat, continuity, lastOutput, gate, gateSkips
     }
 
     public init(from decoder: Decoder) throws {
@@ -635,6 +652,8 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
         heartbeat = try c.decodeIfPresent(Bool.self, forKey: .heartbeat) ?? false
         continuity = try c.decodeIfPresent(Bool.self, forKey: .continuity) ?? false
         lastOutput = try c.decodeIfPresent(String.self, forKey: .lastOutput)
+        gate = try c.decodeIfPresent(String.self, forKey: .gate)
+        gateSkips = try c.decodeIfPresent(Int.self, forKey: .gateSkips) ?? 0
     }
 }
 
