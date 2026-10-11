@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.10.0-3B82F6?style=for-the-badge" alt="Version 0.9.0">
+  <img src="https://img.shields.io/badge/version-0.11.0-3B82F6?style=for-the-badge" alt="Version 0.11.0">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,7 +49,7 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.10.0** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.0** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
@@ -57,7 +57,7 @@
 
 ## 🆕 What's new
 
-### Delegation — the right bot answers
+### 0.11 — the right bot answers
 
 - **Chief of Staff auto-dispatch.** Turn on *Hand work to the best bot automatically* in the Chief of Staff's settings. A message that clearly belongs to another bot (or that @mentions one) goes straight to them; their answer appears in the Chief of Staff's chat under their name, with a note saying who got it and why. Anything unclear, mixed ("research this and email it"), or small talk stays with the Chief of Staff. Start a message with `!` to keep it there. If the other bot fails, the Chief of Staff does the job itself; if it needs an approval, you're told where to answer it. Stop ends the hand-off and stops that bot too.
 - **Room routing.** New rooms send an un-addressed message to the member that fits it best (menu in the room header: *routing: best fit / first member*); the room says who was picked and why. An @mention always wins; existing rooms keep their old behaviour.
@@ -143,10 +143,10 @@
 Local or named accounts. Separate files, chats, and secrets per user. Passwords are PBKDF2. Keys live in **Keychain**.
 
 ### 🤖 Bots
-Templates for coworker, researcher, writer, coder, and operator. Per-bot model, tools, skills, home folder, and optional **Chief of Staff** (roster mark). Rooms, spawn, and short-lived subagents.
+Templates for coworker, researcher, writer, coder, and operator. Per-bot model (with fallbacks and an optional light model), tools, skills, home folder, and an optional **Chief of Staff** that hands work to the best-fitting bot. Rooms that route by fit, spawn, and short-lived subagents.
 
 ### 💬 Chat
-Markdown, tool cards, live step progress. Per-bot model picker and token stats. Slash skills (`/research …`). Search, edit, regenerate, branch, undo. Files, images, dictation, spoken replies.
+Markdown, tool cards, live step progress. Per-bot model picker and token stats. Slash skills and commands (`/research …`, `/recipe`, `/learn`). Search, edit, regenerate, branch, undo, quote (⌘L). Files, images, dictation, read-aloud with a word-synced transcript. Editable drafts for outgoing email and chat posts.
 
 ### 🧩 Artifacts
 Documents, code, diagrams, and small React apps a bot builds and you keep. Versioned, shared across bots, mirrored to disk, editable in a syntax-highlighted editor. Rendered in a frame with **no network**.
@@ -158,22 +158,22 @@ Documents, code, diagrams, and small React apps a bot builds and you keep. Versi
 This Mac preview or in-app browser. Resizable side panel (monitor icon). Screenshot → targets → click / type / key. Shared canvases. Exclusive takeover for login.
 
 ### 🛡️ Governance
-CEL policy, MCP grant matrix, knowledge ACLs, published components, owner/operator roles, searchable audit with a boot boundary.
+CEL policy, scoped "always allow" rules, MCP grant matrix, knowledge ACLs, published components, owner/operator roles, searchable hash-chained audit. Outside content fenced as untrusted, secret leak scanning both ways, memory that a poisoned page can't rewrite.
 
 ### 🔌 Connect
-OpenRouter, OpenAI, Anthropic, Ollama / LM Studio / vMLX / oMLX / **Splash**, **Local MLX** (Local MLX and Splash both scan the Hugging Face cache, LM Studio's models folder — wherever its settings put it — and any folder you add), Composio plugins, direct Google OAuth, MCP / Toolport, AG-UI coworkers, **Telegram**, **webhooks**.
+OpenRouter, OpenAI, Anthropic, Ollama / LM Studio / vMLX / oMLX / **Splash**, **Local MLX** (Local MLX and Splash both scan the Hugging Face cache, LM Studio's models folder — wherever its settings put it — and any folder you add), Composio plugins, direct Google OAuth, MCP / Toolport, AG-UI coworkers, **Telegram**, **webhooks**, 1Password references, and — going the other way — an **MCP server**, a **phone companion**, `grizzybot://` links, Siri / Shortcuts / Spotlight, and OpenTelemetry tracing.
 
 </td>
 <td width="33%" valign="top">
 
 ### ⏰ Routines
-Cron prompts while the app is open, plus signed Release background ticks via LaunchAgent.
+Cron prompts while the app is open, plus signed Release background ticks via LaunchAgent. Webhooks, heartbeats, a cheap pre-check command that skips the model when there is nothing to do, and recipes.
 
 ### 🧠 Memory
-Per-bot `MEMORY.md` plus account `SHARED.md`. Pins always load; secrets are refused.
+Per-bot `MEMORY.md` plus account `SHARED.md`. Pins always load; secrets are refused. Every fact says where it came from, and you can trust, pin, or delete each one.
 
 ### 🎨 Chrome
-Themes, menu bar, launch at login, Session snapshots / iCloud backup, redacted export, artifacts panel.
+Themes, menu bar, launch at login, Session snapshots / iCloud backup, redacted export, artifacts and Library panels, bot-coloured messages, actionable notifications.
 
 </td>
 </tr>
@@ -217,7 +217,7 @@ Create from a template or from scratch.
 | 💻 | **Coder** | Read, edit, and run code in the bot home |
 | 🕹️ | **Operator** | Drive the in-app browser or this Mac |
 
-Each bot has a **name**, **title**, description, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), a private **home** folder, and an optional **working folder**. Toggles cover auto-approve, speak replies, notifications, and **Chief of Staff** (roster badge / highlight; that bot cannot be hidden or deleted). Every bot's prompt lists the other bots on this Mac and their roles, and the Chief of Staff is additionally told it owns coordination across them — it still does **not** auto-delegate; it delegates only when it decides to call `message_bot`. Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation: **@mention** a member to route a message to it (`@everyone` for all), and a reply that @mentions another member pulls that member in — capped at six turns, with no bot speaking twice. Every `message_bot` handoff is logged with its reply and outcome on the **Bot Chat** page. Each bot gets one of six avatar shapes or an uploaded picture.
+Each bot has a **name**, **title**, description, instructions, enabled skills and tools, optional per-bot model, visibility (private / shared), runtime (GrizzyBot loop or **AG-UI** endpoint), a private **home** folder, and an optional **working folder**. Toggles cover auto-approve, speak replies, notifications, and **Chief of Staff** (roster badge / highlight; that bot cannot be hidden or deleted). Every bot's prompt lists the other bots on this Mac, their roles, and what each can actually do (`can: web, files`), and the Chief of Staff is additionally told it owns coordination across them. By default a bot delegates only when it decides to call `message_bot`; turn on **Hand work to the best bot automatically** for the Chief of Staff and a message that clearly belongs to someone else goes to them without the model being asked (see [Delegation](#-delegation)). A bot can opt out of automatic hand-offs. Spawn child bots or a short-lived subagent from chat. Rooms group several bots in one conversation: **@mention** a member to route a message to it (`@everyone` for all); a message with no @mention goes to the member that fits it best (new rooms) or the first member (the room header menu switches this); and a reply that @mentions another member pulls that member in — capped at six turns, with no bot speaking twice. Every `message_bot` handoff is logged with its reply and outcome on the **Bot Chat** page. Each bot gets one of six avatar shapes or an uploaded picture.
 
 <details>
 <summary><strong>📁 Home vs working folder</strong></summary>
@@ -271,10 +271,16 @@ Type `/help` for the list. Skills with the same name win.
 | `/compact` | Shrinks the working conversation (the chat on screen is unchanged) |
 | `/usage` | Tokens this bot has used |
 | `/rollback` | Undoes the newest checkpoint of file changes; `/rollback list`, `/rollback <id>` |
+| `/learn [topic]` | The bot proposes a reusable skill from the work in this chat. It is saved switched off; you review it in Skills |
+| `/recipe [name key=value …]` | Runs a saved, parameterised task; `/recipe` alone lists them. See [Recipes](#-recipes) |
 
 ### 🔁 Agent loop
 
-When a model is connected, each send runs a tool-calling loop (up to 48 steps) with context compaction on long threads. Screenshots and composer images attach only when the model can actually see images. Empty web searches stop instead of retrying forever. Transient 429/5xx errors retry. MCP dead ends (no route, missing args, expired cursors, connection failures) get recovery hints and stop looping after a few strikes. Identical MCP calls in the same step are skipped. A **stall watchdog** (default 60s, configurable) ends a turn when the stream goes silent.
+When a model is connected, each send runs a tool-calling loop (up to 48 steps) with context compaction on long threads. Screenshots and composer images attach only when the model can actually see images. Empty web searches stop instead of retrying forever. Transient 429/5xx errors retry. MCP dead ends (no route, missing args, expired cursors, connection failures) get recovery hints and stop looping after a few strikes. Identical MCP calls in the same step are skipped. A **stall watchdog** (default 60s, configurable) ends a turn when the stream goes silent, and every tool call has a hard time limit so a tool that never answers cannot freeze a run — Stop returns within seconds even if the tool ignores cancellation.
+
+**Model reliability.** If the main model fails, the bot's **fallback models** are tried in order and the reply names the one that answered; an unreadable stream gets one plain, non-streaming retry first. An optional **light model** answers short conversational turns (tasks, links, images, and commands always use the main model). **Before a long chat is compacted** the bot gets one quiet turn to `remember` what matters.
+
+**Outside content.** Web, plugin, MCP, and email results reach the model between `EXTERNAL_CONTENT` markers and are flagged when they try to give orders. A run that has read outside content cannot write shared or pinned memory, or forget anything, without your approval (see [Memory](#-memory)).
 
 Without a model, scripted replies still create files, open the computer, and exercise the UI.
 
@@ -297,12 +303,13 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 🖥️ | **Computer** | `computer_open`, `computer_screenshot`, `computer_click`, `computer_scroll`, `computer_type`, `computer_key`, `request_takeover`. |
 | 🖼️ | **Canvas** | `canvas_list`, `canvas_open`, `canvas_save`, `canvas_delete`, `canvas_place_image` — shared boards on this Mac (not the bot home). `canvas_open` after a screenshot places the last capture. |
 | 🧩 | **Artifacts** | `artifact_create`, `artifact_update`, `artifact_rewrite`, `artifact_list`, `artifact_read`, `artifact_delete` — shared on this Mac, versioned, and mirrored into the working folder as files. See [Artifacts](#-artifacts). |
-| 👥 | **Team** | `spawn_bot`, `message_bot`, `delete_bot`, `run_subagent`. Every bot's system prompt carries the **roster** — the other bots on this Mac, their roles, and which ones it created — so `message_bot` can hand a job to an existing bot instead of spawning a near-copy. It **waits** for that bot by default (120s) and folds the answer into its own reply; if the peer stops for an approval, fails, or is still going at the cap, the caller is told exactly that and the work carries on in the peer's thread. `wait:false` dispatches without holding the turn open. The chief of staff is told it owns coordination. |
+| 👥 | **Team** | `spawn_bot`, `message_bot`, `delete_bot`, `run_subagent`. Every bot's system prompt carries the **roster** — the other bots on this Mac, their roles, and which ones it created — so `message_bot` can hand a job to an existing bot instead of spawning a near-copy. It **waits** for that bot by default (120s) and folds the answer into its own reply; if the peer stops for an approval, fails, or is still going at the cap, the caller is told exactly that and the work carries on in the peer's thread. `wait:false` dispatches without holding the turn open. The chief of staff is told it owns coordination. The roster lists what each bot can do, and a bot that hits a tool it doesn't have is told which bots do. If the sender had read outside content, the peer is told and its run starts untrusted. A bot only ever uses its own tools and permissions; handing work over never widens them. |
 | 🃏 | **UI** | `present_component` (form, gallery, activity, refusals, or a published card), `report_decline`. |
 | ♾️ | **Loop** | `capabilities_discover`, `capabilities_load`, `todo`, `complete`, `clarify`. |
 | 🧩 | **MCP** | First-class `server-slug__tool` names plus `mcp_list_tools` / `mcp_call` — see [Plugins, MCP & destinations](#-plugins-mcp--destinations). |
 | 🔗 | **Shortcuts** | `shortcuts_list` names every Shortcut in your library; `shortcuts_run` runs one by name with optional text input and returns what it produced. Structured system automation instead of clicking a menu that moves between OS versions. Approval-gated as `shortcuts.run`, and granted by the **Shell** switch since a shell can already invoke `/usr/bin/shortcuts`. |
-| 🔌 | **Plugins & skills** | `plugin_call` (`action=search` / `write` / `delete`), `destination_write`, `read_skill`, `import_skills`, plus any custom tools you add. |
+| 🔌 | **Plugins & skills** | `plugin_call` (`action=search` / `write` / `delete`), `destination_write`, `read_skill`, `import_skills`, `skill_propose` (a draft skill that stays off until you approve it), plus any custom tools you add. |
+| 🔑 | **Secrets** | `request_secret` asks you for a key or password in a private field (or an `op://` 1Password reference). The bot never sees the value: it writes `{{secret:NAME}}` in a `web_fetch`, `plugin_call`, MCP, or `shell` call and GrizzyBot fills it in at the last moment. In a shell command the placeholder becomes `"$GRIZZY_SECRET_NAME"`, so the approval card never shows the value. |
 
 If a builtin file or web tool is off, the loop routes to a **connected MCP server that actually has that tool** (for example fast-filesystem or a search server). It does **not** send those calls to Toolport unless Toolport is enabled and listed.
 
@@ -380,6 +387,10 @@ Click and key policy hit-tests the **last screenshot outline** (`element.name`, 
 
 Shipped default is open (`allow: true`) so an existing Mac is not locked out.
 
+### 🔁 Always allow, scoped
+
+*Always allow* on a shell or file approval adds a **rule** for what you approved (`git status*`, or a folder), not a blanket yes. A rule never matches a command that chains or redirects (`;`, `&&`, `|`, `$(…)`), so approving `git status` can't approve `git status; rm -rf ~`. Rules are listed, and removable, in the bot's settings. The approval card says exactly which rule it will add.
+
 ### 🛂 MCP grants
 
 A bot × server matrix in Settings. Empty matrix allows every enabled MCP server. The first revoke switches that bot to an allow-list. Per-tool grants appear after `mcp_list_tools`. Read/write **effect** uses the last advertised tool list, not a vendor-name guess. Unknown and custom servers are writes.
@@ -418,6 +429,8 @@ Skills are `SKILL.md` playbooks. Matching skills inject into the turn; others lo
 
 Import a folder of `SKILL.md` files (for example `~/.agents/skills`) with `import_skills`, or write one by hand in the sidebar's **Skills** panel → New skill.
 
+**Learning and tidying.** `/learn` (or the `skill_propose` tool) has a bot draft a skill from work it just did; it is saved **switched off** and appears at the top of the Skills panel with Approve / Reject. The panel counts how often each skill is used, suggests archiving skills nobody uses and merging near-duplicates, and keeps an archive you can restore from. Nothing is ever deleted, and bundled and pinned skills are never touched. Proposals that look dangerous are refused outright.
+
 **Editing a skill.** Every row in the Skills panel offers two ways in:
 
 - **Edit** reopens the three-field form — id, description, body — with the id shown as text rather than a field, since changing it would write a second `SKILL.md` under the new name and leave the original behind.
@@ -440,6 +453,8 @@ Editing a bundled skill saves a user copy under the same id, which then override
 
 `remember` upserts similar facts instead of duplicating. Standing rules go under `## Pin` (`pin: true` or `scope: pin`) and always load in the prompt. Recent facts go under `## Facts`. `search_memory` is hybrid BM25 + salience RRF over this bot plus shared — sibling bots are not leaked. Secret-shaped strings (API keys, passwords) are refused.
 
+**Provenance.** A fact saved by a run that had read outside content (a web page, email, plugin result, or work handed over by a bot that had) is tagged `⟦untrusted⟧`, never overwrites a fact you wrote, and shows as *unverified*. That run cannot write shared or pinned memory, or forget anything, without your approval. In the bot's settings, **What I remember** lists every fact with where it lives and whether it is pinned or unverified, with Trust, Pin, and Delete on each. Before a long chat is compacted, the bot gets a turn to save what matters.
+
 Lean inject (Settings → Privacy): heuristic mode skips stuffing Facts on greetings; Settings can merge near-duplicate Facts.
 
 Edit memory in the bot panel or Settings → **General** → Shared memory.
@@ -451,6 +466,24 @@ Edit memory in the bot panel or Settings → **General** → Shared memory.
 Agents call `capabilities_discover` / `capabilities_load` to find skills and MCP tools on demand (BM25 over skills, builtins, advertised MCP). Mid-turn load injects skill bodies and promotes MCP catalog tools.
 
 Loop helpers: `todo` / `complete` / `clarify`. Optional per-bot **working folder** (bot profile) is the project root for relative file tools; shell and `MEMORY.md` stay in the bot home.
+
+---
+
+## 🧭 Delegation
+
+Bots can pass work to each other three ways, from most manual to most automatic.
+
+| | How | Who decides |
+|:--:|---|---|
+| ✋ | **`message_bot`** | The bot's own model, when it judges another bot is better placed. It waits for the answer and folds it into its reply. |
+| 🏠 | **Room routing** | A message with no @mention goes to the member that fits it best (new rooms), or the first member. |
+| 🧑‍✈️ | **Chief of Staff auto-dispatch** | Off by default. With *Hand work to the best bot automatically* on, a message that clearly belongs to another bot is handed over before the Chief of Staff's model is called. |
+
+**How a bot is picked.** An explicit `@mention` always wins. Otherwise simple rules score the message against each candidate's name, title, description, skills, and the tools actually switched on for it — instant, free, and the same answer every time. Three guards keep the rules honest: a bot missing a tool the request needs is never chosen; a match that rests only on a passing word in free-form instructions doesn't count; and a request that spans several kinds of work ("research this and email it") isn't swallowed by one specialist. If the rules can't call it and you've set a **router model** (Settings → General → Delegation), that model is asked; it sees only the message and each candidate's role and abilities, runs through the privacy filter with a hard deadline, and its answer is used only if it names a real candidate. Any failure means no hand-off.
+
+**What you see.** The Chief of Staff's thread shows who got the message and why, and the answer appears under that bot's name. Rooms post "Routed to X — reason". Hand-offs are logged on the Bot Chat page. If the other bot fails, the Chief of Staff does the job itself; if it needs an approval you're told which thread to answer it in; if it's still going, its answer is posted back when it finishes. Stop on the Chief of Staff stops that bot too. Start a message with `!` to keep it with the Chief of Staff.
+
+**What it can't do.** Candidates must be visible, willing (*May be handed work automatically*), able to run a model, and not busy. Only the Chief of Staff dispatches. A bot only ever uses its own tools, MCP grants, and policy — a hand-off never widens them, and nothing lets a bot grant itself a tool. If the sending bot had read outside content, the receiving bot is told and starts untrusted, so memory writes still need your approval.
 
 ---
 
@@ -487,12 +520,32 @@ Routines normally run on a clock. They can also run on events.
 - **Webhook.** Settings → Connections → Webhooks turns on a receiver bound to `127.0.0.1` (default port 8800; it serves only `GET /health` and `POST /hooks/<routineId>`). In the routine editor switch on *Webhook*: the secret is shown **once** and kept in the Keychain. Send it as `Authorization: Bearer <secret>` (or `X-Webhook-Secret`; a `/hooks/<id>/<secret>` URL exists for senders that cannot set headers). The body (up to 64 KB) reaches the bot framed as **untrusted data**, never as instructions. Wrong secret → `401` whether or not the routine exists; a routine still running → `409`; the same routine twice within 2 s → `429`. To reach it from outside, tunnel only that port.
 - **Heartbeat.** The routine's instruction becomes a checklist. If nothing needs you the bot replies `HEARTBEAT_OK` and the chat, notification, and Telegram stay silent; otherwise you get a short note. Runs in the background without pulling the window forward.
 - **Remember the last report.** Each run is shown the previous run's reply (bounded) so it can report only what is new — good for monitors and digests.
+- **Pre-check command.** A routine can run a cheap shell command (in the bot's sandbox) before each *scheduled* tick. If it prints nothing, or `SKIP`, the model is never called; otherwise its output is handed to the bot as data. A failing check is recorded and the tick skipped. Manual runs and webhooks bypass it.
 - Webhook and heartbeat runs never rewrite the schedule, the same as *Run now*.
 
 ```bash
 curl -X POST http://127.0.0.1:8800/hooks/ROUTINE_ID \
   -H "Authorization: Bearer $SECRET" -d '{"build":"red"}'
 ```
+
+---
+
+## 📜 Recipes
+
+A recipe is a reusable task with blanks, stored as a Markdown file in the `recipes/` folder of your account (or imported with **Settings → General → Teams → Import recipe…**). Run it with `/recipe name key=value`; `/recipe` alone lists them. A parameter with a default is optional; one without is asked for.
+
+```markdown
+---
+name: weekly-digest
+description: Summarise the week on a topic
+params:
+  - topic | Topic to cover | AI news
+  - audience | Who it's for
+---
+Write a digest of {{topic}} for {{audience}}. Keep it under 200 words.
+```
+
+`/recipe weekly-digest audience="the board"` fills in the default topic and runs it. Importing a recipe runs it past the skill scanner and refuses one that looks dangerous.
 
 ---
 
@@ -509,6 +562,19 @@ In the chat: just type to talk to the current bot; `/bots`, `/bot <name>`, `/sta
 
 ---
 
+## 🌐 Outside access
+
+Everything here is **off until you switch it on**, token-authenticated, and bound to this Mac unless noted. Settings → Connections.
+
+- **MCP server.** Drive your bots from Claude Desktop, Cursor, or Claude Code. `http://127.0.0.1:8801/mcp` with a bearer token; *Copy Claude Code command* registers it. Tools: list bots, bot status, read a chat, search chats, send a message (optionally waiting for the answer), stop a run, switch a model. Not offered: approvals, deletion, keys, settings, the computer.
+- **Phone companion.** A mobile web page served from this Mac (port 8802; scan the QR code, then *Add to Home Screen*): see your bots, read and send messages, stop a run, and **Allow** or **Deny** an approval. It never offers *always allow*, secrets, or settings, and a request that needs the Mac says so. It listens on loopback; *Reachable from other devices* opens it to Tailscale or your network — the page is plain HTTP, so use Tailscale. It has no push notifications; Telegram covers that.
+- **`grizzybot://` links.** `grizzybot://open?bot=Ada`, `grizzybot://ask?bot=Ada&text=…`, `grizzybot://run-routine?name=Morning`. For Shortcuts, scripts, and launchers. Anything that makes a bot do work is read back to you for a yes first; opening a chat is not.
+- **Siri, Shortcuts, Spotlight.** *Ask a Bot* (with a bot picker) and *Run a Routine* App Intents, plus your bots in Spotlight. These need a properly signed build to be discovered reliably.
+- **Tracing.** Set an OTLP/HTTP endpoint (for example `http://localhost:4318`) and each run and tool call is sent as a span — name, duration, success, model, token counts. No prompts, no tool arguments, no file contents. Works with Jaeger, Tempo, Langfuse, Honeycomb, or any OpenTelemetry collector.
+- **1Password.** A saved secret can be an `op://vault/item/field` reference. GrizzyBot asks the `op` command-line tool for the value only when it is used (1Password prompts you), keeps nothing, and scrubs it from results. Needs `brew install 1password-cli` and *Integrate with 1Password CLI* turned on in 1Password.
+
+---
+
 ## 🧬 Models
 
 GrizzyBot does not pay for usage. You bring a key, a subscription, or a local server.
@@ -519,7 +585,7 @@ GrizzyBot does not pay for usage. You bring a key, a subscription, or a local se
 | 🎟️ | **Subscriptions** | ChatGPT Plus/Pro (OpenAI Codex), GitHub Copilot, SuperGrok / X Premium — device-code sign-in |
 | 💻 | **Local / on-device** | **Local MLX** (Apple Silicon only — runs inside GrizzyBot; no API base URL); Ollama, LM Studio, vMLX, oMLX, Splash (discovery + live model list); any OpenAI-compatible base URL |
 
-Each provider keeps its own profile. A bot can use the workspace default or a catalog model. Vision images are sent only to models that can take them (text-only IDs such as DeepSeek chat or Groq Llama 3 are not stuffed with screenshots). Local MLX shows as **Runs in app** in the model picker; on Intel Macs it stays disabled with an explanation.
+Each provider keeps its own profile. A bot can use the workspace default or a catalog model, plus an ordered list of **fallback models** and an optional **light model** for short chat. An optional **router model** (Settings → General → Delegation) picks the bot for messages the routing rules can't call. Vision images are sent only to models that can take them (text-only IDs such as DeepSeek chat or Groq Llama 3 are not stuffed with screenshots). Local MLX shows as **Runs in app** in the model picker; on Intel Macs it stays disabled with an explanation.
 
 <details>
 <summary><strong>⚡ Local MLX (Model Connect)</strong></summary>
@@ -545,6 +611,8 @@ Composio Connect OAuth, your own Google Client ID/Secret (Gmail / Calendar / She
 **Catalog:** Gmail · Slack · GitHub · Notion · Linear · Google Calendar / Sheets / Docs / Drive · OneDrive · HubSpot · Salesforce · Jira · Trello · Asana · Intercom · Discord · X (Twitter) · Stripe · Dropbox · Box · Figma · Airtable
 
 `plugin_call` can search/list/get or write; chat cards show a short summary (for example `gmail → 8 results · in:inbox`) instead of dumping the full payload. Slug `x` is X/Twitter (`twitter` also resolves).
+
+**Drafts.** An outgoing email or chat post (Gmail, Outlook, Slack, Discord, Teams, WhatsApp, Telegram, X, …) appears as an editable draft with Send / Always send without asking / Discard. *Always send* turns drafts off for that bot; remove the rule in the bot's settings to turn them back on. **Reconnect cards.** When a sign-in has expired, the bot stops retrying and a card offers *Sign in again*.
 
 ### 📧 Google / Gmail
 
@@ -639,7 +707,11 @@ Fallback when nothing is promoted yet: search once → `mcp_call` with the exact
 | 🎨 | **Themes** | Grizzy (default), system, light, dark, and the built-in gallery |
 | 📍 | **Menu bar** | Extra; optional menu-bar-only (no window until you open it) |
 | 🚀 | **Launch at login** | Signed Release; Debug/ad-hoc shows an honest status and does not call `SMAppService` |
-| 🎙️ | **Voice** | Dictation + TTS (ElevenLabs key or macOS voices) |
+| 🎙️ | **Voice** | Dictation + TTS (ElevenLabs key or macOS voices). With a macOS voice the reply's transcript highlights each word as it is read, and a click on a word starts from there. |
+| 🗃️ | **Library** | Tray icon in the chat header: everything the bot shared — artifacts, files it wrote, links — by day |
+| 🔔 | **Notifications** | An approval a bot is waiting on raises a macOS notification with Allow / Always allow / Deny |
+| 💬 | **Messages** | Your messages take the bot's colour in one-on-one chats (a setting); ⌘L quotes the selected text into your reply; "Quote in reply" quotes a whole message |
+| 🔎 | **Siri, Shortcuts, Spotlight** | *Ask a Bot* and *Run a Routine* App Intents; bots are indexed in Spotlight |
 | 🔑 | **Optional keys** | Brave Search; Sentry DSN |
 | 💾 | **Session / backup** | Settings → General → Session: named snapshots (restore/delete), Export workspace…, Backup to iCloud (team container, else iCloud Drive “GrizzyBot Backups”, else Documents), Restore backup…, wipe workspace. Chat **Session** menu is chat-only. |
 
@@ -659,7 +731,13 @@ Fallback when nothing is promoted yet: search once → `mcp_call` with the exact
 | 🔗 | Audit events are hash-chained; *Verify audit trail* flags edits, deletions, or reordering in the middle of the log (it cannot stop someone who rewrites the whole file). |
 | 🪝 | The webhook receiver binds to loopback only, authenticates with a per-routine secret compared in constant time, caps bodies at 64 KB, and passes payloads to the bot as untrusted data. |
 | ✈️ | Telegram answers only paired private chats; pairing needs a code entered at the Mac by the owner. |
-| 🧪 | Imported skills are screened by the skill scanner and start switched off. |
+| 🧪 | Imported skills are screened by the skill scanner and start switched off. A bot's own skill proposals start off too, and a dangerous one is refused. |
+| 🧱 | Web, plugin, MCP, and email results are fenced as untrusted data and flagged when they try to give orders; a run that has read them cannot write shared or pinned memory without approval, and that taint follows work handed to another bot. |
+| 🔍 | Outgoing tool calls are checked for your stored secrets and well-known key shapes and blocked if they carry one; stored secrets are scrubbed from results. `{{secret:NAME}}` values (Keychain, or read from 1Password only at the moment of use) are filled in at the last step and never enter a prompt, transcript, or approval card. |
+| ⏱️ | Every tool call has a hard time limit and Stop works even on a tool that ignores cancellation. |
+| 🔁 | "Always allow" is scoped to the command or folder you approved and never matches a chained shell command. |
+| 🌐 | The MCP server and phone companion are off by default, token-authenticated, and bound to loopback unless you switch on network access for the companion (plain HTTP — use Tailscale); five wrong tokens lock the companion's API for a minute. The MCP server offers no approvals, deletion, credentials, settings, or computer; the companion can Allow or Deny but never *always allow*, answer a secret request, or change settings. |
+| 🔗 | `grizzybot://` links that make a bot do something are read back to you for a yes first, since any web page can open one. |
 
 Crash reports: Settings → Diagnostics. Local `last-crash.txt` is always written; Sentry is optional.
 
@@ -681,9 +759,9 @@ flowchart LR
 
 | Target | Role |
 |---|---|
-| `GrizzyBotCore` | Domain, agent loop, token accounting, Keychain, persistence, MCP routing, Composio, Google OAuth (loopback `http://127.0.0.1:8765`), Local MLX provider plumbing, policy, audit |
+| `GrizzyBotCore` | Domain, agent loop, token accounting, Keychain, persistence, MCP routing, Composio, Google OAuth (loopback `http://127.0.0.1:8765`), Local MLX provider plumbing, policy, audit; the trust layer (untrusted-content fencing, taint, leak scanning, secrets), the bot router and Chief of Staff dispatch, and the loopback servers (webhooks, MCP control plane, phone companion) |
 | `GrizzyBotMLX` | In-process Local MLX runtime (Apple Silicon); registered at app launch via `GrizzyBotMLXBootstrap` |
-| `GrizzyBot` | SwiftUI app, computer-use, TTS, Sentry, Local MLX UI |
+| `GrizzyBot` | SwiftUI app, computer-use, TTS and read-aloud, Sentry, Local MLX UI, App Intents and Spotlight, notifications |
 | `GrizzyBotRoutineAgent` | LaunchAgent helper for background routine ticks |
 | `GrizzyBotCoreTests` | Unit tests (Swift Testing) — in the Xcode scheme |
 | `GrizzyBotMLXTests` | Opt-in SPM suite for Local MLX (`GRIZZYBOT_MLX_INTEGRATION=1 swift test`); **not** in the Xcode scheme |
@@ -747,7 +825,7 @@ Live model evals are gated on `GRIZZYBOT_LIVE_EVAL=1`.
 4. `./Scripts/notarize.sh GrizzyBot.app` — keychain profile `GrizzyBot-notary` by default.
 5. Wrap in a DMG and upload to a GitHub release.
 
-Or tag `v*` to run `.github/workflows/release.yml` (`GRIZZYBOT_DEVELOPMENT_TEAM`, `DEVELOPER_ID_APPLICATION_P12`, `DEVELOPER_ID_APPLICATION_P12_PASSWORD`, `NOTARY_KEYCHAIN_PROFILE`).
+Published releases so far use plain tags (`0.8`, `0.10.0`) and are source-only. Tagging `v*` instead runs `.github/workflows/release.yml` (`GRIZZYBOT_DEVELOPMENT_TEAM`, `DEVELOPER_ID_APPLICATION_P12`, `DEVELOPER_ID_APPLICATION_P12_PASSWORD`, `NOTARY_KEYCHAIN_PROFILE`).
 
 You still do Apple Developer ID, notarize credentials, the iCloud container, Accessibility / Screen Recording, and API keys yourself. Those are not in the repo.
 
