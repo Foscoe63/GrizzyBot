@@ -452,6 +452,98 @@ struct StoreTests {
         #expect(tools().contains("shell"))
     }
 
+    private func pendingApproval(in store: AppStore, botId: String) -> (message: ThreadMessage, tool: String)? {
+        for message in store.messages(for: botId).reversed() {
+            for block in message.blocks {
+                if case .approval(let tool, _, let status) = block, status == .pending { return (message, tool) }
+            }
+        }
+        return nil
+    }
+
+    private func lastToolResult(_ store: AppStore, botId: String) -> String {
+        (store.threads[botId]?.llmMessages ?? []).last { $0.role == "tool" }?.content ?? ""
+    }
+
+    @Test("a job that needs a tool the bot lacks is bounced back with who has it and how to lend it")
+    func handoffWithoutNeededToolIsBounced() async {
+        let (store, chief, researcher) = rosterStore(email: "lend-bounce@b.com")
+        store.setBotTool(researcher.id, toolId: "shell", enabled: false)
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"Researcher\",\"task\":\"Run npm install and report what fails\"}"),
+            ChatCompletionResponse(text: "Will do it another way."),
+        ])
+        store.send(botId: chief.id, text: "have Researcher run npm install")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        let result = lastToolResult(store, botId: chief.id)
+        #expect(result.contains("Researcher has no shell tool"))
+        #expect(result.contains("grant_tools"))
+        #expect(result.contains("anyway=true"))
+        #expect(store.threads[researcher.id]?.run == nil) // nothing was started
+    }
+
+    @Test("only tools the lead has, and only lendable ones, can be lent")
+    func lendingRules() async {
+        let (store, chief, researcher) = rosterStore(email: "lend-rules@b.com")
+        store.setBotTool(researcher.id, toolId: "shell", enabled: false)
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"Researcher\",\"task\":\"x\",\"grant_tools\":\"remember\"}"),
+            ChatCompletionResponse(text: "ok"),
+        ])
+        store.send(botId: chief.id, text: "go")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        #expect(lastToolResult(store, botId: chief.id).contains("can't be lent"))
+
+        store.setBotTool(chief.id, toolId: "shell", enabled: false)
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"Researcher\",\"task\":\"x\",\"grant_tools\":\"shell\"}"),
+            ChatCompletionResponse(text: "ok"),
+        ])
+        store.send(botId: chief.id, text: "go again")
+        #expect(await store.waitForRunCompletion(botId: chief.id))
+        #expect(lastToolResult(store, botId: chief.id).contains("You don't have shell yourself"))
+        #expect(store.threads[researcher.id]?.run == nil)
+    }
+
+    @Test("lending asks the person even when the lead auto-approves, and the borrowed tool asks at every use")
+    func lendingNeedsThePersonAndStaysGated() async {
+        let (store, chief, researcher) = rosterStore(email: "lend-gate@b.com")
+        store.setBotTool(researcher.id, toolId: "shell", enabled: false)
+        if let i = store.bots.firstIndex(where: { $0.id == chief.id }) { store.bots[i].autoApprove = true }
+        if let i = store.bots.firstIndex(where: { $0.id == researcher.id }) { store.bots[i].autoApprove = true }
+        store.chatCompleter = QueueChatClient([
+            messageBotCall("{\"name\":\"Researcher\",\"task\":\"Run npm install\",\"grant_tools\":\"shell\"}"),
+            // The Researcher's run: it uses the borrowed shell.
+            ChatCompletionResponse(toolCalls: [LLMToolCall(id: "2", name: "shell", arguments: "{\"command\":\"echo hi\"}")]),
+            ChatCompletionResponse(text: "Researcher needs your approval."),
+        ])
+        store.send(botId: chief.id, text: "have Researcher run npm install")
+        for _ in 0..<500 where pendingApproval(in: store, botId: chief.id) == nil {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+
+        // Auto-approve did not skip the loan.
+        let pending = pendingApproval(in: store, botId: chief.id)
+        #expect(pending?.tool == "delegate.lend")
+        #expect(store.threads[researcher.id]?.run == nil)
+        #expect(store.lentTools(for: researcher.id).isEmpty)
+
+        store.answerApproval(botId: chief.id, messageId: pending!.message.id, decision: .allow)
+        for _ in 0..<500 where store.threads[researcher.id]?.run?.status != .waitingInput {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+
+        // The Researcher had no shell of its own; it ran with the loan, and its auto-approve did not apply.
+        #expect(store.threads[researcher.id]?.run?.status == .waitingInput)
+        #expect(store.threads[researcher.id]?.pendingTool?.tool == "shell.exec")
+        #expect(store.lentTools(for: researcher.id) == ["shell"])
+
+        // The loan ends with the job.
+        store.stopRun(botId: researcher.id)
+        #expect(store.lentTools(for: researcher.id).isEmpty)
+        #expect(store.bots.first { $0.id == researcher.id }?.isToolEnabled("shell") == false)
+    }
+
     @Test("list_delegations shows what the lead handed off")
     func listDelegations() async {
         let (store, chief, _) = rosterStore(email: "roster-list@b.com")

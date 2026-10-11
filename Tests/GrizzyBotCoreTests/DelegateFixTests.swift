@@ -89,3 +89,30 @@ struct DelegateFixTests {
         #expect(notice.count < 600)
     }
 }
+
+@Suite("Lending tools to a delegate")
+struct DelegateToolsUnitTests {
+    @Test("grant lists are tidied and de-duplicated")
+    func parsing() {
+        #expect(DelegateTools.parseGrant("shell, Read_File ,shell") == ["shell", "read_file"])
+        #expect(DelegateTools.parseGrant("[\"shell\",\"list_files\"]") == ["shell", "list_files"])
+        #expect(DelegateTools.parseGrant("").isEmpty)
+    }
+
+    @Test("only the cue words of an ability count, and only when the bot lacks it")
+    func missing() {
+        let webOnly = BotProfile(id: "r", name: "Researcher", tools: ["web_search", "web_fetch"])
+        #expect(DelegateTools.missingAbilities(task: "Run npm install and report", peer: webOnly) == [.shell])
+        #expect(DelegateTools.missingAbilities(task: "Summarise the latest AI agent repos", peer: webOnly).isEmpty)
+        let both = BotProfile(id: "c", name: "Coder", tools: ["web_search", "shell"])
+        #expect(DelegateTools.missingAbilities(task: "Run npm install", peer: both).isEmpty)
+    }
+
+    @Test("what can be lent is narrow")
+    func lendableSet() {
+        #expect(DelegateTools.lendable.contains("shell"))
+        for never in ["remember", "routine_manage", "message_bot", "spawn_bot", "request_secret", "plugin_call", "computer_click"] {
+            #expect(!DelegateTools.lendable.contains(never))
+        }
+    }
+}
