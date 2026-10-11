@@ -57,9 +57,10 @@
 
 ## 🆕 What's new
 
-### 0.11.4 — every tool switch works
+### 0.11.4 — every tool switch works, and agents import from folders
 
 - **Switches that wouldn't switch off now do.** Some tools came on silently with another: Shell turned on *List shortcuts*, *Run shortcut* and *Routines*; Remember turned on *Search memory*, *Forget* and the search tools; Spawn bot turned on *Message bot*; Request takeover turned on the Screenshot/Click/Type tools. They showed as on and ignored you. Each tool is now its own switch. Bots you already have keep exactly the tools they had (written out as real switches the first time 0.11.4 opens); after that, turn any of them off individually. Tools the agent can't work without (todo, complete, clarify, capability discovery, canvases and artifacts) no longer show a switch that did nothing.
+- **Import an agent folder.** The **+** menu has a third item, *Import agent folder…*. Pick a folder with a `SKILL.md` (at the top, or under `skills/<name>/`) and, usually, an `agents/*.yaml`: you get a normal bot named from the agent file's `display_name`, described by its `short_description`, coloured with its `brand_color` and wearing its icon. The skill is saved to your skill library and switched on for that bot, and the whole folder (references, assets) is copied into the bot's home so the skill's `references/…` paths can be read. The skill and every Markdown file in the folder are scanned first; if anything looks risky you're asked before it's imported.
 
 ### 0.11.3 — a delegate can't run forever
 

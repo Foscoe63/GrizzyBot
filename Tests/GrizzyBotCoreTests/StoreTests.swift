@@ -1287,3 +1287,33 @@ struct StoreTests {
         return data as Data
     }
 }
+
+@MainActor
+@Suite("Agent folder becomes a bot")
+struct AgentImportStoreTests {
+    @Test("importing makes a normal bot with the skill enabled and the references in its home")
+    func importCreatesBot() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = AppStore(dataDirectory: dir, delayScale: 0.01)
+        #expect(store.signUp(name: "A", email: "agent-import@b.com", password: "password1") == nil)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("agent-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("references"), withIntermediateDirectories: true)
+        try "---\nname: review-pro\ndescription: Reviews code well.\n---\n\nRead references/api.md.\n"
+            .write(to: root.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+        try "notes".write(to: root.appendingPathComponent("references/api.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("agents"), withIntermediateDirectories: true)
+        try "interface:\n  display_name: \"Review Pro\"\n  brand_color: \"#006AFD\"\n"
+            .write(to: root.appendingPathComponent("agents/openai.yaml"), atomically: true, encoding: .utf8)
+
+        let before = store.bots.count
+        let bot = try store.importAgentFolder(try store.previewAgentFolder(root))
+        #expect(store.bots.count == before + 1)
+        #expect(bot.name == "Review Pro")
+        #expect(bot.color == "#006AFD")
+        #expect(bot.enabledSkills.contains("review-pro"))
+        #expect(bot.instructions.contains("imports/review-pro/references/api.md"))
+        #expect(store.skills.contains { $0.id == "review-pro" })
+        #expect(store.readBotHomeFile(botId: bot.id, path: "imports/review-pro/references/api.md") == "notes")
+    }
+}
