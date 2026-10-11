@@ -256,6 +256,10 @@ public final class AppStore {
     /// How long a waiting `message_bot` gives a peer before handing the turn
     /// back with "still working". Tests lower it to exercise that path.
     public var peerReplyTimeout: TimeInterval = 120
+    /// How long a bot may work on a job another bot handed it before it is stopped and the lead is
+    /// told. Waiting on the person for an approval does not count. 0 turns the limit off.
+    public var delegateTimeout: TimeInterval = 20 * 60
+    var delegateTimers: [String: Task<Void, Never>] = [:]
     /// Watcher runs pin file tools to the watch path until the run goes idle.
     var runWorkingFolderOverride: [String: String] = [:]
     /// Bot currently executing a watcher-triggered run (for echo suppression).
@@ -802,6 +806,8 @@ public final class AppStore {
     public func signOut() {
         for (_, task) in runTasks { task.cancel() }
         runTasks.removeAll()
+        for (_, task) in delegateTimers { task.cancel() }
+        delegateTimers.removeAll()
         for (_, task) in bootTasks { task.cancel() }
         bootTasks.removeAll()
         panel = nil
@@ -4987,6 +4993,7 @@ public final class AppStore {
             botChat.removeFirst(botChat.count - BotChatEntry.retentionLimit)
         }
         save()
+        armDelegateTimeout(entryId: entry.id)
         return entry.id
     }
 
