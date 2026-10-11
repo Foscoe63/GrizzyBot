@@ -117,6 +117,10 @@ public enum WebSearch: Sendable {
                 ?? String(decoding: data.prefix(400), as: UTF8.self)
             throw WebSearchError.http(status, preview)
         }
+        let contentType = http?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
+        if let json = compactJSON(data, declaredJSON: contentType.contains("json")) {
+            return json
+        }
         let slice = data.prefix(maxBytes)
         let rawText = String(data: slice, encoding: .utf8)
             ?? String(decoding: slice, as: UTF8.self)
@@ -124,6 +128,51 @@ public enum WebSearch: Sendable {
             .replacing(/\n{3,}/, with: "\n\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return String(stripped.prefix(12_000))
+    }
+
+    /// A JSON response, pruned of bookkeeping (every `*_url`, `node_id`, avatar blobs, `has_*` flags,
+    /// nulls) and minified, then cut from the END so the head — the fields a reader wants — survives.
+    /// `nil` when the data is not JSON.
+    public static func compactJSON(_ data: Data, declaredJSON: Bool = false, limit: Int = 12_000) -> String? {
+        guard data.count <= 8_000_000 else { return nil }
+        let first = data.first(where: { !$0.isASCIIWhitespace })
+        guard declaredJSON || first == UInt8(ascii: "{") || first == UInt8(ascii: "[") else { return nil }
+        guard let object = try? JSONSerialization.jsonObject(with: data) else { return nil }
+        let pruned = pruneJSON(object)
+        guard let encoded = try? JSONSerialization.data(
+            withJSONObject: pruned, options: [.sortedKeys, .withoutEscapingSlashes, .fragmentsAllowed]
+        ), let text = String(data: encoded, encoding: .utf8) else { return nil }
+        if text.count <= limit { return text }
+        return String(text.prefix(limit))
+            + "\n…[truncated: \(text.count - limit) more characters of JSON. Ask for fewer results or one item to see the rest.]"
+    }
+
+    private static let droppedKeys: Set<String> = [
+        "node_id", "gravatar_id", "permissions", "score", "site_admin", "url", "allow_forking",
+        "is_template", "web_commit_signoff_required", "private", "disabled",
+    ]
+    private static let keptURLKeys: Set<String> = ["html_url", "homepage"]
+
+    static func pruneJSON(_ value: Any) -> Any {
+        if let dict = value as? [String: Any] {
+            // A user/org object collapses to its handle.
+            if let login = dict["login"] as? String, dict["avatar_url"] != nil { return login }
+            // Bookkeeping is only stripped from objects that look like API records (they carry a
+            // `node_id`); a plain `{"url": …}` elsewhere is data.
+            let record = dict["node_id"] != nil
+            var out: [String: Any] = [:]
+            for (key, child) in dict {
+                if child is NSNull { continue }
+                if record {
+                    if droppedKeys.contains(key) || key.hasPrefix("has_") { continue }
+                    if key.hasSuffix("_url"), !keptURLKeys.contains(key) { continue }
+                }
+                out[key] = pruneJSON(child)
+            }
+            return out
+        }
+        if let array = value as? [Any] { return array.map(pruneJSON) }
+        return value
     }
 
     public static func fetchFailureMessage(status: Int, bodyPreview: String) -> String {
@@ -317,4 +366,8 @@ public enum WebSearch: Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         return (data, response as? HTTPURLResponse)
     }
+}
+
+private extension UInt8 {
+    var isASCIIWhitespace: Bool { self == 0x20 || self == 0x0A || self == 0x0D || self == 0x09 }
 }

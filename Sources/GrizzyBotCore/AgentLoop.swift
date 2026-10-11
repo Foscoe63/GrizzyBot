@@ -1045,7 +1045,9 @@ public enum AgentLoop {
                 inputTokens += result.extraInputTokens
                 outputTokens += result.extraOutputTokens
                 let raw = result.output.isEmpty ? "(empty tool result)" : result.output
-                var output = (call.name != "mcp_list_tools" && raw.count > 3_500)
+                // web_fetch is already capped at its source; cutting the middle out of it again
+                // is how star counts and licences went missing.
+                var output = (call.name != "mcp_list_tools" && call.name != "web_fetch" && raw.count > 3_500)
                     ? ContextCompactor.summarizePayload(raw, head: 2_000, tail: 1_000)
                     : raw
                 let vision = LLMRouting.supportsVisionImages(

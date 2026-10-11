@@ -294,8 +294,10 @@
 		F4F4AD149A04743B443534DF /* ComposioClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2607B85B157D19695C87F956 /* ComposioClient.swift */; };
 		F5643988DB1F0C7331E68392 /* GoogleOAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B56D521CF2C322E2A06B0830 /* GoogleOAuthTests.swift */; };
 		F5BC86FC50D5FD1EA4188973 /* ScriptedRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 080535B053570E1DAF2CA630 /* ScriptedRuntimeTests.swift */; };
+		F5DE0452F13EFF840252DA18 /* DelegateFixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 927071F559976711DA7619F8 /* DelegateFixTests.swift */; };
 		F6DC7974415F27FE996646A6 /* TrustTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E60B6F64E18C1D745521FDC /* TrustTests.swift */; };
 		F99902E5AA8EA9216C152D73 /* BotMeshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB9FD1BA06514D5C326236A /* BotMeshTests.swift */; };
+		FB6710364DF260F35BF115FD /* DelegateReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8533588635D8E813ABD41ED /* DelegateReport.swift */; };
 		FBA638A0587A37203F1A18AD /* BotLookup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F57B3C6AA1237340AF52728 /* BotLookup.swift */; };
 /* End PBXBuildFile section */
 
@@ -571,6 +573,7 @@
 		916FFD0C6C6F1C1DB4E2F235 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		92038B47C33FBFAFC7237354 /* RightPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RightPanelView.swift; sourceTree = "<group>"; };
 		9239AF43B1728AF3A60270B3 /* RoutineSchedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineSchedule.swift; sourceTree = "<group>"; };
+		927071F559976711DA7619F8 /* DelegateFixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelegateFixTests.swift; sourceTree = "<group>"; };
 		92A71407064CF2D0B90D2773 /* PluginClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginClient.swift; sourceTree = "<group>"; };
 		9400EAF466ADEFC2406D5BC5 /* MemoryEmbedding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryEmbedding.swift; sourceTree = "<group>"; };
 		94E8B8CD07818CF42F4653A6 /* VoiceTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTranscript.swift; sourceTree = "<group>"; };
@@ -617,6 +620,7 @@
 		B52990D4F2C40525BBC85828 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		B56D521CF2C322E2A06B0830 /* GoogleOAuthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleOAuthTests.swift; sourceTree = "<group>"; };
 		B69D5BEBF0571E0FC270DF94 /* AccountMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountMigration.swift; sourceTree = "<group>"; };
+		B8533588635D8E813ABD41ED /* DelegateReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelegateReport.swift; sourceTree = "<group>"; };
 		B9C2B9FF90E5DC782DCFC67E /* SecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityTests.swift; sourceTree = "<group>"; };
 		BA565D425731760FDA52BEFB /* SnapshotDiff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotDiff.swift; sourceTree = "<group>"; };
 		BC342E09BDBE58984F59E04D /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
@@ -771,6 +775,7 @@
 				C12A6D347C7E94B9BE6187FE /* ControlPlaneTests.swift */,
 				FB44D631A1BFEC6A49332CEF /* CronTests.swift */,
 				ED2BF5CF4EEB1D953AC4F01C /* CuratorTests.swift */,
+				927071F559976711DA7619F8 /* DelegateFixTests.swift */,
 				9F2AA01E9F4A7724E17463C0 /* DispatchTests.swift */,
 				61E8607FB9EC421097C977AB /* FindingsTests.swift */,
 				B56D521CF2C322E2A06B0830 /* GoogleOAuthTests.swift */,
@@ -1051,6 +1056,7 @@
 				243B6451ED3489610B15D640 /* ControlPlane.swift */,
 				33CF45217EF15990999EBA75 /* Cron.swift */,
 				523F66040EE6A6218B6DCE52 /* DeepLink.swift */,
+				B8533588635D8E813ABD41ED /* DelegateReport.swift */,
 				06D4C278B4E67B463CF61827 /* DestinationStore.swift */,
 				18AF36B17110508186941B07 /* DeviceCodeAuth.swift */,
 				C2D5559FC77159F1177010B8 /* DiagnosticScrubber.swift */,
@@ -1470,6 +1476,7 @@
 				271508C2DEC76582EBB49185 /* ControlPlane.swift in Sources */,
 				71A10283014E6CA714B92E7E /* Cron.swift in Sources */,
 				C18FEFB41D68B37AAE70C949 /* DeepLink.swift in Sources */,
+				FB6710364DF260F35BF115FD /* DelegateReport.swift in Sources */,
 				5BFC52F247353EAFEF8E18FD /* DestinationStore.swift in Sources */,
 				3B91AC90C681D794785E8CDD /* DeviceCodeAuth.swift in Sources */,
 				806541D7903FEFC7C6A0BF0C /* DiagnosticScrubber.swift in Sources */,
@@ -1577,6 +1584,7 @@
 				A6E560342E151B65C7CF3514 /* ControlPlaneTests.swift in Sources */,
 				31C604F87009674137794FC5 /* CronTests.swift in Sources */,
 				482A15F83672AC4E394458B4 /* CuratorTests.swift in Sources */,
+				F5DE0452F13EFF840252DA18 /* DelegateFixTests.swift in Sources */,
 				97CA2B09C3C07ED59C182BE7 /* DispatchTests.swift in Sources */,
 				9098DF2985E86EA87D9E5231 /* FindingsTests.swift in Sources */,
 				F5643988DB1F0C7331E68392 /* GoogleOAuthTests.swift in Sources */,
@@ -1949,7 +1957,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1966,7 +1974,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 0.11.1;
+				MARKETING_VERSION = 0.11.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2042,7 +2050,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2063,7 +2071,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 0.11.1;
+				MARKETING_VERSION = 0.11.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

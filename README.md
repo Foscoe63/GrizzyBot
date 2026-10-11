@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.11.1-3B82F6?style=for-the-badge" alt="Version 0.11.1">
+  <img src="https://img.shields.io/badge/version-0.11.2-3B82F6?style=for-the-badge" alt="Version 0.11.2">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,13 +49,19 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.1** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.2** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
 ---
 
 ## 🆕 What's new
+
+### 0.11.2 — when a handoff goes quiet
+
+- **A delegate that didn't deliver says so.** If a bot you handed work to finishes with nothing, or with only its own working-out ("Wait, that doesn't work… let me try…"), the lead now gets a short *did not finish* notice with where it got stuck and what to do next, not that text dressed up as an answer. The hand-off is recorded as failed.
+- **Waiting is visible.** While a lead is idle until a bot it handed work to reports back, its chat shows *Waiting on Researcher · working · 12 min* (or *needs you* when that bot is held for an approval).
+- **`web_fetch` keeps the start of a JSON response.** The middle used to be cut out of anything over 3.5k characters, which dropped star counts and licences from API responses. JSON is now pruned of bookkeeping (`*_url`, `node_id`, avatars, `has_*` flags, nulls), minified, and cut from the end with a note when it still doesn't fit, so thirty GitHub repos fit in one fetch.
 
 ### 0.11.1 — fixes from a real run
 
