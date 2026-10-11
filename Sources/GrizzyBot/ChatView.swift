@@ -479,6 +479,11 @@ struct ChatView: View {
                                 .grizzyPulse()
                                 .id("working-pulse")
                         }
+                        let waits = store.waitingOnPeers(for: bot.id)
+                        if !waits.isEmpty {
+                            PeerWaitBanner(waits: waits)
+                                .id("peer-wait")
+                        }
                         Color.clear
                             .frame(height: 1)
                             .id(ChatScrollBehavior.bottomID)
@@ -1031,5 +1036,39 @@ private struct MonitorIcon: Shape {
         path.move(to: p(7, 20))
         path.addLine(to: p(17, 20))
         return path
+    }
+}
+
+
+/// Shown while this bot has handed work to others and is idle until they report back, so the wait
+/// reads as a wait and not a hang.
+struct PeerWaitBanner: View {
+    let waits: [PeerWait]
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(waits) { wait in
+                    HStack(spacing: 6) {
+                        Image(systemName: wait.needsUser ? "hand.raised" : "hourglass")
+                        Text("Waiting on \(wait.name) · \(wait.label) · \(Self.elapsed(since: wait.since, now: context.date))")
+                    }
+                }
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(Theme.bgBubble)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    static func elapsed(since: Date, now: Date) -> String {
+        let minutes = max(0, Int(now.timeIntervalSince(since) / 60))
+        if minutes < 1 { return "just now" }
+        if minutes < 60 { return "\(minutes) min" }
+        return "\(minutes / 60) h \(minutes % 60) min"
     }
 }

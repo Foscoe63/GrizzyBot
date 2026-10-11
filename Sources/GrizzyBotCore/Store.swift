@@ -5026,6 +5026,23 @@ public final class AppStore {
         }
     }
 
+    /// Bots `botId` has handed work to that are still going, for the "waiting on …" line.
+    public func waitingOnPeers(for botId: String) -> [PeerWait] {
+        botChat.compactMap { entry -> PeerWait? in
+            guard entry.fromBotId == botId, entry.reportedAt == nil, entry.outcome == .sent,
+                  let peer = bots.first(where: { $0.id == entry.toBotId }),
+                  let status = threads[threadKey(for: peer.id)]?.run?.status,
+                  status.isActive || status == .waitingInput || status == .waitingTakeover
+            else { return nil }
+            return PeerWait(
+                id: entry.id,
+                name: peer.name,
+                since: entry.createdAt,
+                needsUser: status == .waitingInput || status == .waitingTakeover
+            )
+        }
+    }
+
     func describePeer(_ peer: Bot) -> String {
         let key = threadKey(for: peer.id)
         guard let run = threads[key]?.run else { return "\(peer.name) has no run yet." }
@@ -5058,10 +5075,16 @@ public final class AppStore {
                   var thread = threads[leadKey] ?? threads[entry.fromBotId],
                   let peer = bots.first(where: { $0.id == entry.toBotId }) else { continue }
             let reply = latestBotReply(threadKey: peerKey)
-            let ok = status == .completed
+            let shortfall = status == .completed ? DelegateReport.shortfall(reply: reply) : nil
+            let ok = status == .completed && shortfall == nil
             let text = ok
-                ? "\(peer.name) finished the job you handed over (“\(entry.text.prefix(80))”):\n\n\(reply.isEmpty ? "(no reply)" : reply)"
-                : "\(peer.name) did not finish the job you handed over (“\(entry.text.prefix(80))”): \(threads[peerKey]?.run?.error ?? "no reason recorded")."
+                ? "\(peer.name) finished the job you handed over (“\(entry.text.prefix(80))”):\n\n\(reply)"
+                : DelegateReport.failureNotice(
+                    peer: peer.name,
+                    task: entry.text,
+                    reason: shortfall ?? threads[peerKey]?.run?.error ?? "no reason recorded.",
+                    lastWords: shortfall == nil ? "" : reply
+                )
             let message = ThreadMessage(
                 id: Ids.new(),
                 threadId: thread.threadId,
@@ -5073,7 +5096,7 @@ public final class AppStore {
             thread.cursor = message.seq
             threads[leadKey] = thread
             botChat[idx].outcome = ok ? .answered : .failed
-            botChat[idx].reply = reply.isEmpty ? nil : reply
+            botChat[idx].reply = ok && !reply.isEmpty ? reply : nil
             botChat[idx].reportedAt = .now
             changed = true
         }
