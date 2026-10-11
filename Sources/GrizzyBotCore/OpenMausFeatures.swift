@@ -106,6 +106,13 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var privacyFilter: PrivacyFilterSettings
     /// Lean memory injection gate.
     public var memoryRelevanceMode: MemoryRelevanceGateMode
+    /// What a message sent mid-run does: steer the run, or wait for it.
+    public var queueMode: QueueMode
+    /// Run the loopback webhook receiver so outside systems can fire routines.
+    public var webhooksEnabled: Bool
+    public var webhookPort: Int
+    /// Talk to your bots from Telegram.
+    public var telegram: TelegramSettings
     /// Local OpenAI-compatible gateway for Cursor / external clients.
     public var localGateway: LocalOpenAIGateway.Settings
     public var enableFolderWatchers: Bool
@@ -134,6 +141,10 @@ public struct AppConfig: Codable, Sendable, Equatable {
         agentStallTimeoutMs: Int = 60_000,
         privacyFilter: PrivacyFilterSettings = .default,
         memoryRelevanceMode: MemoryRelevanceGateMode = .heuristic,
+        queueMode: QueueMode = .steer,
+        webhooksEnabled: Bool = false,
+        webhookPort: Int = WebhookReceiver.defaultPort,
+        telegram: TelegramSettings = .default,
         localGateway: LocalOpenAIGateway.Settings = .default,
         enableFolderWatchers: Bool = true
     ) {
@@ -160,6 +171,10 @@ public struct AppConfig: Codable, Sendable, Equatable {
         self.agentStallTimeoutMs = agentStallTimeoutMs
         self.privacyFilter = privacyFilter
         self.memoryRelevanceMode = memoryRelevanceMode
+        self.queueMode = queueMode
+        self.webhooksEnabled = webhooksEnabled
+        self.webhookPort = webhookPort
+        self.telegram = telegram
         self.localGateway = localGateway
         self.enableFolderWatchers = enableFolderWatchers
     }
@@ -169,7 +184,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         case googleClientId, googleClientSecret, boxToken
         case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
         case themeAppearanceMode, activeThemePresetId, agentStallTimeoutMs
-        case privacyFilter, memoryRelevanceMode, localGateway, enableFolderWatchers
+        case privacyFilter, memoryRelevanceMode, queueMode, webhooksEnabled, webhookPort, telegram, localGateway, enableFolderWatchers
     }
 
     public init(from decoder: Decoder) throws {
@@ -198,6 +213,10 @@ public struct AppConfig: Codable, Sendable, Equatable {
         agentStallTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .agentStallTimeoutMs) ?? 60_000
         privacyFilter = try c.decodeIfPresent(PrivacyFilterSettings.self, forKey: .privacyFilter) ?? .default
         memoryRelevanceMode = try c.decodeIfPresent(MemoryRelevanceGateMode.self, forKey: .memoryRelevanceMode) ?? .heuristic
+        queueMode = try c.decodeIfPresent(QueueMode.self, forKey: .queueMode) ?? .steer
+        webhooksEnabled = try c.decodeIfPresent(Bool.self, forKey: .webhooksEnabled) ?? false
+        webhookPort = try c.decodeIfPresent(Int.self, forKey: .webhookPort) ?? WebhookReceiver.defaultPort
+        telegram = try c.decodeIfPresent(TelegramSettings.self, forKey: .telegram) ?? .default
         localGateway = try c.decodeIfPresent(LocalOpenAIGateway.Settings.self, forKey: .localGateway) ?? .default
         enableFolderWatchers = try c.decodeIfPresent(Bool.self, forKey: .enableFolderWatchers) ?? true
     }
@@ -227,6 +246,10 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encode(agentStallTimeoutMs, forKey: .agentStallTimeoutMs)
         try c.encode(privacyFilter, forKey: .privacyFilter)
         try c.encode(memoryRelevanceMode, forKey: .memoryRelevanceMode)
+        try c.encode(queueMode, forKey: .queueMode)
+        try c.encode(webhooksEnabled, forKey: .webhooksEnabled)
+        try c.encode(webhookPort, forKey: .webhookPort)
+        try c.encode(telegram, forKey: .telegram)
         try c.encode(localGateway, forKey: .localGateway)
         try c.encode(enableFolderWatchers, forKey: .enableFolderWatchers)
     }

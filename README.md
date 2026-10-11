@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.8.1-3B82F6?style=for-the-badge" alt="Version 0.8.1">
+  <img src="https://img.shields.io/badge/version-0.9.0-3B82F6?style=for-the-badge" alt="Version 0.9.0">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,7 +49,7 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.8.1** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.9.0** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
@@ -57,7 +57,23 @@
 
 ## 🆕 What's new
 
-### Added
+### 0.9 — always on
+
+- **Messages while a bot is working.** Sending mid-run no longer starts a second, overlapping run. Settings → General → *Messages while a bot is working*: **Steer** (default) slips the message into the run at its next step, **Collect** answers everything you sent once the run ends, **Follow up** answers one at a time. Stop discards what was waiting.
+- **Telegram.** Message your bots from your phone. The Mac long-polls Telegram, so nothing is exposed to the internet; only chats you pair are answered. See [Telegram](#-telegram).
+- **Webhooks, heartbeats, and routine memory.** Routines can be fired by an outside program (loopback receiver, per-routine secret), run as a quiet **heartbeat** checklist that says nothing when all is well, and remember their previous report. See [Triggers](#-triggers).
+- **Built-in commands:** `/context` (what is filling the window), `/goal` (a standing objective), `/plan` (plan without doing), `/compact`, `/usage`, `/rollback`.
+- **Checkpoints.** Before `write_file` / `edit_file` / `move_file` / `delete_file` change anything, the previous state is saved; `/rollback` undoes the last run's file changes.
+- **`search_sessions`.** A bot can search its own earlier chats and tasks (never a sibling's).
+- **Skill scanner.** Imported skills are screened for pipe-to-shell, credential access, prompt-injection phrasing, hidden Unicode, and over-broad tool requests; risky ones are badged in the Skills panel and reported in the import result. They already start switched off.
+- **Teams as files.** Settings → General → Teams exports bots, rooms, and routines as one Markdown file (no credentials, chats, or memory; secrets scrubbed; routines import paused, bots import asking-first). **Import agent folder…** brings in an OpenClaw/Hermes-style workspace (`SOUL.md`, `AGENTS.md`, `MEMORY.md`, `HEARTBEAT.md`, `skills/`).
+- **Tamper-evident audit.** Audit events are hash-chained; Settings → Governance → *Verify audit trail* reports the first event whose link no longer holds.
+
+### Fixed in 0.9
+
+- **The secret scrubber missed real Anthropic keys** (`sk-ant-api03-…`) because it stopped at the first hyphen. It now also covers GitHub, Slack, Google, and AWS key shapes. This feeds diagnostics, Sentry, exports, and team files.
+
+### 0.8 — Added
 
 - **Artifacts.** Bots create documents, code, diagrams, SVG, HTML, and React apps that you keep, version, edit, and re-open — shared across every bot and mirrored to disk. Routines can create them unattended. See [Artifacts](#-artifacts).
 - **Artifact panel** at ⇧⌘A or the chat-header icon: browse, step through versions, preview or read source, copy, export, delete, and create one by hand.
@@ -66,7 +82,7 @@
 - **Direct Google OAuth** with fixed loopback `http://127.0.0.1:8765` and a step-by-step Cloud Console guide in Settings → Connections.
 - **The Google plugins now do what their descriptions promise.** Gmail **sends mail** (it never could, despite the tool advertising it), Calendar **creates and removes** events, Sheets **reads real cells and appends rows** (it was a stub), Docs **creates documents**, and Drive **uploads files**. See [Google / Gmail](#-google--gmail).
 
-### Fixed
+### 0.8 — Fixed
 
 - **Google Calendar writes never reached Google.** `plugin_call` had no write path for `google-calendar`, so every event fell through to a fallback that returned a fabricated `wrote local` success without making a single API call. Reads worked the whole time, which made it look like a sync or scope problem. Events are now genuinely created and return a Google event link.
 - **Google Calendar could not be read at all.** Every query went to Google's full-text `q=` parameter, so `primary` searched for the *word* primary and `2026-09-12` searched for that string in event titles — a healthy calendar always reported "No Calendar events", which is what sent a bot round in circles insisting the calendar was empty. Reads are now time windows, with dates, ranges, and `today` / `this week` understood, and a calendar named rather than identified is resolved against your calendar list.
@@ -106,7 +122,7 @@ This Mac preview or in-app browser. Resizable side panel (monitor icon). Screens
 CEL policy, MCP grant matrix, knowledge ACLs, published components, owner/operator roles, searchable audit with a boot boundary.
 
 ### 🔌 Connect
-OpenRouter, OpenAI, Anthropic, Ollama / LM Studio / vMLX / oMLX / **Splash**, **Local MLX** (Local MLX and Splash both scan the Hugging Face cache, LM Studio's models folder — wherever its settings put it — and any folder you add), Composio plugins, direct Google OAuth, MCP / Toolport, AG-UI coworkers.
+OpenRouter, OpenAI, Anthropic, Ollama / LM Studio / vMLX / oMLX / **Splash**, **Local MLX** (Local MLX and Splash both scan the Hugging Face cache, LM Studio's models folder — wherever its settings put it — and any folder you add), Composio plugins, direct Google OAuth, MCP / Toolport, AG-UI coworkers, **Telegram**, **webhooks**.
 
 </td>
 <td width="33%" valign="top">
@@ -200,6 +216,23 @@ The model menu sits on the **top-left** of the composer capsule. Token stats sit
 
 Hover the numbers for the same explanation. With the computer / settings panel open, labels compact to **P / S / R** and the composer placeholder shortens so the bar stays readable. Switching bots does not mix totals. Sidebar **Weekly usage** is still the last seven days across the workspace. Settings → General → **Token counters** zeros Prompt / Sent / Recv for the current bot (or every bot) without deleting chats.
 
+### 💬 Messages while a bot is working
+
+One run at a time per chat. What a message sent mid-run does is your choice (Settings → General): **Steer** delivers it to the run in flight at its next step (if the bot was about to finish, it answers that too), **Collect** holds everything and answers it as one turn afterwards, **Follow up** answers held messages one at a time. Held messages show in the chat immediately and are re-filed after the reply they waited behind. **Stop** drops anything still waiting.
+
+### ⌨️ Built-in commands
+
+Type `/help` for the list. Skills with the same name win.
+
+| Command | Does |
+|---|---|
+| `/context` | Breakdown of the context window: system prompt, instructions, memory, skills, tools, conversation, free |
+| `/goal <text>` | Standing objective kept in the prompt every turn and started immediately; `/goal` shows it, `/goal clear` drops it |
+| `/plan <task>` | A numbered plan, without carrying anything out |
+| `/compact` | Shrinks the working conversation (the chat on screen is unchanged) |
+| `/usage` | Tokens this bot has used |
+| `/rollback` | Undoes the newest checkpoint of file changes; `/rollback list`, `/rollback <id>` |
+
 ### 🔁 Agent loop
 
 When a model is connected, each send runs a tool-calling loop (up to 48 steps) with context compaction on long threads. Screenshots and composer images attach only when the model can actually see images. Empty web searches stop instead of retrying forever. Transient 429/5xx errors retry. MCP dead ends (no route, missing args, expired cursors, connection failures) get recovery hints and stop looping after a few strikes. Identical MCP calls in the same step are skipped. A **stall watchdog** (default 60s, configurable) ends a turn when the stream goes silent.
@@ -220,6 +253,7 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 🐚 | **Shell** | `shell` runs `zsh -lc` with cwd in the bot home. When a working folder is set, writes there are also allowed. Needs approval unless the bot is set to auto-approve. Timeout 5–300s (default 120). |
 | 🌐 | **Web** | `web_search` (search + fetch). Optional Brave Search key; otherwise DuckDuckGo + Wikipedia. |
 | 🧠 | **Memory** | `remember`, `search_memory`, `forget`. |
+| 🕰️ | **Sessions** | `search_sessions` — keyword search (BM25) over this bot's own earlier chats and tasks, with dates. Available wherever memory tools are. |
 | 📚 | **Knowledge** | `search_knowledge` — granted folder and plugin corpora (Drive, OneDrive, Box). |
 | 🖥️ | **Computer** | `computer_open`, `computer_screenshot`, `computer_click`, `computer_scroll`, `computer_type`, `computer_key`, `request_takeover`. |
 | 🖼️ | **Canvas** | `canvas_list`, `canvas_open`, `canvas_save`, `canvas_delete`, `canvas_place_image` — shared boards on this Mac (not the bot home). `canvas_open` after a screenshot places the last capture. |
@@ -406,6 +440,36 @@ Cron jobs that send a prompt to a bot.
 
 ---
 
+## 🪝 Triggers
+
+Routines normally run on a clock. They can also run on events.
+
+- **Events only.** Pick *Events only* as the schedule: the routine never comes due by itself and runs when fired by a webhook or *Run now*.
+- **Webhook.** Settings → Connections → Webhooks turns on a receiver bound to `127.0.0.1` (default port 8800; it serves only `GET /health` and `POST /hooks/<routineId>`). In the routine editor switch on *Webhook*: the secret is shown **once** and kept in the Keychain. Send it as `Authorization: Bearer <secret>` (or `X-Webhook-Secret`; a `/hooks/<id>/<secret>` URL exists for senders that cannot set headers). The body (up to 64 KB) reaches the bot framed as **untrusted data**, never as instructions. Wrong secret → `401` whether or not the routine exists; a routine still running → `409`; the same routine twice within 2 s → `429`. To reach it from outside, tunnel only that port.
+- **Heartbeat.** The routine's instruction becomes a checklist. If nothing needs you the bot replies `HEARTBEAT_OK` and the chat, notification, and Telegram stay silent; otherwise you get a short note. Runs in the background without pulling the window forward.
+- **Remember the last report.** Each run is shown the previous run's reply (bounded) so it can report only what is new — good for monitors and digests.
+- Webhook and heartbeat runs never rewrite the schedule, the same as *Run now*.
+
+```bash
+curl -X POST http://127.0.0.1:8800/hooks/ROUTINE_ID \
+  -H "Authorization: Bearer $SECRET" -d '{"build":"red"}'
+```
+
+---
+
+## ✈️ Telegram
+
+Talk to your bots from your phone. GrizzyBot calls Telegram's Bot API (long polling) from your Mac — there is no server to run and nothing to expose.
+
+1. In Telegram, message **@BotFather**, send `/newbot`, copy the token.
+2. Settings → Connections → **Telegram** → paste the token → *Connect*. The token goes to the Keychain.
+3. Message your new bot from Telegram. It replies with a six-digit code (valid for an hour; at most three chats wait at once).
+4. Enter the code in the same settings card. Only then is that chat answered. Remove a chat any time.
+
+In the chat: just type to talk to the current bot; `/bots`, `/bot <name>`, `/status`, `/stop`, and `/approve` / `/deny` for an approval a bot is waiting on. Slash skills and built-in commands pass through (`/research …`, `/context`). Replies are split under Telegram's size limit. Optionally a short note arrives when a routine finishes. Group chats are never answered, and only the owner can connect, disconnect, or pair.
+
+---
+
 ## 🧬 Models
 
 GrizzyBot does not pay for usage. You bring a key, a subscription, or a local server.
@@ -553,6 +617,10 @@ Fallback when nothing is promoted yet: search once → `mcp_call` with the exact
 | 🧩 | Artifact frames run with the network closed (`connect-src 'none'`), no script bridge into the app, and every off-scheme navigation cancelled. Their runtimes are bundled, not fetched. |
 | 🖥️ | Computer-use is local only (WKWebView or Accessibility). No remote desktop VM. |
 | ⚖️ | Action policy and MCP grants run **before** the tool acts. Audit records both permits and refusals. |
+| 🔗 | Audit events are hash-chained; *Verify audit trail* flags edits, deletions, or reordering in the middle of the log (it cannot stop someone who rewrites the whole file). |
+| 🪝 | The webhook receiver binds to loopback only, authenticates with a per-routine secret compared in constant time, caps bodies at 64 KB, and passes payloads to the bot as untrusted data. |
+| ✈️ | Telegram answers only paired private chats; pairing needs a code entered at the Mac by the owner. |
+| 🧪 | Imported skills are screened by the skill scanner and start switched off. |
 
 Crash reports: Settings → Diagnostics. Local `last-crash.txt` is always written; Sentry is optional.
 

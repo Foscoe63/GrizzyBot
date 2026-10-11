@@ -3,7 +3,7 @@ import Foundation
 /// Redact secrets and home paths from diagnostics text (run logs, crash reports, pasteboard).
 public enum DiagnosticScrubber {
     private static let keyPattern = try! NSRegularExpression(
-        pattern: "(?i)(api[_-]?key|token|secret|password|dsn|authorization|bearer|sk-[a-z0-9]{8,})[^\\s]*",
+        pattern: "(?i)(api[_-]?key|token|secret|password|dsn|authorization|bearer|sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9]{20,}|xox[abprs]-[a-z0-9-]{10,}|AIza[0-9a-z_-]{30,}|AKIA[0-9A-Z]{16})[^\\s]*",
         options: []
     )
     private static let pathPattern = try! NSRegularExpression(

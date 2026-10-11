@@ -484,6 +484,12 @@ public enum SkillLibrary {
         return imported
     }
 
+    /// Same as `importFromDirectory`, but each skill comes back with what the scanner made of it.
+    @discardableResult
+    public static func importScanned(_ folder: URL, into root: URL, limit: Int = 40) throws -> [(skill: AgentSkill, report: SkillScanReport)] {
+        try importFromDirectory(folder, into: root, limit: limit).map { ($0, SkillScanner.scan($0)) }
+    }
+
     public static func deleteUserSkill(id: String, root: URL) throws {
         let folder = directory(root: root).appendingPathComponent(SkillMarkdown.slug(id), isDirectory: true)
         if FileManager.default.fileExists(atPath: folder.path) {

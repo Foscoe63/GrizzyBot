@@ -338,6 +338,7 @@ public enum AgentToolCatalog {
         .init(id: "read_skill", label: "Read skill", subtitle: "Load a skill's full instructions"),
         .init(id: "import_skills", label: "Import skills", subtitle: "Copy SKILL.md folders into GrizzyBot"),
         .init(id: "search_knowledge", label: "Search knowledge", subtitle: "Search granted knowledge sources"),
+        .init(id: "search_sessions", label: "Search past chats", subtitle: "Find things said in this bot's earlier conversations"),
         .init(id: "present_component", label: "Present component", subtitle: "Show a form, gallery, or audit component"),
         .init(id: "report_decline", label: "Report decline", subtitle: "Audit that this bot declined a request"),
         .init(id: "canvas_list", label: "Canvas list", subtitle: "List shared canvases on this Mac"),
@@ -431,6 +432,9 @@ extension Bot {
         if toolId == "search_knowledge", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
             return true
         }
+        if toolId == "search_sessions", enabledTools.contains("search_memory") || enabledTools.contains("remember") {
+            return true
+        }
         if toolId == "capabilities_discover" || toolId == "capabilities_load" { return true }
         if toolId == "todo" || toolId == "complete" || toolId == "clarify" { return true }
         return false
@@ -519,7 +523,7 @@ extension AgentToolCatalog {
             .union(enabledIds.contains("read_file") ? ["import_skills"] : [])
             .union(
                 (enabledIds.contains("remember") || enabledIds.contains("search_memory"))
-                    ? ["search_knowledge"] : []
+                    ? ["search_knowledge", "search_sessions"] : []
             )
             .union(enabledIds.contains("spawn_bot") ? ["message_bot"] : [])
             .union(
@@ -682,6 +686,12 @@ extension AgentToolCatalog {
                 )
             )
         }
+        add(
+            "search_sessions",
+            description: "Search this bot's earlier conversations (all its chats and tasks) for something that was said. Use it when the person refers to past work you no longer see, e.g. \"what did we decide about the pricing page?\". Returns dated excerpts.",
+            properties: ["query": stringProp("Keywords to find")],
+            required: ["query"]
+        )
         add(
             "search_knowledge",
             description: "Search knowledge sources this bot is granted (folders and plugin corpora). Respects per-bot ACLs.",

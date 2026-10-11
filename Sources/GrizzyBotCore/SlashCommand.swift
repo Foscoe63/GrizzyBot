@@ -18,6 +18,8 @@ public enum SlashCommand: Sendable {
         /// List available slash skills for this bot.
         case help([AgentSkill])
         case unknown(String)
+        /// A command GrizzyBot handles itself (`/context`, `/goal`, …).
+        case builtin(BuiltinCommand, argument: String)
         /// Ordinary chat — not a slash command.
         case plain(String)
     }
@@ -78,6 +80,9 @@ public enum SlashCommand: Sendable {
                 : parsed.argument
             return .skill(match, prompt: prompt)
         }
+        if let command = BuiltinCommand(rawValue: parsed.name) {
+            return .builtin(command, argument: parsed.argument)
+        }
         return .unknown(parsed.name)
     }
 
@@ -101,8 +106,9 @@ public enum SlashCommand: Sendable {
     }
 
     public static func helpText(skills: [AgentSkill]) -> String {
+        let builtins = "Built-in commands:\n" + BuiltinCommands.helpLines().joined(separator: "\n")
         if skills.isEmpty {
-            return "No skills enabled for this bot. Open Settings → Skills, or type a normal message."
+            return "No skills enabled for this bot. Open Settings → Skills, or type a normal message.\n\n\(builtins)"
         }
         let lines = skills.sorted { $0.id < $1.id }.map { skill in
             "/\(skill.id) — \(skill.description)"
@@ -112,6 +118,8 @@ public enum SlashCommand: Sendable {
         \(lines.joined(separator: "\n"))
 
         Example: `/research summarize today’s AI news`
+
+        \(builtins)
         Also: `/help`
         """
     }

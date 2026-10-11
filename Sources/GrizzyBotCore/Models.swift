@@ -57,6 +57,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var enabledComponents: [String]
     /// Optional host folder; relative file tool paths resolve here.
     public var workingFolder: String?
+    /// Standing objective set with `/goal`; kept in the prompt on every turn until cleared.
+    public var goal: String?
     /// Ids of `GrantedFolder`s (Settings → Folders) this bot may read and write.
     public var grantedFolderIds: [String]
     /// `BotAvatarShape` raw value; nil is the default circle.
@@ -148,7 +150,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case threadId, preview, status, updatedAt, createdAt
         case pinned, hidden, unread, autoApprove, shellNetwork, speakReplies, notifications, chiefOfStaff
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
-        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds
+        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, goal
     }
 
     public init(from decoder: Decoder) throws {
@@ -188,6 +190,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         enabledComponents = try c.decodeIfPresent([String].self, forKey: .enabledComponents) ?? AgentComponentCatalog.allIds
         workingFolder = try c.decodeIfPresent(String.self, forKey: .workingFolder)
         grantedFolderIds = try c.decodeIfPresent([String].self, forKey: .grantedFolderIds) ?? []
+        goal = try c.decodeIfPresent(String.self, forKey: .goal)
         avatarShape = try c.decodeIfPresent(String.self, forKey: .avatarShape)
         avatarImageRev = try c.decodeIfPresent(Int.self, forKey: .avatarImageRev)
     }
@@ -377,9 +380,11 @@ public enum RoutineTrigger {
     public static let scheduled = "routine"
     /// The user pressed Run now. Its outcome must not rewrite the schedule.
     public static let manual = "routine-manual"
+    /// An outside system posted to the routine's webhook. Like a hand-run, it must not rewrite the schedule.
+    public static let webhook = "routine-webhook"
 
     public static func isRoutine(_ trigger: String) -> Bool {
-        trigger == scheduled || trigger == manual
+        trigger == scheduled || trigger == manual || trigger == webhook
     }
 }
 
@@ -544,6 +549,19 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
     public var inProgress: Bool
     public var failCount: Int
     public var lastError: String?
+    /// An outside system may fire this routine through the loopback webhook receiver.
+    public var webhookEnabled: Bool
+    /// A standing check-in: the prompt is a checklist, and an all-clear reply stays out of the chat.
+    public var heartbeat: Bool
+    /// Hand the previous run's output to the next one so it can report only what is new.
+    public var continuity: Bool
+    /// The last run's final reply, kept (bounded) for `continuity`.
+    public var lastOutput: String?
+
+    /// True when the clock fires this routine. A routine with no cron runs only on events.
+    public var hasSchedule: Bool {
+        !cron.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     public init(
         id: String,
@@ -560,8 +578,16 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
         createdAt: Date = .now,
         inProgress: Bool = false,
         failCount: Int = 0,
-        lastError: String? = nil
+        lastError: String? = nil,
+        webhookEnabled: Bool = false,
+        heartbeat: Bool = false,
+        continuity: Bool = false,
+        lastOutput: String? = nil
     ) {
+        self.webhookEnabled = webhookEnabled
+        self.heartbeat = heartbeat
+        self.continuity = continuity
+        self.lastOutput = lastOutput
         self.id = id
         self.botId = botId
         self.name = name
@@ -581,6 +607,7 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, botId, name, prompt, cron, timezone, active, notify
         case lastRunAt, nextRunAt, createdAt, inProgress, failCount, lastError
+        case webhookEnabled, heartbeat, continuity, lastOutput
     }
 
     public init(from decoder: Decoder) throws {
@@ -604,6 +631,10 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
         inProgress = try c.decodeIfPresent(Bool.self, forKey: .inProgress) ?? false
         failCount = try c.decodeIfPresent(Int.self, forKey: .failCount) ?? 0
         lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
+        webhookEnabled = try c.decodeIfPresent(Bool.self, forKey: .webhookEnabled) ?? false
+        heartbeat = try c.decodeIfPresent(Bool.self, forKey: .heartbeat) ?? false
+        continuity = try c.decodeIfPresent(Bool.self, forKey: .continuity) ?? false
+        lastOutput = try c.decodeIfPresent(String.self, forKey: .lastOutput)
     }
 }
 

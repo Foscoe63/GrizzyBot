@@ -61,6 +61,10 @@ public struct AgentLoopRequest: Sendable {
     public var roster: [BotRosterEntry]
     /// True when this bot is the chief of staff and owns coordination across the roster.
     public var isChiefOfStaff: Bool
+    /// Polled between steps for messages the person sent mid-run. Nil disables steering.
+    public var steer: (@Sendable () -> [String])?
+    /// Standing objective from `/goal`, if any.
+    public var goal: String
 
     public init(
         endpoint: ModelEndpoint,
@@ -83,8 +87,11 @@ public struct AgentLoopRequest: Sendable {
         workingFolderNote: String = "",
         stallMs: Int = 60_000,
         roster: [BotRosterEntry] = [],
-        isChiefOfStaff: Bool = false
+        isChiefOfStaff: Bool = false,
+        steer: (@Sendable () -> [String])? = nil,
+        goal: String = ""
     ) {
+        self.goal = goal
         self.endpoint = endpoint
         self.botName = botName
         self.botTitle = botTitle
@@ -106,6 +113,7 @@ public struct AgentLoopRequest: Sendable {
         self.stallMs = stallMs
         self.roster = roster
         self.isChiefOfStaff = isChiefOfStaff
+        self.steer = steer
     }
 }
 
@@ -641,6 +649,9 @@ public enum AgentLoop {
         if !instructions.isEmpty {
             lines.append("Instructions from the user:\n\(instructions)")
         }
+        if let goal = BuiltinCommands.goalSection(request.goal) {
+            lines.append(goal)
+        }
         if let roster = PromptSection.roster(
             request.roster,
             isChiefOfStaff: request.isChiefOfStaff,
@@ -678,7 +689,7 @@ public enum AgentLoop {
 
     public static let parallelSafeTools: Set<String> = [
         "web_search", "web_fetch", "read_file", "list_files", "search_memory",
-        "computer_screenshot", "mcp_list_tools", "read_skill", "search_knowledge",
+        "computer_screenshot", "mcp_list_tools", "read_skill", "search_knowledge", "search_sessions",
         "canvas_list", "artifact_list", "artifact_read",
         "run_subagent", "check_bot", "list_delegations",
     ]
@@ -899,6 +910,12 @@ public enum AgentLoop {
                 if !lastText.isEmpty {
                     messages.append(.assistant(lastText))
                 }
+                // The person spoke up while this last answer was being written: answer
+                // that too rather than ending the turn on a reply that ignores it.
+                if step < maxSteps, let spoken = request.steer?(), !spoken.isEmpty {
+                    messages.append(.user(QueuePlanner.steerNote(spoken)))
+                    continue
+                }
                 let unconfirmed = AgentCompletionGate.unconfirmedVaultWrite(
                     text: lastText,
                     messages: messages,
@@ -1003,6 +1020,9 @@ public enum AgentLoop {
             if let finish {
                 if let nextPause = finish.pause { pause = nextPause }
                 return loopResult(text: finish.text, steps: step)
+            }
+            if let spoken = request.steer?(), !spoken.isEmpty {
+                messages.append(.user(QueuePlanner.steerNote(spoken)))
             }
             if !disabledThisStep.isEmpty, hasMcpTools {
                 messages.append(.user(
