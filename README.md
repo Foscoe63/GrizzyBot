@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.11.3-3B82F6?style=for-the-badge" alt="Version 0.11.3">
+  <img src="https://img.shields.io/badge/version-0.11.4-3B82F6?style=for-the-badge" alt="Version 0.11.4">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,13 +49,18 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.3** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.4** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
 ---
 
 ## 🆕 What's new
+
+### 0.11.4 — every tool switch works, and agents import from folders
+
+- **Switches that wouldn't switch off now do.** Some tools came on silently with another: Shell turned on *List shortcuts*, *Run shortcut* and *Routines*; Remember turned on *Search memory*, *Forget* and the search tools; Spawn bot turned on *Message bot*; Request takeover turned on the Screenshot/Click/Type tools. They showed as on and ignored you. Each tool is now its own switch. Bots you already have keep exactly the tools they had (written out as real switches the first time 0.11.4 opens); after that, turn any of them off individually. Tools the agent can't work without (todo, complete, clarify, capability discovery, canvases and artifacts) no longer show a switch that did nothing.
+- **Import an agent folder.** The **+** menu has a third item, *Import agent folder…*. Pick a folder with a `SKILL.md` (at the top, or under `skills/<name>/`) and, usually, an `agents/*.yaml`: you get a normal bot named from the agent file's `display_name`, described by its `short_description`, coloured with its `brand_color` and wearing its icon. The skill is saved to your skill library and switched on for that bot, and the whole folder (references, assets) is copied into the bot's home so the skill's `references/…` paths can be read. The skill and every Markdown file in the folder are scanned first; if anything looks risky you're asked before it's imported.
 
 ### 0.11.3 — a delegate can't run forever
 
@@ -324,7 +329,7 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 🃏 | **UI** | `present_component` (form, gallery, activity, refusals, or a published card), `report_decline`. |
 | ♾️ | **Loop** | `capabilities_discover`, `capabilities_load`, `todo`, `complete`, `clarify`. |
 | 🧩 | **MCP** | First-class `server-slug__tool` names plus `mcp_list_tools` / `mcp_call` — see [Plugins, MCP & destinations](#-plugins-mcp--destinations). |
-| 🔗 | **Shortcuts** | `shortcuts_list` names every Shortcut in your library; `shortcuts_run` runs one by name with optional text input and returns what it produced. Structured system automation instead of clicking a menu that moves between OS versions. Approval-gated as `shortcuts.run`, and granted by the **Shell** switch since a shell can already invoke `/usr/bin/shortcuts`. |
+| 🔗 | **Shortcuts** | `shortcuts_list` names every Shortcut in your library; `shortcuts_run` runs one by name with optional text input and returns what it produced. Structured system automation instead of clicking a menu that moves between OS versions. Approval-gated as `shortcuts.run`, and each has its own switch (*List shortcuts*, *Run shortcut*) — a bot with **Shell** can already invoke `/usr/bin/shortcuts`, so turn them off if you want that path closed too. |
 | 🔌 | **Plugins & skills** | `plugin_call` (`action=search` / `write` / `delete`), `destination_write`, `read_skill`, `import_skills`, `skill_propose` (a draft skill that stays off until you approve it), plus any custom tools you add. |
 | 📅 | **Routines** | `routine_manage` — `create`, `list`, `pause`, `resume`, `delete` for this bot's own routines. Schedule by `cron` or by `days` + `time`; at least 15 minutes apart; each new routine needs your approval, and always does after the run has read outside content. |
 | 🔑 | **Secrets** | `request_secret` asks you for a key or password in a private field (or an `op://` 1Password reference). The bot never sees the value: it writes `{{secret:NAME}}` in a `web_fetch`, `plugin_call`, MCP, or `shell` call and GrizzyBot fills it in at the last moment. In a shell command the placeholder becomes `"$GRIZZY_SECRET_NAME"`, so the approval card never shows the value. |
@@ -445,7 +450,7 @@ Skills are `SKILL.md` playbooks. Matching skills inject into the turn; others lo
 | 🧠 | **memory** | Pin, remember, forget |
 | 🛠️ | **skill-creator** | Author a new `SKILL.md` |
 
-Import a folder of `SKILL.md` files (for example `~/.agents/skills`) with `import_skills`, or write one by hand in the sidebar's **Skills** panel → New skill.
+To make a whole bot from an agent folder (a `SKILL.md` plus an optional `agents/*.yaml`, as shipped by tools like Codex), use the sidebar **+** → *Import agent folder…*: the bot takes its name, description, colour and icon from the agent file, gets the skill switched on, and gets the folder's references copied into its home; the folder is scanned first. Import a folder of `SKILL.md` files (for example `~/.agents/skills`) with `import_skills`, or write one by hand in the sidebar's **Skills** panel → New skill.
 
 **Learning and tidying.** `/learn` (or the `skill_propose` tool) has a bot draft a skill from work it just did; it is saved **switched off** and appears at the top of the Skills panel with Approve / Reject. The panel counts how often each skill is used, suggests archiving skills nobody uses and merging near-duplicates, and keeps an archive you can restore from. Nothing is ever deleted, and bundled and pinned skills are never touched. Proposals that look dangerous are refused outright.
 

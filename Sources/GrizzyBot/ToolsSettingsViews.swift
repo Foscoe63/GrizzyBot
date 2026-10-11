@@ -444,7 +444,7 @@ struct GroupedBuiltinToolsList: View {
     @State private var expanded: Set<AgentToolGroup> = [.files]
 
     private var tools: [AgentToolDefinition] {
-        store.knownToolDefinitions.filter { $0.kind != .mcp }
+        store.knownToolDefinitions.filter { $0.kind != .mcp && !AgentToolCatalog.unswitchedIds.contains($0.id) }
     }
 
     var body: some View {

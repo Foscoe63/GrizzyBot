@@ -901,7 +901,7 @@ struct BotRosterPromptTests {
     }
 
     private var messageBotTool: ChatTool {
-        AgentToolCatalog.chatTools(enabledIds: ["spawn_bot"], includeDelegation: true)
+        AgentToolCatalog.chatTools(enabledIds: ["spawn_bot", "message_bot"], includeDelegation: true)
             .first { $0.function.name == "message_bot" }!
     }
 

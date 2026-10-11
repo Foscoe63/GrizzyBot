@@ -163,32 +163,57 @@ struct AgentToolsTests {
         #expect(note?.contains("Toolport is in that server list") == true)
     }
 
-    @Test("shortcuts tools ride on the shell switch, so saved bots get them without a migration")
-    func shortcutsDeriveFromShell() {
+    @Test("shortcuts tools have their own switches, independent of Shell")
+    func shortcutsAreTheirOwnSwitches() {
         var bot = Bot(id: "1", name: "A", color: "#fff", threadId: "t", enabledTools: ["shell"], enabledSkills: [])
-        #expect(bot.isToolEnabled("shortcuts_list"))
-        #expect(bot.isToolEnabled("shortcuts_run"))
-
-        // Without shell there is no back door, so the switch means something.
-        bot.enabledTools = ["read_file"]
+        // Shell alone no longer switches them on.
         #expect(!bot.isToolEnabled("shortcuts_list"))
         #expect(!bot.isToolEnabled("shortcuts_run"))
 
-        // And they can be granted on their own.
-        bot.enabledTools = ["shortcuts_run"]
-        #expect(bot.isToolEnabled("shortcuts_run"))
+        bot.setTool("shortcuts_list", enabled: true)
+        bot.setTool("shortcuts_run", enabled: true)
+        #expect(bot.isToolEnabled("shortcuts_list") && bot.isToolEnabled("shortcuts_run"))
+
+        // Each can be turned off again while Shell stays on.
+        bot.setTool("shortcuts_run", enabled: false)
+        #expect(bot.isToolEnabled("shell"))
+        #expect(bot.isToolEnabled("shortcuts_list"))
+        #expect(!bot.isToolEnabled("shortcuts_run"))
+    }
+
+    @Test("every switch in a group can be turned off on its own, whatever else is on")
+    func noToolIsStuckOn() {
+        let toggled = AgentToolCatalog.builtinIds.filter { !AgentToolCatalog.unswitchedIds.contains($0) }
+        var bot = Bot(id: "1", name: "A", color: "#fff", threadId: "t", enabledTools: toggled, enabledSkills: [])
+        for id in toggled {
+            bot.setTool(id, enabled: false)
+            #expect(!bot.isToolEnabled(id), "\(id) stayed on after it was switched off")
+            bot.setTool(id, enabled: true)
+        }
+    }
+
+    @Test("saved bots keep what the old implications gave them, as real switches")
+    func impliedGrantsAreWrittenOut() {
+        let shell = AgentToolCatalog.impliedGrants(from: ["shell"])
+        #expect(Set(shell) == ["shortcuts_list", "shortcuts_run", "routine_manage"])
+        let remember = AgentToolCatalog.impliedGrants(from: ["remember"])
+        #expect(Set(remember) == ["search_memory", "forget", "search_knowledge", "search_sessions"])
+        let spawn = AgentToolCatalog.impliedGrants(from: ["spawn_bot"])
+        #expect(Set(spawn) == ["message_bot", "routine_manage"])
+        // Nothing implied, nothing added; nothing already on is repeated.
+        #expect(AgentToolCatalog.impliedGrants(from: ["web_search"]).isEmpty)
+        #expect(!AgentToolCatalog.impliedGrants(from: ["shell", "shortcuts_run"]).contains("shortcuts_run"))
     }
 
     @Test("the shortcuts schema reaches the model only when enabled")
     func shortcutsSchema() {
-        let withShell = AgentToolCatalog.chatTools(enabledIds: ["shell"])
-        let names = Set(withShell.map(\.function.name))
+        let on = AgentToolCatalog.chatTools(enabledIds: ["shortcuts_list", "shortcuts_run"])
+        let names = Set(on.map(\.function.name))
         #expect(names.contains("shortcuts_list"))
         #expect(names.contains("shortcuts_run"))
 
-        let without = AgentToolCatalog.chatTools(enabledIds: ["read_file"])
-        let bare = Set(without.map(\.function.name))
-        #expect(!bare.contains("shortcuts_run"))
+        let withShellOnly = Set(AgentToolCatalog.chatTools(enabledIds: ["shell"]).map(\.function.name))
+        #expect(!withShellOnly.contains("shortcuts_run"))
     }
 
     @Test("shortcuts_run refuses an empty name without launching anything")

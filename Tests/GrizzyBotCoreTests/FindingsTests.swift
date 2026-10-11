@@ -327,15 +327,17 @@ struct RoutineToolTests {
         client.requests(for: bot).dropFirst().first?.compactMap(\.content).joined(separator: "\n") ?? ""
     }
 
-    @Test("every bot that can run shell or coordinate has the tool, and it is in the catalog")
+    @Test("routine_manage is its own switch, and older shell bots are given it once")
     func available() {
         #expect(AgentToolCatalog.builtinIds.contains("routine_manage"))
-        let legacy = Bot(id: "a", name: "Old", color: "#000", threadId: "t", enabledTools: ["shell", "read_file"])
-        #expect(legacy.isToolEnabled("routine_manage"))
-        let plain = Bot(id: "b", name: "Plain", color: "#000", threadId: "t", enabledTools: ["read_file"])
-        #expect(!plain.isToolEnabled("routine_manage"))
-        let names = AgentToolCatalog.chatTools(enabledIds: ["shell"]).map(\.function.name)
+        let shellOnly = Bot(id: "a", name: "Old", color: "#000", threadId: "t", enabledTools: ["shell", "read_file"])
+        #expect(!shellOnly.isToolEnabled("routine_manage"))
+        #expect(AgentToolCatalog.impliedGrants(from: shellOnly.enabledTools).contains("routine_manage"))
+        let granted = Bot(id: "b", name: "New", color: "#000", threadId: "t", enabledTools: ["shell", "routine_manage"])
+        #expect(granted.isToolEnabled("routine_manage"))
+        let names = AgentToolCatalog.chatTools(enabledIds: ["shell", "routine_manage"]).map(\.function.name)
         #expect(names.contains("routine_manage"))
+        #expect(!AgentToolCatalog.chatTools(enabledIds: ["shell"]).map(\.function.name).contains("routine_manage"))
     }
 
     @Test("creating a routine asks the person first, then makes a real, scheduled routine")

@@ -259,7 +259,7 @@ public final class AppStore {
     /// How long a bot may work on a job another bot handed it before it is stopped and the lead is
     /// told. Waiting on the person for an approval does not count. 0 turns the limit off.
     public var delegateTimeout: TimeInterval = 20 * 60
-    var delegateTimers: [String: Task<Void, Never>] = [:]
+    public internal(set) var delegateTimers: [String: Task<Void, Never>] = [:]
     /// Watcher runs pin file tools to the watch path until the run goes idle.
     var runWorkingFolderOverride: [String: String] = [:]
     /// Bot currently executing a watcher-triggered run (for echo suppression).
@@ -504,6 +504,7 @@ public final class AppStore {
         pluginGrants = ws.pluginGrants
         sandboxComponents = ws.sandboxComponents
         mcpAdvertisedTools = ws.mcpAdvertisedTools
+        grantImpliedTools()
         auditEvents = globalPersistence.loadAudit()
         if auditEvents.isEmpty {
             auditEvents = userPersistence.loadAudit()

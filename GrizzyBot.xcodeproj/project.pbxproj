@@ -115,6 +115,7 @@
 		4F3D987185BBBE66A432EFAF /* CodeEditorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDC76225307599CBE92524A1 /* CodeEditorTests.swift */; };
 		51591A7BEF499927879EB28E /* RoutineScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2AD36303A2DBCC7BC06A480 /* RoutineScheduleView.swift */; };
 		537CBB270727CDD7801A874D /* LibraryPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565A4434AC3151A847CD0BF9 /* LibraryPanelView.swift */; };
+		53DCA53849A7BB588BB8BDCD /* AgentFolderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E91498E58E7556A71C6EEBA /* AgentFolderTests.swift */; };
 		54827B561D368B53CE99D722 /* CompanionPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E5FCBF9CACF81244A0B30CB /* CompanionPage.swift */; };
 		54A30211DE3B9E02D99E087A /* MemoryLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DB2D2419378187A5D98A63A /* MemoryLedger.swift */; };
 		55DC10769C39513E7351D912 /* MacIntegration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F96C6BCB76B4CA80E2ED13B9 /* MacIntegration.swift */; };
@@ -134,6 +135,7 @@
 		66EE0053301509B186F7CC07 /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38E648A6DDC4A0777E9D91B2 /* SyntaxHighlighter.swift */; };
 		66EEDE773AB744169B51AFB8 /* RightPanelView+Computer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBEB1A210960768451D7829 /* RightPanelView+Computer.swift */; };
 		67786054E57D901D86FA257D /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF394BDED582E532893E9AD /* Persistence.swift */; };
+		68AAAF68F51CEC2D71C6EF44 /* AppStore+ImpliedTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC595CBF8592CC83DAAE0092 /* AppStore+ImpliedTools.swift */; };
 		69BCFEDA49356BA041DE8D31 /* McpToolRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D0BC9641DCCE35A309E36E /* McpToolRouting.swift */; };
 		6A9C60030459F24B02A0899D /* AppStore+Telegram.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6130146F49BBBB99B21E870C /* AppStore+Telegram.swift */; };
 		6B7CBBF3D185C65887337F3C /* TelegramStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C5D83D490089890E78F9024 /* TelegramStoreTests.swift */; };
@@ -202,6 +204,7 @@
 		A02FE985A6325EE069EBFACF /* AppStore+Artifacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE28CA17A83E3A3B84356CCD /* AppStore+Artifacts.swift */; };
 		A084036EA9D1A3FE50831272 /* ProductSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 046251ABA24371B25741F1D9 /* ProductSurfaceTests.swift */; };
 		A1752ECC2E09E44F7174B4D6 /* McpCatalogPromote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C056F8276A70A11729EAE82 /* McpCatalogPromote.swift */; };
+		A244DC02020D164D2888C74F /* AppStore+AgentImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1CE9F2F9574C39C670459 /* AppStore+AgentImport.swift */; };
 		A3DA8AD84F7220ABFE72688A /* SkillsOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02646B4AC3D01508A64AAE45 /* SkillsOverlayView.swift */; };
 		A51A51D14A4434325F57852D /* GovernanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF7CD07E9660DBF1FBA63229 /* GovernanceTests.swift */; };
 		A6A001492A62222D11B0B33F /* GrizzyBotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 426B4B37E7B9E890A947CF9F /* GrizzyBotCore.framework */; };
@@ -216,6 +219,7 @@
 		AC9C3E187A51EE0608CC2EE2 /* AppSettingsOverlayView+General.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD9B474FCD99F9A3069B2CA /* AppSettingsOverlayView+General.swift */; };
 		ACFB75753807F8BCD030741F /* ActionGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B27B21B439108FDB9040797 /* ActionGateway.swift */; };
 		AD768C48CA30733DC6389485 /* RoutinesPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE9778D00F176E80CBCAF9FD /* RoutinesPageView.swift */; };
+		AE825982E4FF685A9A945C71 /* AgentFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFB353C359B7F74528DEC0F0 /* AgentFolder.swift */; };
 		AF19F9433EC3CD71F4574EC0 /* StreamWatchdog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98DE05508FC218AF0324D4AD /* StreamWatchdog.swift */; };
 		AF9B88C473E034F3D07A3B3F /* ReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E12CCC6812DFE53ABA8DF03D /* ReliabilityTests.swift */; };
 		AFE27A00F02D05C9ADEFA296 /* WebhookReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55337C9E86FBD8C43CF13A63 /* WebhookReceiver.swift */; };
@@ -537,6 +541,7 @@
 		6C8A405EE7C57534CBDDBE86 /* RecipeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeTests.swift; sourceTree = "<group>"; };
 		6DA34D298D8D56CBF85779D2 /* ThemePresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePresets.swift; sourceTree = "<group>"; };
 		6E36873F55BBBA4961D4F4A4 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		6E91498E58E7556A71C6EEBA /* AgentFolderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentFolderTests.swift; sourceTree = "<group>"; };
 		723E31172A5A6099197A91AF /* FolderWatchers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderWatchers.swift; sourceTree = "<group>"; };
 		73188E45E76521657C947CBF /* LeakScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeakScanner.swift; sourceTree = "<group>"; };
 		74469DB8A73C4588AD8F90B6 /* CanvasBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasBoard.swift; sourceTree = "<group>"; };
@@ -561,6 +566,7 @@
 		8A8122ABFCFE5D49D41F59B6 /* AppStore+Curator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore+Curator.swift"; sourceTree = "<group>"; };
 		8A99E87B9C17655D22331DDC /* PluginsOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsOverlayView.swift; sourceTree = "<group>"; };
 		8B5AF27C0B0A01037267D8C6 /* CanvasBoardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasBoardTests.swift; sourceTree = "<group>"; };
+		8CE1CE9F2F9574C39C670459 /* AppStore+AgentImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore+AgentImport.swift"; sourceTree = "<group>"; };
 		8D0A898F588ED5E1ED779116 /* AiMemoryBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiMemoryBridge.swift; sourceTree = "<group>"; };
 		8DB4D81C7F030B591A539180 /* McpSessionPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpSessionPool.swift; sourceTree = "<group>"; };
 		8DC6511227CE1DE8393F1B13 /* RoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutingTests.swift; sourceTree = "<group>"; };
@@ -612,6 +618,7 @@
 		AB794C6AE198441526123B6F /* BotTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotTemplates.swift; sourceTree = "<group>"; };
 		AE9778D00F176E80CBCAF9FD /* RoutinesPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutinesPageView.swift; sourceTree = "<group>"; };
 		AF7CD07E9660DBF1FBA63229 /* GovernanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GovernanceTests.swift; sourceTree = "<group>"; };
+		AFB353C359B7F74528DEC0F0 /* AgentFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentFolder.swift; sourceTree = "<group>"; };
 		B072C6653E0437DC17C4C757 /* LocalOpenAIGateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalOpenAIGateway.swift; sourceTree = "<group>"; };
 		B17415FAEB4BE1E798EA3A40 /* WorkspaceImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceImport.swift; sourceTree = "<group>"; };
 		B1928E6A4FE582C79FAF7C0C /* TriggerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerStoreTests.swift; sourceTree = "<group>"; };
@@ -676,6 +683,7 @@
 		E8B5913CB3FC2BF2CC9408E5 /* plugins-overlay.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "plugins-overlay.png"; sourceTree = "<group>"; };
 		EA45AF3D349EA5C61D89CA03 /* ModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalog.swift; sourceTree = "<group>"; };
 		EB834714BC7F97072BEFE5A3 /* LocalSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSplashView.swift; sourceTree = "<group>"; };
+		EC595CBF8592CC83DAAE0092 /* AppStore+ImpliedTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore+ImpliedTools.swift"; sourceTree = "<group>"; };
 		ECD20761A26F2906EFCF64DC /* BotRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotRouting.swift; sourceTree = "<group>"; };
 		ECD970D5D9577451E2A725C9 /* McpToolRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpToolRoutingTests.swift; sourceTree = "<group>"; };
 		ED2BF5CF4EEB1D953AC4F01C /* CuratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CuratorTests.swift; sourceTree = "<group>"; };
@@ -757,6 +765,7 @@
 			children = (
 				537A504870B6B55703340CCC /* AgentEvalCISuite.swift */,
 				9C6F47239DF8119B30729893 /* AgentEvalTests.swift */,
+				6E91498E58E7556A71C6EEBA /* AgentFolderTests.swift */,
 				952F78D26F1214CD06838DD4 /* AgentLoopTests.swift */,
 				9A9628297E2F6AB290976547 /* AgentToolsTests.swift */,
 				DA525FD184B1F51F3E038F4C /* AiMemoryBridgeTests.swift */,
@@ -1009,12 +1018,14 @@
 				5B27B21B439108FDB9040797 /* ActionGateway.swift */,
 				761F162C6796FC6D6365E1D2 /* ActionPolicy.swift */,
 				A55EB82572ABD0042429DD5F /* AgentComponents.swift */,
+				AFB353C359B7F74528DEC0F0 /* AgentFolder.swift */,
 				895CB54DF308C252E7F0408F /* AgentLoop.swift */,
 				00F0E652E1C21178CEE2A005 /* AgentSessionTools.swift */,
 				8E31C4FBEF5A687BD0E8757D /* AgentTools.swift */,
 				1F89AB1C5DBB68A861D07FE7 /* AguiClient.swift */,
 				8D0A898F588ED5E1ED779116 /* AiMemoryBridge.swift */,
 				32C7A06CBDC1D29ACCC068D4 /* AnthropicWire.swift */,
+				8CE1CE9F2F9574C39C670459 /* AppStore+AgentImport.swift */,
 				FE28CA17A83E3A3B84356CCD /* AppStore+Artifacts.swift */,
 				33B4E8CFE654510B95E20164 /* AppStore+Builtins.swift */,
 				79C29D8F0D365C3637E9DF45 /* AppStore+Companion.swift */,
@@ -1023,6 +1034,7 @@
 				184E642447AA236D906C22A7 /* AppStore+DelegateTimeout.swift */,
 				74C21CFC24F3422B61CF6373 /* AppStore+Dispatch.swift */,
 				3A49478013F803544D03896B /* AppStore+HumanGate.swift */,
+				EC595CBF8592CC83DAAE0092 /* AppStore+ImpliedTools.swift */,
 				C89B8521C224228C18E3DCE5 /* AppStore+Leaks.swift */,
 				624B9EB440652DCE5ED4C04F /* AppStore+MemoryTimeline.swift */,
 				1A6F60EEC9A41081BF19C4A7 /* AppStore+Plugins.swift */,
@@ -1430,12 +1442,14 @@
 				ACFB75753807F8BCD030741F /* ActionGateway.swift in Sources */,
 				70FF22664EC40E3465B29EE1 /* ActionPolicy.swift in Sources */,
 				1223298A9808421CF555899B /* AgentComponents.swift in Sources */,
+				AE825982E4FF685A9A945C71 /* AgentFolder.swift in Sources */,
 				CF093FECE761E921602DD6EA /* AgentLoop.swift in Sources */,
 				24CE7D662DE3B77336F50071 /* AgentSessionTools.swift in Sources */,
 				002000712F9B648B461791FB /* AgentTools.swift in Sources */,
 				3D0B35968BEC5EB94C0BC298 /* AguiClient.swift in Sources */,
 				ED5BC331FE745231AE1ACFD9 /* AiMemoryBridge.swift in Sources */,
 				5B19E94B741115C778588E69 /* AnthropicWire.swift in Sources */,
+				A244DC02020D164D2888C74F /* AppStore+AgentImport.swift in Sources */,
 				A02FE985A6325EE069EBFACF /* AppStore+Artifacts.swift in Sources */,
 				5BFB651ABAE1F096233B8A5C /* AppStore+Builtins.swift in Sources */,
 				CD665493CBCAAEA21723D23C /* AppStore+Companion.swift in Sources */,
@@ -1444,6 +1458,7 @@
 				FE36166D5B76AB759117B14A /* AppStore+DelegateTimeout.swift in Sources */,
 				12D012681C3F635BB3256687 /* AppStore+Dispatch.swift in Sources */,
 				91242662620FF0E773B4BEB8 /* AppStore+HumanGate.swift in Sources */,
+				68AAAF68F51CEC2D71C6EF44 /* AppStore+ImpliedTools.swift in Sources */,
 				62FB35A26F24248116F7BC18 /* AppStore+Leaks.swift in Sources */,
 				8F48408EB23221B2F436A027 /* AppStore+MemoryTimeline.swift in Sources */,
 				E10C6AF2C1681F0B50C3D221 /* AppStore+Plugins.swift in Sources */,
@@ -1568,6 +1583,7 @@
 			files = (
 				74EF7052A5D73F0080832887 /* AgentEvalCISuite.swift in Sources */,
 				0FE8776E8D339A119A07AC89 /* AgentEvalTests.swift in Sources */,
+				53DCA53849A7BB588BB8BDCD /* AgentFolderTests.swift in Sources */,
 				C9CC3636E4ABB5D3ED534B3F /* AgentLoopTests.swift in Sources */,
 				2ACD1183A80FB2BE5F6D54E3 /* AgentToolsTests.swift in Sources */,
 				284FAC467A4B79B844C4027B /* AiMemoryBridgeTests.swift in Sources */,
@@ -1961,7 +1977,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1978,7 +1994,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 0.11.3;
+				MARKETING_VERSION = 0.11.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2054,7 +2070,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2075,7 +2091,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 0.11.3;
+				MARKETING_VERSION = 0.11.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

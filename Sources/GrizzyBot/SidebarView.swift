@@ -14,6 +14,40 @@ struct SidebarView: View {
     @State private var showCreateRoom = false
     @State private var roomName = ""
     @State private var roomMemberIds: Set<String> = []
+    @State private var agentImportReview: AgentFolderPreview?
+    @State private var agentImportError: String?
+
+    private func pickAgentFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose an agent folder (it has a SKILL.md, and usually an agents/ file)"
+        panel.prompt = "Import"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let preview = try store.previewAgentFolder(url)
+            if preview.report.risk == .clean {
+                finishAgentImport(preview)
+            } else {
+                agentImportReview = preview
+            }
+        } catch {
+            agentImportError = error.localizedDescription
+        }
+    }
+
+    private func finishAgentImport(_ preview: AgentFolderPreview) {
+        do {
+            let bot = try store.importAgentFolder(preview)
+            if let icon = preview.manifest.iconURL, let png = AvatarImageCache.normalizedPNG(from: icon) {
+                store.setAvatarImage(botId: bot.id, png: png)
+            }
+            store.selectBot(bot.id)
+        } catch {
+            agentImportError = error.localizedDescription
+        }
+    }
 
     private var filteredBots: [Bot] {
         let base = store.visibleBots
@@ -74,8 +108,20 @@ struct SidebarView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(store.visibleBots.count < 2)
+
+                        Button {
+                            showNewMenu = false
+                            DispatchQueue.main.async { pickAgentFolder() }
+                        } label: {
+                            Label("Import agent folder…", systemImage: "square.and.arrow.down")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Make a bot from a folder with a SKILL.md and an agent file")
                     }
-                    .frame(width: 180)
+                    .frame(width: 210)
                     .padding(6)
                     .background(Theme.bgUserMenu)
                 }
@@ -148,6 +194,24 @@ struct SidebarView: View {
         .background(Theme.bgSidebar)
         .overlay(alignment: .trailing) {
             Rectangle().fill(Theme.borderSidebar).frame(width: 1)
+        }
+        .alert(
+            "Review before importing",
+            isPresented: Binding(get: { agentImportReview != nil }, set: { if !$0 { agentImportReview = nil } }),
+            presenting: agentImportReview
+        ) { preview in
+            Button("Import anyway", role: .destructive) { finishAgentImport(preview) }
+            Button("Cancel", role: .cancel) {}
+        } message: { preview in
+            Text("\(preview.report.risk.label) in “\(preview.manifest.name)”:\n\(preview.report.summary)")
+        }
+        .alert(
+            "Couldn't import that folder",
+            isPresented: Binding(get: { agentImportError != nil }, set: { if !$0 { agentImportError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(agentImportError ?? "")
         }
         .sheet(isPresented: $showCreateRoom) {
             createRoomSheet

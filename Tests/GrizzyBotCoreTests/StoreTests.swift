@@ -390,7 +390,7 @@ struct StoreTests {
     @Test("a delegate that runs past the limit is stopped and the lead is told")
     func delegateTimesOut() async {
         let (store, chief, researcher) = rosterStore(email: "roster-timeout@b.com")
-        store.delegateTimeout = 0.3
+        store.delegateTimeout = 3600
         let client = GatedChatClient(
             gating: "Researcher",
             queue: [
@@ -404,7 +404,7 @@ struct StoreTests {
         #expect(await store.waitForRunCompletion(botId: chief.id))
         #expect(store.threads[researcher.id]?.run?.status.isActive == true)
 
-        try? await Task.sleep(for: .seconds(1))
+        store.enforceDelegateTimeout(entryId: store.botChat[0].id)
         #expect(store.threads[researcher.id]?.run?.status == .cancelled)
         store.flushDelegationReports()
         let notice = store.messages(for: chief.id).last { $0.role == .bot }?.firstText ?? ""
@@ -417,7 +417,7 @@ struct StoreTests {
     @Test("a delegate held up for an approval is not timed out")
     func delegateWaitingForUserIsNotKilled() async {
         let (store, chief, researcher) = rosterStore(email: "roster-timeout-wait@b.com")
-        store.delegateTimeout = 2
+        store.delegateTimeout = 3600
         store.chatCompleter = QueueChatClient([
             messageBotCall("{\"name\":\"Researcher\",\"task\":\"Check the disk\"}"),
             ChatCompletionResponse(toolCalls: [LLMToolCall(id: "2", name: "shell", arguments: "{\"command\":\"echo hi\"}")]),
@@ -426,8 +426,30 @@ struct StoreTests {
         store.send(botId: chief.id, text: "ask Researcher to check the disk")
         #expect(await store.waitForRunCompletion(botId: chief.id))
         #expect(store.threads[researcher.id]?.run?.status == .waitingInput)
-        try? await Task.sleep(for: .seconds(3))
+        let entryId = store.botChat[0].id
+        store.enforceDelegateTimeout(entryId: entryId)
         #expect(store.threads[researcher.id]?.run?.status == .waitingInput)
+    }
+
+    @Test("existing bots are given their implied tools once, and can then switch them off")
+    func impliedToolsMigrateOnce() {
+        let store = tempStore()
+        #expect(store.signUp(name: "A", email: "implied@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Old", title: "")
+        store.setBotTool(bot.id, toolId: "shell", enabled: true)
+        store.setBotTool(bot.id, toolId: "shortcuts_run", enabled: false)
+        store.appConfig.impliedToolsGranted = false
+        store.grantImpliedTools()
+
+        func tools() -> [String] { store.bots.first { $0.id == bot.id }?.enabledTools ?? [] }
+        #expect(tools().contains("shortcuts_run"))
+        #expect(store.appConfig.impliedToolsGranted)
+
+        // Turned off after the migration, it stays off — the migration does not run again.
+        store.setBotTool(bot.id, toolId: "shortcuts_run", enabled: false)
+        store.grantImpliedTools()
+        #expect(!tools().contains("shortcuts_run"))
+        #expect(tools().contains("shell"))
     }
 
     @Test("list_delegations shows what the lead handed off")
@@ -1263,5 +1285,35 @@ struct StoreTests {
         CGImageDestinationAddImage(destination, image, nil)
         CGImageDestinationFinalize(destination)
         return data as Data
+    }
+}
+
+@MainActor
+@Suite("Agent folder becomes a bot")
+struct AgentImportStoreTests {
+    @Test("importing makes a normal bot with the skill enabled and the references in its home")
+    func importCreatesBot() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = AppStore(dataDirectory: dir, delayScale: 0.01)
+        #expect(store.signUp(name: "A", email: "agent-import@b.com", password: "password1") == nil)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("agent-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("references"), withIntermediateDirectories: true)
+        try "---\nname: review-pro\ndescription: Reviews code well.\n---\n\nRead references/api.md.\n"
+            .write(to: root.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+        try "notes".write(to: root.appendingPathComponent("references/api.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("agents"), withIntermediateDirectories: true)
+        try "interface:\n  display_name: \"Review Pro\"\n  brand_color: \"#006AFD\"\n"
+            .write(to: root.appendingPathComponent("agents/openai.yaml"), atomically: true, encoding: .utf8)
+
+        let before = store.bots.count
+        let bot = try store.importAgentFolder(try store.previewAgentFolder(root))
+        #expect(store.bots.count == before + 1)
+        #expect(bot.name == "Review Pro")
+        #expect(bot.color == "#006AFD")
+        #expect(bot.enabledSkills.contains("review-pro"))
+        #expect(bot.instructions.contains("imports/review-pro/references/api.md"))
+        #expect(store.skills.contains { $0.id == "review-pro" })
+        #expect(store.readBotHomeFile(botId: bot.id, path: "imports/review-pro/references/api.md") == "notes")
     }
 }
