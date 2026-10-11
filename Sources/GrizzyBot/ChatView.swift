@@ -88,6 +88,26 @@ struct ChatView: View {
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(Theme.textBright)
                         .lineLimit(1)
+                    Menu {
+                        Button {
+                            store.setGroupResponder(group.id, .auto)
+                        } label: {
+                            Label("Best fit answers", systemImage: group.defaultResponder == .auto ? "checkmark" : "sparkle.magnifyingglass")
+                        }
+                        Button {
+                            store.setGroupResponder(group.id, .mentions)
+                        } label: {
+                            Label("First member answers", systemImage: group.defaultResponder == .auto ? "person" : "checkmark")
+                        }
+                    } label: {
+                        Text(group.defaultResponder == .auto ? "routing: best fit" : "routing: first member")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("Who answers a message that doesn't @mention anyone. An @mention always wins.")
                 }
             } else if let bot {
                 Button {

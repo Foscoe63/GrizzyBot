@@ -18,6 +18,36 @@ extension AppSettingsOverlayView {
         .onChange(of: profileEmail) { _, _ in persistProfile() }
 
         settingsCard(
+            title: "Delegation",
+            subtitle: "Who answers when a message could go to more than one bot."
+        ) {
+            Text("Router model")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textSecondary)
+            GrizzySelect(
+                options: BotModelChoice.choices(
+                    workspaceProvider: store.modelProvider,
+                    workspaceModel: store.modelId,
+                    fetched: store.fetchedModels(for: store.modelProvider ?? ModelCatalog.defaultProvider),
+                    includeFullCatalog: true,
+                    enabledProviders: store.enabledModelSources()
+                ),
+                selection: Binding(
+                    get: {
+                        guard let choice = store.appConfig.routerModel else { return .workspaceDefault }
+                        return .catalog(provider: choice.provider, modelId: choice.modelId, label: choice.modelId)
+                    },
+                    set: { store.setRouterModel($0) }
+                )
+            )
+            .padding(.top, 6)
+            Text("Optional. Clear matches are routed by simple rules, instantly and for free. When the rules can't tell, this model picks the bot (it sees the message and each bot's role and tools, nothing else). Leave it on “Workspace default” to use rules only.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textMuted)
+                .padding(.top, 6)
+        }
+
+        settingsCard(
             title: "Chat",
             subtitle: "How conversations look."
         ) {
