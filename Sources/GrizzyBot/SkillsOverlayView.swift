@@ -11,6 +11,8 @@ struct SkillsOverlayView: View {
     @State private var draftDescription = ""
     @State private var draftBody = ""
     @State private var error: String?
+    /// Bumped after an approve / archive / restore so the review block re-reads the usage file.
+    @State private var reviewTick = 0
 
     private var filtered: [AgentSkill] {
         let q = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -89,6 +91,7 @@ struct SkillsOverlayView: View {
 
                 ScrollView {
                     LazyVStack(spacing: 4) {
+                        reviewSection
                         ForEach(filtered) { skill in
                             skillRow(skill)
                         }
@@ -111,6 +114,109 @@ struct SkillsOverlayView: View {
         }
         .accessibilityIdentifier(OverlayA11y.skills)
         .accessibilityElement(children: .contain)
+    }
+
+    // MARK: - Review (proposals, curator, archive)
+
+    private func reviewButton(_ title: String, danger: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13))
+                .foregroundStyle(danger ? Theme.orange : Theme.textGhost)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Theme.bgDarkButtonAlt)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var reviewSection: some View {
+        let _ = reviewTick
+        let proposals = store.skillsAwaitingReview()
+        let suggestions = store.curatorSuggestions()
+        let archived = store.archivedSkillNames()
+        if !proposals.isEmpty || !suggestions.isEmpty || !archived.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                if !proposals.isEmpty {
+                    Text("Proposed by your bots — switched off until you approve")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.textBright)
+                    ForEach(proposals) { skill in
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(skill.id).font(.system(size: 14.5, weight: .medium)).foregroundStyle(Theme.textBright)
+                                Text(skill.description).font(.system(size: 13)).foregroundStyle(Theme.textPluginsSub)
+                                let report = SkillScanner.scan(skill)
+                                if report.risk > .clean {
+                                    Text("⚠ \(report.risk.label)").font(.system(size: 12)).foregroundStyle(Theme.orange)
+                                }
+                            }
+                            Spacer()
+                            reviewButton("Read") { store.openSkillInEditor(skill.id) }
+                            reviewButton("Approve") {
+                                do { try store.approveSkillProposal(skill.id); error = nil } catch { self.error = error.localizedDescription }
+                                reviewTick += 1
+                            }
+                            reviewButton("Reject", danger: true) {
+                                do { try store.rejectSkillProposal(skill.id); error = nil } catch { self.error = error.localizedDescription }
+                                reviewTick += 1
+                            }
+                        }
+                    }
+                }
+                if !suggestions.isEmpty {
+                    Text("Tidy-up suggestions")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.textBright)
+                        .padding(.top, proposals.isEmpty ? 0 : 6)
+                    ForEach(suggestions) { item in
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(item.kind == .archive ? "Archive" : "Merge"): \(item.skillIds.joined(separator: " + "))")
+                                    .font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.textBright)
+                                Text(item.reason).font(.system(size: 12.5)).foregroundStyle(Theme.textPluginsSub)
+                            }
+                            Spacer()
+                            if item.kind == .archive, let id = item.skillIds.first {
+                                reviewButton("Archive") {
+                                    do { try store.archiveSkill(id); error = nil } catch { self.error = error.localizedDescription }
+                                    reviewTick += 1
+                                }
+                            }
+                            reviewButton("Keep") {
+                                for id in item.skillIds { store.setSkillPinned(id, pinned: true) }
+                                reviewTick += 1
+                            }
+                        }
+                    }
+                    Text("Archiving moves a skill aside; nothing is deleted and you can restore it below.")
+                        .font(.system(size: 12)).foregroundStyle(Theme.textMuted)
+                }
+                if !archived.isEmpty {
+                    Text("Archived")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.textBright)
+                        .padding(.top, 6)
+                    ForEach(archived, id: \.self) { name in
+                        HStack {
+                            Text(name).font(.system(size: 13, design: .monospaced)).foregroundStyle(Theme.textPluginsSub)
+                            Spacer()
+                            reviewButton("Restore") {
+                                do { try store.restoreSkill(archivedName: name); error = nil } catch { self.error = error.localizedDescription }
+                                reviewTick += 1
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.bgDarkButtonAlt.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.bottom, 12)
+        }
     }
 
     private var createForm: some View {
@@ -201,6 +307,11 @@ struct SkillsOverlayView: View {
                     Text(skill.source == .bundled ? "bundled" : "user")
                         .font(.system(size: 11.5))
                         .foregroundStyle(Theme.textMuted)
+                    if let loads = store.skillUsage(skill.id)?.loads, loads > 0 {
+                        Text("used \(loads)×")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Theme.textMuted)
+                    }
                     if skill.source == .user {
                         let report = SkillScanner.scan(skill)
                         if report.risk > .clean {

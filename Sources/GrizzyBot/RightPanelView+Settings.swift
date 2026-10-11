@@ -90,6 +90,8 @@ extension RightPanelView {
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.textMuted)
                     .padding(.top, 6)
+                MemoryTimelineView(botId: bot.id)
+                    .padding(.top, 12)
 
                 Text("Model")
                     .font(.system(size: 13))
@@ -107,6 +109,97 @@ extension RightPanelView {
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.textMuted)
                     .padding(.top, 6)
+
+                Text("Light model")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+                GrizzySelect(
+                    options: modelChoices(for: bot),
+                    selection: Binding(
+                        get: {
+                            guard let light = bot.lightModel else { return .workspaceDefault }
+                            return modelChoices(for: bot).first {
+                                if case .catalog(let p, let m, _) = $0 { return p == light.provider && m == light.modelId }
+                                return false
+                            } ?? .catalog(provider: light.provider, modelId: light.modelId, label: light.modelId)
+                        },
+                        set: { store.setBotLightModel(bot.id, choice: $0) }
+                    )
+                )
+                .padding(.top, 8)
+                Text("Optional. Short chatty messages go to this smaller or local model; tasks, links, images and commands stay on the main one. The reply names the model that answered. “Workspace default” turns this off.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 6)
+
+                Text("Fallback models")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+                ForEach(bot.fallbackModels, id: \.self) { choice in
+                    HStack {
+                        Text(choice.label)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(Theme.textCream)
+                        Spacer()
+                        Button("Remove") { store.removeBotFallback(bot.id, choice: choice) }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.orange)
+                    }
+                    .padding(.top, 6)
+                }
+                GrizzySelect(
+                    options: modelChoices(for: bot),
+                    selection: Binding(
+                        get: { .workspaceDefault },
+                        set: { store.addBotFallback(bot.id, choice: $0) }
+                    )
+                )
+                .padding(.top, 8)
+                Text("Tried in order when the main model fails (provider down, bad key, rate limit). Pick a model to add it; add a local one last to keep working offline.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 6)
+
+                Text("Always-allow rules")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+                if bot.allowRules.isEmpty, bot.alwaysAllowTools.isEmpty {
+                    Text("None. Choosing “Always allow” on an approval adds a rule here.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textMuted)
+                        .padding(.top, 4)
+                }
+                ForEach(bot.allowRules) { rule in
+                    HStack {
+                        Text(rule.summary)
+                            .font(.system(size: 12.5, design: .monospaced))
+                            .foregroundStyle(Theme.textCream)
+                            .lineLimit(2)
+                        Spacer()
+                        Button("Remove") { store.removeAllowRule(bot.id, ruleId: rule.id) }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.orange)
+                    }
+                    .padding(.top, 6)
+                }
+                ForEach(bot.alwaysAllowTools, id: \.self) { tool in
+                    HStack {
+                        Text("\(tool) — everything")
+                            .font(.system(size: 12.5, design: .monospaced))
+                            .foregroundStyle(Theme.textCream)
+                        Spacer()
+                        Button("Remove") { store.removeAlwaysAllowTool(bot.id, tool: tool) }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.orange)
+                    }
+                    .padding(.top, 6)
+                }
 
                 Text("Visibility")
                     .font(.system(size: 13))

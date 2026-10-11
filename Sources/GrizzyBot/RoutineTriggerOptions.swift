@@ -10,6 +10,8 @@ struct RoutineTriggerOptions: View {
 
     @State private var shownSecret: String?
     @State private var copied = false
+    @State private var gateDraft = ""
+    @State private var gateLoadedFor: String?
 
     private var routine: Routine? {
         store.routines.values.flatMap { $0 }.first { $0.id == routineId }
@@ -53,6 +55,29 @@ struct RoutineTriggerOptions: View {
                 if routine.webhookEnabled {
                     webhookDetails
                 }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    optionLabel(
+                        "Pre-check command",
+                        "Optional. A quick shell command run before each scheduled tick. Print what changed to wake the bot with it; print nothing (or SKIP) and the model isn't called at all."
+                    )
+                    TextField("e.g. ls inbox/*.csv 2>/dev/null", text: $gateDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12.5, design: .monospaced))
+                        .onSubmit { store.setRoutineGate(routineId, gate: gateDraft) }
+                    HStack {
+                        GrizzyButton(title: "Save check", variant: .cream, size: .sm) {
+                            store.setRoutineGate(routineId, gate: gateDraft)
+                        }
+                        if routine.gateSkips > 0 {
+                            Text("skipped \(routine.gateSkips)× since it last ran")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                    }
+                }
+                .onAppear { loadGate(routine) }
+                .onChange(of: routineId) { _, _ in loadGate(routine) }
             }
             .toggleStyle(.switch)
             .padding(.top, 18)
@@ -95,6 +120,12 @@ struct RoutineTriggerOptions: View {
                 .foregroundStyle(Theme.textMuted)
         }
         .padding(.leading, 4)
+    }
+
+    private func loadGate(_ routine: Routine) {
+        guard gateLoadedFor != routine.id else { return }
+        gateDraft = routine.gate ?? ""
+        gateLoadedFor = routine.id
     }
 
     private func optionLabel(_ title: String, _ detail: String) -> some View {

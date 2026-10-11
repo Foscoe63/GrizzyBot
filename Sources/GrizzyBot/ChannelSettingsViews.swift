@@ -183,6 +183,77 @@ struct WebhookSettingsBody: View {
     }
 }
 
+/// Let Claude Desktop, Cursor, or Claude Code drive the bots through MCP.
+struct ControlPlaneSettingsBody: View {
+    @Environment(AppStore.self) private var store
+    @State private var shownToken: String?
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Let MCP clients use my bots", isOn: Binding(
+                get: { store.appConfig.controlPlaneEnabled },
+                set: { on in
+                    var config = store.appConfig
+                    config.controlPlaneEnabled = on
+                    store.saveAppConfig(config)
+                    if on { shownToken = store.controlPlaneToken() ?? store.rotateControlPlaneToken() }
+                }
+            ))
+            .toggleStyle(.switch)
+            .font(.system(size: 13))
+
+            if store.appConfig.controlPlaneEnabled {
+                Text("http://127.0.0.1:\(store.appConfig.controlPlanePort)/mcp")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Theme.textBright)
+                    .textSelection(.enabled)
+                HStack(spacing: 10) {
+                    GrizzyButton(title: copied ? "Copied" : "Copy Claude Code command", variant: .cream, size: .sm) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(store.controlPlaneClaudeCommand(), forType: .string)
+                        copied = true
+                    }
+                    GrizzyButton(title: "New token", variant: .cream, size: .sm) {
+                        shownToken = store.rotateControlPlaneToken()
+                        copied = false
+                    }
+                }
+                if let shownToken {
+                    Text("Token: \(shownToken)")
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(Theme.textBright)
+                        .textSelection(.enabled)
+                }
+            }
+            Text("Loopback only, bearer token required. A client can list bots, read and search chats, message a bot and wait for the answer, stop a run, and switch a bot's model. It cannot answer approvals, delete anything, see keys, change settings, or touch the computer.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+}
+
+/// Send a trace of every run and tool call to an OpenTelemetry collector.
+struct TracingSettingsBody: View {
+    @Environment(AppStore.self) private var store
+    @State private var endpoint = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            GrizzyField(label: "OTLP/HTTP endpoint", placeholder: "http://localhost:4318 (empty = off)", text: $endpoint)
+            GrizzyButton(title: "Save", variant: .cream, size: .sm) {
+                var config = store.appConfig
+                config.otlpEndpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+                store.saveAppConfig(config)
+            }
+            Text("One span per run and one per tool call: tool name, duration, success, model, token counts. No prompts, no tool arguments, no file contents. Works with Jaeger, Grafana Tempo, Langfuse, Honeycomb, and any OpenTelemetry collector.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .onAppear { endpoint = store.appConfig.otlpEndpoint }
+    }
+}
+
 /// Share a whole team as one Markdown file, or bring one in.
 struct TeamsSettingsBody: View {
     @Environment(AppStore.self) private var store
@@ -196,6 +267,7 @@ struct TeamsSettingsBody: View {
                 GrizzyButton(title: "Export team…", variant: .cream, size: .sm) { export() }
                 GrizzyButton(title: "Import team…", variant: .cream, size: .sm) { importTeam() }
                 GrizzyButton(title: "Import agent folder…", variant: .cream, size: .sm) { importAgentFolder() }
+                GrizzyButton(title: "Import recipe…", variant: .cream, size: .sm) { importRecipe() }
             }
             if let notice {
                 Text(notice)
@@ -224,6 +296,20 @@ struct TeamsSettingsBody: View {
     }
 
     /// An OpenClaw/Hermes-style workspace: SOUL.md, AGENTS.md, MEMORY.md, HEARTBEAT.md, skills/.
+    private func importRecipe() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.message = "Choose a recipe (.md). Run it with /recipe name."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let recipe = try RecipeLibrary.importFile(url, root: store.userRootForTesting)
+            notice = "Imported recipe “\(recipe.id)”. Run it with /recipe \(recipe.id)."
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
     private func importAgentFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -267,5 +353,101 @@ struct TeamsSettingsBody: View {
         } catch {
             notice = error.localizedDescription
         }
+    }
+}
+
+/// A phone-friendly web companion served from this Mac.
+struct CompanionSettingsBody: View {
+    @Environment(AppStore.self) private var store
+    @State private var shownToken: String?
+    @State private var copied = false
+
+    private var pairingURL: String? {
+        guard let token = shownToken ?? store.companionToken(),
+              let address = store.companionAddresses().last(where: { !$0.contains("localhost") }) ?? store.companionAddresses().first
+        else { return nil }
+        return "\(address)/#token=\(token)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Phone companion", isOn: Binding(
+                get: { store.appConfig.companionEnabled },
+                set: { on in
+                    var config = store.appConfig
+                    config.companionEnabled = on
+                    store.saveAppConfig(config)
+                    if on { shownToken = store.companionToken() ?? store.rotateCompanionToken() }
+                }
+            ))
+            .toggleStyle(.switch)
+            .font(.system(size: 13))
+
+            Toggle("Reachable from other devices (Tailscale or this network)", isOn: Binding(
+                get: { store.appConfig.companionAllowNetwork },
+                set: { on in
+                    var config = store.appConfig
+                    config.companionAllowNetwork = on
+                    store.saveAppConfig(config)
+                    Task { await store.restartCompanion() }
+                }
+            ))
+            .toggleStyle(.switch)
+            .font(.system(size: 13))
+            .disabled(!store.appConfig.companionEnabled)
+
+            if store.appConfig.companionEnabled {
+                if store.appConfig.companionAllowNetwork {
+                    Text("This page is plain HTTP. Use it over Tailscale (encrypted) or on a network you trust, and don't expose the port to the internet.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.orange)
+                }
+                if let url = pairingURL, let image = QRCode.image(for: url) {
+                    Image(nsImage: image)
+                        .interpolation(.none)
+                        .resizable()
+                        .frame(width: 150, height: 150)
+                        .background(Color.white)
+                    Text("Scan with your iPhone camera, open the link, then Share → Add to Home Screen.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                ForEach(store.companionAddresses(), id: \.self) { address in
+                    Text(address)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Theme.textBright)
+                        .textSelection(.enabled)
+                }
+                HStack(spacing: 10) {
+                    GrizzyButton(title: copied ? "Copied" : "Copy pairing link", variant: .cream, size: .sm) {
+                        if let url = pairingURL {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(url, forType: .string)
+                            copied = true
+                        }
+                    }
+                    GrizzyButton(title: "New token", variant: .cream, size: .sm) {
+                        shownToken = store.rotateCompanionToken()
+                        copied = false
+                    }
+                }
+            }
+            Text("See your bots, read and send messages, stop a run, and Allow or Deny an approval from your phone. Secrets, \"always allow\", and settings stay on the Mac. A new token signs out every phone.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+}
+
+enum QRCode {
+    static func image(for text: String) -> NSImage? {
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(text.utf8), forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)) else { return nil }
+        let rep = NSCIImageRep(ciImage: output)
+        let image = NSImage(size: rep.size)
+        image.addRepresentation(rep)
+        return image
     }
 }

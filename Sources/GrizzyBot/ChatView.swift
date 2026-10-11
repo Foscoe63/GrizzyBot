@@ -63,6 +63,12 @@ struct ChatView: View {
             pendingFiles = []
             stickChatToBottom = true
         }
+        .onChange(of: store.pendingQuote) { _, quote in
+            if let quote {
+                draft = QuoteFormatter.compose(draft: draft, quote: quote)
+                store.pendingQuote = nil
+            }
+        }
         .onChange(of: store.pendingComposerText) { _, text in
             if let text {
                 draft = text
@@ -186,6 +192,22 @@ struct ChatView: View {
                 .help("Artifacts")
                 .onHover { hoverArtifacts = $0 }
                 .opacity(hoverArtifacts || store.panel == .artifact ? 1 : 0.9)
+                Button {
+                    store.toggleLibraryPanel()
+                } label: {
+                    Image(systemName: "tray.full")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.textSub)
+                        .frame(width: 30, height: 34)
+                        .contentShape(Rectangle())
+                        .background(
+                            store.panel == .library ? Color(hex: "#1B1B1E") : Color.clear
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .help("Library — everything this bot shared")
+                .opacity(store.panel == .library ? 1 : 0.9)
             }
         }
         .padding(.horizontal, 22)

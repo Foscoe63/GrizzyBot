@@ -8,6 +8,14 @@ struct MessageView: View {
     @Environment(AppStore.self) private var store
 
     private let reactionEmojis = ["👍", "👀", "✅", "🔥"]
+
+    /// In a one-on-one chat your messages take the bot's colour (Settings → General turns it off).
+    private var accentHex: String? {
+        guard store.appConfig.botColoredChats, store.activeGroupId == nil,
+              let bot = store.bots.first(where: { $0.id == botId }),
+              BotAccent.rgb(bot.color) != nil else { return nil }
+        return bot.color
+    }
     @State private var copied = false
     @State private var editing = false
     @State private var editText = ""
@@ -34,6 +42,7 @@ struct MessageView: View {
                 }
                 .contextMenu {
                     Button("Copy") { copyMessage() }
+                    Button("Quote in reply") { store.pendingQuote = message.firstText }
                     if message.role == .user {
                         Button("Edit & resend") {
                             editText = message.firstText
@@ -159,31 +168,43 @@ struct MessageView: View {
                 } else {
                     Text(text)
                         .font(.system(size: 15.5))
-                        .foregroundStyle(Theme.textUserBubble)
+                        .foregroundStyle(accentHex == nil ? Theme.textUserBubble : (BotAccent.prefersLightText(onHex: accentHex!) ? Color.white : Color.black))
                         .lineSpacing(15.5 * 0.45)
                         .padding(.horizontal, 18)
                         .padding(.vertical, 12)
-                        .background(Theme.bgCream)
+                        .background(accentHex.map { Color(hex: $0) } ?? Theme.bgCream)
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         .frame(maxWidth: bubbleMax(0.70), alignment: .trailing)
                 }
             } else {
                 HStack(alignment: .bottom, spacing: 8) {
-                    MarkdownText(source: text, textColor: Theme.textPrimary, fontSize: 15.5)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 12)
-                        .background(Theme.bgBubble)
-                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    Group {
+                        if VoiceMemo.shared.isPlaying(message.id) {
+                            VoiceTranscriptView(memo: VoiceMemo.shared, messageId: message.id)
+                        } else {
+                            MarkdownText(source: text, textColor: Theme.textPrimary, fontSize: 15.5)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(Theme.bgBubble)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     bubbleCopyButton(text)
                     Button {
-                        ReplySpeaker.speak(text, voiceName: store.appConfig.ttsVoice, apiKey: store.appConfig.ttsKey)
+                        if store.appConfig.ttsConfigured {
+                            // A cloud voice has no word timings; it plays without the live transcript.
+                            ReplySpeaker.speak(text, voiceName: store.appConfig.ttsVoice, apiKey: store.appConfig.ttsKey)
+                        } else {
+                            VoiceMemo.shared.toggle(messageId: message.id, markdown: text, voiceName: store.appConfig.ttsVoice)
+                        }
                     } label: {
-                        Text("♪")
-                            .font(.system(size: 13))
+                        Image(systemName: VoiceMemo.shared.isPlaying(message.id) ? "stop.circle" : "speaker.wave.2")
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(Theme.textLetter)
+                            .frame(width: 22, height: 22)
                     }
                     .buttonStyle(.plain)
-                    .help("Speak this reply")
+                    .help("Read this reply aloud — the words highlight as it goes; tap one to start there")
                 }
                 .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
             }
@@ -409,7 +430,20 @@ struct MessageView: View {
         }
     }
 
+    @ViewBuilder
     private func approvalCard(tool: String, detail: String, status: ApprovalStatus) -> some View {
+        if tool == AppStore.secretRequestTool {
+            SecretRequestCard(botId: botId, messageId: message.id, detail: detail, status: status)
+                .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
+        } else if tool == DraftPreview.tool {
+            DraftApprovalCard(botId: botId, messageId: message.id, detail: detail, status: status)
+                .frame(maxWidth: bubbleMax(0.74), alignment: .leading)
+        } else {
+            standardApprovalCard(tool: tool, detail: detail, status: status)
+        }
+    }
+
+    private func standardApprovalCard(tool: String, detail: String, status: ApprovalStatus) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Approval needed")
@@ -436,6 +470,11 @@ struct MessageView: View {
                     approvalButton("Allow", decision: .allow)
                     approvalButton("Always allow", decision: .alwaysAllow)
                     approvalButton("Deny", decision: .deny, danger: true)
+                }
+                if AllowRule.narrows(tool: tool) {
+                    Text("Always allow adds a rule: \(AllowRule.suggested(tool: tool, detail: detail).summary). Edit it in the bot's settings.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textSecondary)
                 }
             }
         }
@@ -499,11 +538,25 @@ struct MessageView: View {
                 Text(name)
                     .font(.system(size: 14.5, weight: .medium))
                     .foregroundStyle(Theme.textBright)
-                Text(status == .connected ? "Connected" : "Connect to continue")
+                Text(status == .connected ? "Connected" : (status == .reconnect ? "Sign-in expired" : "Connect to continue"))
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.textSecondary)
             }
             Spacer()
+            if status == .reconnect {
+                Button {
+                    store.reconnectPlugin(named: name)
+                } label: {
+                    Text("Sign in again")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.textCream)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(Theme.bgCream)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(14)
         .frame(maxWidth: bubbleMax(0.6), alignment: .leading)
@@ -732,5 +785,172 @@ private struct ConditionalPulse: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+
+/// An outgoing message, shown as a draft the person can edit before it is sent.
+struct DraftApprovalCard: View {
+    @Environment(AppStore.self) private var store
+    let botId: String
+    let messageId: String
+    let detail: String
+    let status: ApprovalStatus
+
+    @State private var edited: String?
+
+    private var parts: (header: [String], body: String) { DraftPreview.split(detail: detail) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Draft")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.textBright)
+                Spacer()
+                Text(label)
+                    .font(.system(size: 12))
+                    .foregroundStyle(color)
+            }
+            ForEach(parts.header, id: \.self) { line in
+                Text(line)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            if status == .pending {
+                TextEditor(text: Binding(get: { edited ?? parts.body }, set: { edited = $0 }))
+                    .font(.system(size: 13.5))
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 110, maxHeight: 240)
+                    .padding(8)
+                    .background(Theme.bgCode)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                HStack(spacing: 8) {
+                    button("Send", decision: .allow)
+                    button("Always send without asking", decision: .alwaysAllow)
+                    button("Discard", decision: .deny, danger: true)
+                }
+                Text("“Always send” turns drafts off for this bot. Turn them back on by removing the rule in the bot’s settings.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.textMuted)
+            } else {
+                Text(parts.body)
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.bgCode)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
+        .padding(18)
+        .background(Theme.bgAsk)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.borderAsk, lineWidth: 1) }
+    }
+
+    private var label: String {
+        switch status {
+        case .pending: return "not sent yet"
+        case .allowed, .alwaysAllowed: return "sent"
+        case .denied: return "discarded"
+        }
+    }
+
+    private var color: Color {
+        switch status {
+        case .pending: return Theme.orange
+        case .allowed, .alwaysAllowed: return Theme.green
+        case .denied: return Theme.textMuted
+        }
+    }
+
+    private func button(_ title: String, decision: ApprovalDecision, danger: Bool = false) -> some View {
+        Button {
+            store.answerApproval(botId: botId, messageId: messageId, decision: decision, editedBody: edited)
+        } label: {
+            Text(title)
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundStyle(danger ? Theme.orange : Theme.textCream)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(danger ? Theme.bgDeleteConfirm : Theme.bgCream)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+
+/// A private field for a key or password the bot asked for. The value goes to the Keychain; the bot
+/// is only told that it was saved.
+struct SecretRequestCard: View {
+    @Environment(AppStore.self) private var store
+    let botId: String
+    let messageId: String
+    let detail: String
+    let status: ApprovalStatus
+
+    @State private var value = ""
+
+    private var parts: (name: String, purpose: String) {
+        let lines = detail.components(separatedBy: "\n")
+        return (lines.first ?? "", lines.dropFirst().joined(separator: " "))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Secret needed")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.textBright)
+                Spacer()
+                Text(status == .pending ? "waiting for you" : (status == .denied ? "declined" : "saved"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(status == .pending ? Theme.orange : Theme.green)
+            }
+            Text(parts.name)
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(Theme.orange)
+            if !parts.purpose.isEmpty {
+                Text(parts.purpose)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            if status == .pending {
+                SecureField("Paste it, or a 1Password reference (op://vault/item/field)", text: $value)
+                    .textFieldStyle(.roundedBorder)
+                HStack(spacing: 8) {
+                    Button {
+                        if store.supplyBotSecret(botId: botId, messageId: messageId, value: value) { value = "" }
+                    } label: {
+                        Text("Save")
+                            .font(.system(size: 13.5, weight: .medium))
+                            .foregroundStyle(Theme.textCream)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Theme.bgCream)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(value.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button {
+                        store.answerApproval(botId: botId, messageId: messageId, decision: .deny)
+                    } label: {
+                        Text("Decline")
+                            .font(.system(size: 13.5, weight: .medium))
+                            .foregroundStyle(Theme.orange)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Text("Stored in your Keychain (a 1Password reference is stored as-is and read only when used). The bot never sees the value; it only writes {{secret:\(parts.name)}} and GrizzyBot fills it in.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.textMuted)
+            }
+        }
+        .padding(18)
+        .background(Theme.bgAsk)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.borderAsk, lineWidth: 1) }
     }
 }
