@@ -844,6 +844,7 @@ extension AppStore {
         approved: Bool
     ) -> AgentToolCallResult? {
         if approved || bot.autoApprove || bot.alwaysAllowTools.contains(tool) { return nil }
+        if bot.allowRules.contains(where: { $0.matches(tool: tool, detail: detail) }) { return nil }
         return AgentToolCallResult(
             output: "Need approval to run \(tool): \(detail)",
             blocks: [.approval(tool: tool, detail: detail, status: .pending)],
@@ -860,6 +861,9 @@ extension AppStore {
         case "edit_file.host": return "edit_file"
         case "move_file.host": return "move_file"
         case "delete_file.host": return "delete_file"
+        case DraftPreview.tool: return "plugin_call"
+        case "memory.untrusted_write": return "remember"
+        case "memory.untrusted_forget": return "forget"
         default:
             // Per-tool approvals are keyed `mcp_call:<server>/<tool>` but run as `mcp_call`.
             return tool.hasPrefix("mcp_call:") ? "mcp_call" : tool

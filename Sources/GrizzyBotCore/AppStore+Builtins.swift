@@ -14,6 +14,10 @@ extension AppStore {
             return usageSummary(botId: botId)
         case .rollback:
             return rollbackReply(botId: botId, argument: argument)
+        case .learn:
+            return nil
+        case .recipe:
+            return recipeReply(argument: argument)
         case .plan:
             let task = argument.trimmingCharacters(in: .whitespacesAndNewlines)
             return task.isEmpty ? "Usage: `/plan <task>` — I'll write a plan without carrying it out." : nil
@@ -147,4 +151,46 @@ extension AppStore {
         let more = result.restored.count > 6 ? "\n…and \(result.restored.count - 6) more" : ""
         return "Rolled back \(result.restored.count) file(s):\n\(names)\(more)"
     }
+}
+
+
+// MARK: - Recipes
+
+extension AppStore {
+    public func recipes() -> [Recipe] { RecipeLibrary.load(root: userPersistence.root) }
+
+    /// A local reply when `/recipe` needs to list recipes or ask for missing values; nil means "run it".
+    func recipeReply(argument: String) -> String? {
+        let all = recipes()
+        let parsed = RecipeMarkdown.parseArguments(argument)
+        if parsed.name.isEmpty {
+            if all.isEmpty { return "No recipes yet. Save a Markdown file in `recipes/` in your GrizzyBot folder, or import one in Settings → Teams." }
+            return "**Recipes**\n" + all.map { r in
+                let args = r.params.map { $0.isRequired ? "\($0.name)=…" : "[\($0.name)=\($0.defaultValue ?? "")]" }.joined(separator: " ")
+                return "- `/recipe \(r.id)\(args.isEmpty ? "" : " " + args)` — \(r.description)"
+            }.joined(separator: "\n")
+        }
+        guard let recipe = all.first(where: { $0.id == parsed.name }) else {
+            return "No recipe named `\(parsed.name)`. `/recipe` lists them."
+        }
+        do {
+            _ = try RecipeMarkdown.fill(recipe, values: parsed.values)
+            return nil
+        } catch {
+            return error.localizedDescription + " Example: `/recipe \(recipe.id) " + recipe.params.map { "\($0.name)=…" }.joined(separator: " ") + "`"
+        }
+    }
+
+    /// The filled-in prompt for a runnable `/recipe` line.
+    func recipePrompt(argument: String) -> String? {
+        let parsed = RecipeMarkdown.parseArguments(argument)
+        guard let recipe = recipes().first(where: { $0.id == parsed.name }),
+              let filled = try? RecipeMarkdown.fill(recipe, values: parsed.values) else { return nil }
+        return filled
+    }
+}
+
+extension AppStore {
+    /// The account folder, for tests that seed files the app would normally find on disk.
+    public var userRootForTesting: URL { userPersistence.root }
 }

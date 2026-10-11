@@ -54,6 +54,9 @@ extension AppStore {
         Task { await self.syncFolderWatchers() }
         Task { await self.syncLocalGateway() }
         Task { await self.syncWebhookReceiver() }
+        Task { await self.syncControlPlane() }
+        Task { await self.syncCompanion() }
+        Task { await traceExporter.configure(endpoint: appConfig.otlpEndpoint) }
         Task { await self.syncTelegram() }
     }
 

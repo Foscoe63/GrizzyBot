@@ -34,6 +34,20 @@ extension AppStore {
         openPanel(.artifact)
     }
 
+    public func toggleLibraryPanel() {
+        if panel == .library {
+            panel = nil
+        } else {
+            openPanel(.library)
+        }
+    }
+
+    /// What the active bot has shared in its chat, newest first.
+    public func libraryItems(botId: String) -> [SharedItem] {
+        guard let thread = threads[threadKey(for: botId)] else { return [] }
+        return BotLibrary.items(in: thread)
+    }
+
     public func toggleArtifactPanel() {
         if panel == .artifact {
             panel = nil
