@@ -862,4 +862,4 @@ You still do Apple Developer ID, notarize credentials, the iCloud container, Acc
 
 ## 📄 License
 
-[MIT](LICENSE) © 2026 Ed Griswold
+[MIT](LICENSE) © 2026 EWG
