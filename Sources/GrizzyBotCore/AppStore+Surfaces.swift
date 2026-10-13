@@ -868,6 +868,8 @@ extension AppStore {
                   var thread = threads[groupId]
             else { continue }
 
+            // A pass is dropped from the room, so the sidebar rows it touched must go back too.
+            let before = (preview: bot.preview, unread: bot.unread)
             let run = Run(id: Ids.new(), botId: botId, threadId: thread.threadId, status: .running, trigger: "group")
             let startSeq = thread.nextSeq
             thread.run = run
@@ -908,6 +910,13 @@ extension AppStore {
                 after.messages.removeAll { $0.role == .bot && $0.seq >= startSeq && $0.authorBotId == botId }
                 threads[groupId] = after
                 passed.append(bot.name)
+                if let idx = bots.firstIndex(where: { $0.id == botId }) {
+                    bots[idx].preview = before.preview
+                    bots[idx].unread = before.unread
+                }
+                if let gIdx = groups.firstIndex(where: { $0.id == groupId }) {
+                    groups[gIdx].preview = after.messages.last(where: { $0.role == .user || $0.role == .bot })?.firstText ?? ""
+                }
                 save()
                 continue
             }

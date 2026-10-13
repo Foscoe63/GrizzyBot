@@ -409,6 +409,21 @@ struct RoomRoutingTests {
         #expect(!messages.contains { m in m.blocks.contains { if case .meta(let t) = $0 { return t.contains("nothing to add") }; return false } })
     }
 
+    @Test("a pass leaves no trace in the sidebar previews")
+    func passKeepsPreviewsClean() async {
+        let client = ByBotClient(["Ada": [.success(ChatCompletionResponse(text: "[PASS]"))]])
+        let w = setup(client)
+        let before = w.store.bots.first { $0.id == w.ada.id }!.preview
+        w.store.sendGroupMessage(groupId: w.room.id, text: "@Ada what do you think?")
+        await until { w.store.threads[w.room.id]?.messages.contains { $0.role == .system } == true }
+        await w.store.waitForActiveRuns()
+        let ada = w.store.bots.first { $0.id == w.ada.id }!
+        #expect(ada.preview == before)
+        #expect(!ada.preview.contains("PASS"))
+        let room = w.store.groups.first { $0.id == w.room.id }!
+        #expect(room.preview == "@Ada what do you think?")
+    }
+
     @Test("when everyone asked passes, the room says so instead of going silent")
     func allPassGetsANote() async {
         let client = ByBotClient(["Ada": [.success(ChatCompletionResponse(text: "[PASS]"))]])
