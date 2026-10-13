@@ -322,6 +322,11 @@ struct RoomRoutingTests {
         return (store, ada, rae, room)
     }
 
+    /// Polls until `condition` holds (up to ten seconds), so a loaded machine can't fail a test on timing.
+    private func until(_ condition: @MainActor () -> Bool) async {
+        for _ in 0..<100 where !condition() { try? await Task.sleep(nanoseconds: 100_000_000) }
+    }
+
     @Test("new rooms route by fit; an unaddressed message goes to the member built for it, and the room says so")
     func routesByFit() async {
         let client = ByBotClient(["Rae": [.success(ChatCompletionResponse(text: "Sources found."))]])
@@ -384,6 +389,36 @@ struct RoomRoutingTests {
         await w.store.waitForActiveRuns()
         #expect(client.calls(for: "Ada") == 1 && client.calls(for: "Rae") == 0)
     }
+
+    @Test("a member that replies [PASS] leaves nothing in the room and pulls nobody in")
+    func passIsSilent() async {
+        let client = ByBotClient([
+            "Ada": [.success(ChatCompletionResponse(text: "[PASS]"))],
+            "Rae": [.success(ChatCompletionResponse(text: "Hello from Rae."))],
+        ])
+        let w = setup(client)
+        w.store.sendGroupMessage(groupId: w.room.id, text: "@all anyone?")
+        await until { client.calls(for: "Rae") == 1 && w.store.threads[w.room.id]?.run?.status == .completed }
+        await w.store.waitForActiveRuns()
+        let messages = w.store.threads[w.room.id]!.messages
+        #expect(client.calls(for: "Ada") == 1 && client.calls(for: "Rae") == 1)
+        #expect(!messages.contains { $0.role == .bot && $0.firstText.contains("PASS") })
+        #expect(messages.contains { $0.role == .bot && $0.authorBotId == w.rae.id && $0.firstText.hasSuffix("Hello from Rae.") })
+        // Someone spoke, so no "nothing to add" note.
+        #expect(!messages.contains { m in m.blocks.contains { if case .meta(let t) = $0 { return t.contains("nothing to add") }; return false } })
+    }
+
+    @Test("when everyone asked passes, the room says so instead of going silent")
+    func allPassGetsANote() async {
+        let client = ByBotClient(["Ada": [.success(ChatCompletionResponse(text: "[PASS]"))]])
+        let w = setup(client)
+        w.store.sendGroupMessage(groupId: w.room.id, text: "@Ada what do you think?")
+        await until { w.store.threads[w.room.id]?.messages.contains { $0.role == .system } == true }
+        await w.store.waitForActiveRuns()
+        let messages = w.store.threads[w.room.id]!.messages
+        #expect(!messages.contains { $0.role == .bot })
+        #expect(messages.contains { m in m.blocks.contains { if case .meta(let t) = $0 { return t.contains("Ada had nothing to add") }; return false } })
+    }
 }
 
 @Suite("Delegation limits")
@@ -402,6 +437,54 @@ struct DelegationLimitTests {
     }
 
     private func call(_ id: String, _ name: String, _ args: String) -> LLMToolCall { LLMToolCall(id: id, name: name, arguments: args) }
+
+    @Test("a lead can stop a bot it handed work to, and the bot is told why")
+    func stopDelegate() async {
+        let client = ByBotClient([
+            "Alma": [
+                .success(ChatCompletionResponse(toolCalls: [call("1", "message_bot", #"{"name":"Bo","task":"Tidy the build output","wait":"false","anyway":"true"}"#)])),
+                .success(ChatCompletionResponse(text: "Asked Bo.")),
+                .success(ChatCompletionResponse(toolCalls: [call("2", "stop_bot", #"{"name":"Bo","reason":"wrong folder"}"#)])),
+                .success(ChatCompletionResponse(text: "Stopped.")),
+            ],
+            "Bo": [
+                .success(ChatCompletionResponse(toolCalls: [call("1", "shell", #"{"command":"rm -rf ./tmp"}"#)])),
+                .success(ChatCompletionResponse(text: "Understood, stopping.")),
+            ],
+        ])
+        let w = setup(client)
+        w.store.bots[w.store.bots.firstIndex { $0.id == w.b.id }!].enabledTools = ["shell"]
+        w.store.send(botId: w.a.id, text: "have Bo clean up")
+        #expect(await w.store.waitForPendingTool(botId: w.b.id))
+        #expect(await w.store.waitForRunCompletion(botId: w.a.id))
+
+        w.store.send(botId: w.a.id, text: "that was the wrong folder, stop Bo")
+        #expect(await w.store.waitForRunCompletion(botId: w.a.id))
+        await w.store.waitForActiveRuns()
+
+        let alma = client.requests(for: "Alma").last?.compactMap(\.content).joined(separator: "\n") ?? ""
+        #expect(alma.contains("Stopped Bo"))
+        #expect(w.store.threads[w.b.id]?.pendingTool == nil)
+        #expect(w.store.botChat.contains { $0.fromBotId == w.a.id && $0.toBotId == w.b.id && $0.outcome == .failed })
+        let bo = client.requests(for: "Bo").last?.compactMap(\.content).joined(separator: "\n") ?? ""
+        #expect(bo.contains("stopped on purpose") && bo.contains("wrong folder"))
+    }
+
+    @Test("a bot cannot stop one it has no open handoff with")
+    func stopNeedsAHandoff() async {
+        let client = ByBotClient([
+            "Alma": [
+                .success(ChatCompletionResponse(toolCalls: [call("1", "stop_bot", #"{"name":"Bo"}"#)])),
+                .success(ChatCompletionResponse(text: "Couldn't.")),
+            ],
+        ])
+        let w = setup(client)
+        w.store.send(botId: w.a.id, text: "stop Bo")
+        #expect(await w.store.waitForRunCompletion(botId: w.a.id))
+        let alma = client.requests(for: "Alma").last?.compactMap(\.content).joined(separator: "\n") ?? ""
+        #expect(alma.contains("no open job with Bo"))
+        #expect(client.calls(for: "Bo") == 0)
+    }
 
     @Test("a bot that read outside content cannot launder instructions through another bot's memory")
     func taintCrossesDelegation() async {

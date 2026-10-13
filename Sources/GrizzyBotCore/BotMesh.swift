@@ -85,8 +85,12 @@ public enum GroupMentions {
     /// was for someone else. Tolerates case, surrounding whitespace and a trailing full stop, but not
     /// extra words, so a real answer that merely mentions "[PASS]" is never swallowed.
     public static func isPass(_ reply: String) -> Bool {
-        let t = reply.trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        var t = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Room replies are stored as "**Name:** text"; the marker is what follows.
+        if t.hasPrefix("**"), let close = t.range(of: ":**") {
+            t = String(t[close.upperBound...])
+        }
+        t = t.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "."))
         return t.caseInsensitiveCompare("[PASS]") == .orderedSame
     }
 

@@ -900,6 +900,7 @@ extension AppStore {
             threads[groupId] = after
             save()
 
+            
             guard after.run?.id == runId, after.run?.status == .completed else { break }
             let reply = after.messages.last(where: { $0.role == .bot && $0.seq >= startSeq })?.firstText ?? ""
             if GroupMentions.isPass(reply) {

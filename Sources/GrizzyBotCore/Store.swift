@@ -5077,6 +5077,8 @@ public final class AppStore {
         }
         let leadName = bots.first(where: { $0.id == lead })?.name ?? "another bot"
         stopRun(botId: peer.id)
+        // A run stopped while it waited for an approval must not keep showing that card.
+        threads[key]?.pendingTool = nil
         for i in open { botChat[i].outcome = .failed; botChat[i].reportedAt = .now }
         recordAudit(type: .configurationChanged, botId: lead, tool: "stop_bot", reason: "stopped \(peer.name)", allowed: true, forwarded: true)
         save()

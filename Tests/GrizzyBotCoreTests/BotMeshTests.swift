@@ -43,10 +43,10 @@ struct BotMeshTests {
 
     @Test("[PASS] counts only when it is the whole reply")
     func passMarker() {
-        for text in ["[PASS]", " [pass] ", "[PASS].", "\n[Pass]\n"] {
+        for text in ["[PASS]", "**Ada:** [PASS]", " [pass] ", "[PASS].", "\n[Pass]\n"] {
             #expect(GroupMentions.isPass(text), "\(text)")
         }
-        for text in ["", "PASS", "I will [PASS] on this", "[PASS] but @ada knows", "Sure, here you go"] {
+        for text in ["", "PASS", "I will [PASS] on this", "[PASS] but @ada knows", "**Ada:** I will [PASS]", "Sure, here you go"] {
             #expect(!GroupMentions.isPass(text), "\(text)")
         }
     }
