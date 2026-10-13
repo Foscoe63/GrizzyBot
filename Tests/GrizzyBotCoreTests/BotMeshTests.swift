@@ -54,6 +54,7 @@ struct BotMeshTests {
     @Test("stop_bot is offered with the delegation read-outs and has no switch of its own")
     func stopBotAvailability() {
         var lead = bot("Lead")
+        lead.enabledTools = []
         #expect(!lead.isToolEnabled("stop_bot"))
         lead.setTool("message_bot", enabled: true)
         #expect(lead.isToolEnabled("stop_bot"))
