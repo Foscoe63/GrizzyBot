@@ -461,7 +461,7 @@ extension Bot {
         // toggle: the always-available basics and the two delegation read-outs.
         if CanvasBoardStore.toolIds.contains(toolId) { return true }
         if ArtifactStore.toolIds.contains(toolId) { return true }
-        if toolId == "check_bot" || toolId == "list_delegations",
+        if toolId == "check_bot" || toolId == "list_delegations" || toolId == "stop_bot",
            enabledTools.contains("spawn_bot") || enabledTools.contains("message_bot") { return true }
         if AgentToolCatalog.alwaysOnIds.contains(toolId) { return true }
         return false
@@ -549,7 +549,7 @@ extension AgentToolCatalog {
         let enabled = Set(enabledIds)
             .union(
                 (enabledIds.contains("spawn_bot") || enabledIds.contains("message_bot"))
-                    ? ["check_bot", "list_delegations"] : []
+                    ? ["check_bot", "list_delegations", "stop_bot"] : []
             )
             .union(CanvasBoardStore.toolIds)
             .union(ArtifactStore.toolIds)
@@ -1024,6 +1024,16 @@ extension AgentToolCatalog {
                 properties: [
                     "name": stringProp("Name of the bot from the roster"),
                     "bot_id": stringProp("Optional bot id instead of the name"),
+                ],
+                required: ["name"]
+            )
+            add(
+                "stop_bot",
+                description: "Stop a bot you handed work to when it is going the wrong way or must not finish what it is doing. Ends its current run now and tells it why. Only works on bots you messaged; it cannot stop anyone else.",
+                properties: [
+                    "name": stringProp("Name of the bot from the roster"),
+                    "bot_id": stringProp("Optional bot id instead of the name"),
+                    "reason": stringProp("Why it is being stopped; the bot reads this afterwards"),
                 ],
                 required: ["name"]
             )

@@ -310,6 +310,21 @@ extension AppStore {
 }
 
 extension AppStore {
+    /// When every bot asked passed, say so, so the person isn't left looking at a silent room.
+    func noteRoomPasses(groupId: String, passed: [String], anyoneSpoke: Bool) {
+        guard !passed.isEmpty, !anyoneSpoke, var thread = threads[groupId] else { return }
+        let message = ThreadMessage(
+            id: Ids.new(), threadId: thread.threadId, seq: thread.nextSeq, role: .system,
+            blocks: [.meta("\(passed.joined(separator: ", ")) had nothing to add. @mention someone else, or rephrase.")]
+        )
+        thread.messages.append(message)
+        thread.cursor = message.seq
+        threads[groupId] = thread
+        save()
+    }
+}
+
+extension AppStore {
     /// Whether any Chief-of-Staff hand-off is still being waited on.
     public var dispatchTasksIsEmptyForTesting: Bool { dispatchTasks.isEmpty }
 }

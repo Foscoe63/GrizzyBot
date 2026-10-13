@@ -41,6 +41,26 @@ struct BotMeshTests {
         #expect(GroupMentions.responders(for: "@nobody hi", members: members) == nil)
     }
 
+    @Test("[PASS] counts only when it is the whole reply")
+    func passMarker() {
+        for text in ["[PASS]", " [pass] ", "[PASS].", "\n[Pass]\n"] {
+            #expect(GroupMentions.isPass(text), "\(text)")
+        }
+        for text in ["", "PASS", "I will [PASS] on this", "[PASS] but @ada knows", "Sure, here you go"] {
+            #expect(!GroupMentions.isPass(text), "\(text)")
+        }
+    }
+
+    @Test("stop_bot is offered with the delegation read-outs and has no switch of its own")
+    func stopBotAvailability() {
+        var lead = bot("Lead")
+        #expect(!lead.isToolEnabled("stop_bot"))
+        lead.setTool("message_bot", enabled: true)
+        #expect(lead.isToolEnabled("stop_bot"))
+        let tools = AgentToolCatalog.chatTools(enabledIds: ["message_bot"], mcpServers: [], includeDelegation: true)
+        #expect(tools.contains { $0.function.name == "stop_bot" })
+    }
+
     @Test("old workspaces decode: new Bot and message fields default to nil")
     func backwardCompatible() throws {
         let bot = try JSONDecoder().decode(
