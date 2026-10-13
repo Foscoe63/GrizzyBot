@@ -398,7 +398,8 @@ struct RoomRoutingTests {
         ])
         let w = setup(client)
         w.store.sendGroupMessage(groupId: w.room.id, text: "@all anyone?")
-        await until { client.calls(for: "Rae") == 1 && w.store.threads[w.room.id]?.run?.status == .completed }
+        // Authorship is stamped after the run ends, so wait for that, not just for the run.
+        await until { w.store.threads[w.room.id]?.messages.contains { $0.authorBotId == w.rae.id } == true }
         await w.store.waitForActiveRuns()
         let messages = w.store.threads[w.room.id]!.messages
         #expect(client.calls(for: "Ada") == 1 && client.calls(for: "Rae") == 1)
