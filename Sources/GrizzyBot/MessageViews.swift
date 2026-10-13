@@ -517,6 +517,7 @@ struct MessageView: View {
         case .allowed: return "allowed"
         case .denied: return "denied"
         case .alwaysAllowed: return "always"
+        case .cancelled: return "cancelled"
         }
     }
 
@@ -525,6 +526,7 @@ struct MessageView: View {
         case .pending: return Theme.amber
         case .allowed, .alwaysAllowed: return Theme.green
         case .denied: return Theme.orange
+        case .cancelled: return Theme.textSecondary
         }
     }
 
@@ -856,6 +858,7 @@ struct DraftApprovalCard: View {
         case .pending: return "not sent yet"
         case .allowed, .alwaysAllowed: return "sent"
         case .denied: return "discarded"
+        case .cancelled: return "cancelled"
         }
     }
 
@@ -863,7 +866,7 @@ struct DraftApprovalCard: View {
         switch status {
         case .pending: return Theme.orange
         case .allowed, .alwaysAllowed: return Theme.green
-        case .denied: return Theme.textMuted
+        case .denied, .cancelled: return Theme.textMuted
         }
     }
 

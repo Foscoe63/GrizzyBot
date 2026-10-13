@@ -289,6 +289,8 @@ public enum ApprovalStatus: String, Codable, Sendable {
     case allowed
     case denied
     case alwaysAllowed = "always_allowed"
+    /// The run was stopped while this card waited; it can no longer be answered.
+    case cancelled
 }
 
 // MARK: - Thread message (rakazo `ThreadMessageSchema`)

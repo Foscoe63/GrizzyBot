@@ -486,6 +486,38 @@ struct DelegationLimitTests {
         #expect(bo.contains("stopped on purpose") && bo.contains("wrong folder"))
     }
 
+    @Test("a card left waiting when its run is stopped turns cancelled and cannot be answered")
+    func stoppedRunCancelsItsCard() async {
+        let client = ByBotClient([
+            "Bo": [.success(ChatCompletionResponse(toolCalls: [call("1", "shell", #"{"command":"echo stale"}"#)]))],
+        ])
+        let w = setup(client)
+        w.store.bots[w.store.bots.firstIndex { $0.id == w.b.id }!].enabledTools = ["shell"]
+        w.store.send(botId: w.b.id, text: "run it")
+        #expect(await w.store.waitForPendingTool(botId: w.b.id))
+        let cardId = w.store.pendingApprovalMessageId(botId: w.b.id)
+        #expect(cardId != nil)
+
+        w.store.stopRun(botId: w.b.id)
+
+        func statuses() -> [ApprovalStatus] {
+            (w.store.threads[w.b.id]?.messages ?? []).flatMap(\.blocks).compactMap {
+                if case .approval(_, _, let status) = $0 { return status }
+                return nil
+            }
+        }
+        #expect(!statuses().isEmpty && statuses().allSatisfy { $0 == .cancelled })
+        #expect(w.store.pendingApprovalMessageId(botId: w.b.id) == nil)
+        #expect(w.store.threads[w.b.id]?.pendingTool == nil)
+
+        // Answering the stale card does nothing: no status change, no standing rule, no tool run.
+        let rulesBefore = w.store.bots.first { $0.id == w.b.id }!.allowRules
+        w.store.answerApproval(botId: w.b.id, messageId: cardId!, decision: .alwaysAllow)
+        #expect(!statuses().isEmpty && statuses().allSatisfy { $0 == .cancelled })
+        #expect(w.store.bots.first { $0.id == w.b.id }!.allowRules == rulesBefore)
+        #expect(w.store.bots.first { $0.id == w.b.id }!.alwaysAllowTools.isEmpty)
+    }
+
     @Test("a bot cannot stop one it has no open handoff with")
     func stopNeedsAHandoff() async {
         let client = ByBotClient([

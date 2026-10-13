@@ -4388,6 +4388,16 @@ public final class AppStore {
         }
         thread.run?.status = .cancelled
         thread.run?.completedAt = .now
+        // A card that was waiting on this run must not stay answerable: "Always allow" on it would
+        // still add a standing rule for a run that no longer exists.
+        for m in thread.messages.indices {
+            for b in thread.messages[m].blocks.indices {
+                if case .approval(let tool, let detail, .pending) = thread.messages[m].blocks[b] {
+                    thread.messages[m].blocks[b] = .approval(tool: tool, detail: detail, status: .cancelled)
+                }
+            }
+        }
+        thread.pendingTool = nil
         threads[key] = thread
         if let idx = bots.firstIndex(where: { $0.id == botId }) {
             bots[idx].status = "idle"
@@ -5311,6 +5321,8 @@ public final class AppStore {
         let key = threadKey(for: botId)
         guard var thread = threads[key],
               let mIdx = thread.messages.firstIndex(where: { $0.id == messageId }) else { return }
+        // Only a card still waiting can be answered; a stale one (cancelled, or already answered) is inert.
+        guard thread.messages[mIdx].blocks.contains(where: { if case .approval(_, _, .pending) = $0 { return true }; return false }) else { return }
         for i in thread.messages[mIdx].blocks.indices {
             if case .approval(let tool, let detail, _) = thread.messages[mIdx].blocks[i] {
                 let status: ApprovalStatus
