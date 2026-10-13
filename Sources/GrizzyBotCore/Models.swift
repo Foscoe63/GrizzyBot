@@ -1051,6 +1051,32 @@ public struct DeploymentSettings: Codable, Sendable {
 
 // MARK: - Thread data (per-bot)
 
+extension ThreadData {
+    /// Turns every approval card still marked pending into a cancelled one. Returns whether any changed.
+    @discardableResult
+    public mutating func cancelPendingApprovals() -> Bool {
+        var changed = false
+        for m in messages.indices {
+            for b in messages[m].blocks.indices {
+                if case .approval(let tool, let detail, .pending) = messages[m].blocks[b] {
+                    messages[m].blocks[b] = .approval(tool: tool, detail: detail, status: .cancelled)
+                    changed = true
+                }
+            }
+        }
+        return changed
+    }
+
+    /// Cards saved as pending with no request behind them: nothing is waiting on an answer, so they can
+    /// only mislead. Older builds left these behind when a run was stopped mid-approval.
+    @discardableResult
+    public mutating func cancelOrphanedApprovals() -> Bool {
+        guard pendingTool == nil else { return false }
+        if let status = run?.status, status == .waitingInput || status == .waitingTakeover { return false }
+        return cancelPendingApprovals()
+    }
+}
+
 public struct ThreadData: Codable, Sendable {
     public var threadId: String
     public var cursor: Int

@@ -478,6 +478,7 @@ public final class AppStore {
     private func applyWorkspace(_ ws: UserWorkspace) {
         bots = ws.bots
         threads = ws.threads
+        for key in threads.keys { threads[key]?.cancelOrphanedApprovals() }
         routines = ws.routines
         computers = ws.computers
         connections = ws.connections.isEmpty ? ConnectionCatalog.defaults : ws.connections
@@ -4390,13 +4391,7 @@ public final class AppStore {
         thread.run?.completedAt = .now
         // A card that was waiting on this run must not stay answerable: "Always allow" on it would
         // still add a standing rule for a run that no longer exists.
-        for m in thread.messages.indices {
-            for b in thread.messages[m].blocks.indices {
-                if case .approval(let tool, let detail, .pending) = thread.messages[m].blocks[b] {
-                    thread.messages[m].blocks[b] = .approval(tool: tool, detail: detail, status: .cancelled)
-                }
-            }
-        }
+        thread.cancelPendingApprovals()
         thread.pendingTool = nil
         threads[key] = thread
         if let idx = bots.firstIndex(where: { $0.id == botId }) {
