@@ -13,6 +13,7 @@
 		00D0E8CE93F22C2184C1C311 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 767DB6054B53887215A8925D /* RootView.swift */; };
 		014C3D3BFA99045640EA6CF8 /* CanvasBoardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5AF27C0B0A01037267D8C6 /* CanvasBoardTests.swift */; };
 		0272767E3F7C0F16BBCFFB42 /* GrizzyBotCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 426B4B37E7B9E890A947CF9F /* GrizzyBotCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		0296CBC38B12203C6C1F20CE /* ApprovalCardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 425FE36A071471855F4003D6 /* ApprovalCardTests.swift */; };
 		02A75930E7E89FB469CF109F /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87DBE8B0F52E051C297FA2B /* JSONValue.swift */; };
 		0495815807B9A22460CA9701 /* GrizzyBotMLXBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA5D6EE7C823EEDF23F4C9F6 /* GrizzyBotMLXBootstrap.swift */; };
 		05A2C0E7C803D2F28348367D /* DraftPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22F3DA327111B5D8887E084F /* DraftPreview.swift */; };
@@ -492,6 +493,7 @@
 		3F1B5A4A25272D8DE8BEFC36 /* ModelConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelConnectView.swift; sourceTree = "<group>"; };
 		3FBF69FD6337797E70B66E27 /* McpToolGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpToolGateTests.swift; sourceTree = "<group>"; };
 		3FE866C9830374F9EE4A4D1E /* ArtifactRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ArtifactRuntime; path = Sources/GrizzyBot/Resources/ArtifactRuntime; sourceTree = SOURCE_ROOT; };
+		425FE36A071471855F4003D6 /* ApprovalCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalCardTests.swift; sourceTree = "<group>"; };
 		426B4B37E7B9E890A947CF9F /* GrizzyBotCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = GrizzyBotCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		4414E35195BA9615A6634C77 /* MLXMetallibBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXMetallibBootstrap.swift; sourceTree = "<group>"; };
 		44499FE724EC3B0F8E602735 /* MLXModelBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXModelBundle.swift; sourceTree = "<group>"; };
@@ -771,6 +773,7 @@
 				952F78D26F1214CD06838DD4 /* AgentLoopTests.swift */,
 				9A9628297E2F6AB290976547 /* AgentToolsTests.swift */,
 				DA525FD184B1F51F3E038F4C /* AiMemoryBridgeTests.swift */,
+				425FE36A071471855F4003D6 /* ApprovalCardTests.swift */,
 				E67516D660C63B65366E45FD /* ArtifactTests.swift */,
 				A059A733205797309532C94C /* AuditChainTests.swift */,
 				034ABF68635D68B313AA7DEA /* BotHomeWebSearchTests.swift */,
@@ -1591,6 +1594,7 @@
 				C9CC3636E4ABB5D3ED534B3F /* AgentLoopTests.swift in Sources */,
 				2ACD1183A80FB2BE5F6D54E3 /* AgentToolsTests.swift in Sources */,
 				284FAC467A4B79B844C4027B /* AiMemoryBridgeTests.swift in Sources */,
+				0296CBC38B12203C6C1F20CE /* ApprovalCardTests.swift in Sources */,
 				308AFAD5227E142BD31264F6 /* ArtifactTests.swift in Sources */,
 				BFEB19D00260B1B53AC8164B /* AuditChainTests.swift in Sources */,
 				7B06747F29BFD784602A65CD /* BotHomeWebSearchTests.swift in Sources */,
