@@ -3333,6 +3333,17 @@ public final class AppStore {
             }
             return AgentToolCallResult(output: describePeer(peer))
 
+        case "stop_bot":
+            if depth > 0 {
+                return AgentToolCallResult(output: "Helpers cannot stop other bots. Report back instead.")
+            }
+            let wanted = s("bot_id", "id", "name", "bot")
+            guard case .found(let peer) = BotLookup.resolve([s("bot_id"), s("id"), s("name"), s("bot")], in: bots) else {
+                let known = bots.filter { $0.id != botId && !$0.hidden }.map(\.name).joined(separator: ", ")
+                return AgentToolCallResult(output: "No bot matches “\(wanted)”. Bots: \(known).")
+            }
+            return AgentToolCallResult(output: stopDelegate(lead: botId, peer: peer, reason: s("reason", "why")))
+
         case "list_delegations":
             let mine = botChat.filter { $0.fromBotId == botId }.suffix(20).reversed()
             guard !mine.isEmpty else {
@@ -5050,6 +5061,33 @@ public final class AppStore {
 
     /// Live state of a handed-off job, read from the peer's run rather than the
     /// (possibly stale) ledger outcome.
+    /// A lead ending the run of a bot it handed work to. Scoped to the lead's own open handoffs, so a
+    /// bot can never stop one it has no part in. The delegate is told why in a follow-up message.
+    func stopDelegate(lead: String, peer: Bot, reason: String) -> String {
+        guard peer.id != lead else { return "You cannot stop yourself." }
+        let open = botChat.indices.filter {
+            botChat[$0].fromBotId == lead && botChat[$0].toBotId == peer.id && botChat[$0].outcome == .sent
+        }
+        guard !open.isEmpty else {
+            return "You have no open job with \(peer.name), so you can't stop it. Use message_bot to reach it."
+        }
+        let key = threadKey(for: peer.id)
+        guard let status = threads[key]?.run?.status, status.isActive || status == .waitingInput || status == .waitingTakeover else {
+            return "\(peer.name) is not running right now, so there is nothing to stop."
+        }
+        let leadName = bots.first(where: { $0.id == lead })?.name ?? "another bot"
+        stopRun(botId: peer.id)
+        // A run stopped while it waited for an approval must not keep showing that card.
+        threads[key]?.pendingTool = nil
+        for i in open { botChat[i].outcome = .failed; botChat[i].reportedAt = .now }
+        recordAudit(type: .configurationChanged, botId: lead, tool: "stop_bot", reason: "stopped \(peer.name)", allowed: true, forwarded: true)
+        save()
+        let why = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        send(botId: peer.id, text: "Message from \(leadName) (a bot on this Mac):\n\nYour previous run was stopped on purpose. "
+            + (why.isEmpty ? "Do not carry on with it. Acknowledge briefly." : "Reason: \(why)\nDo not carry on with it. Acknowledge briefly."))
+        return "Stopped \(peer.name). It has been told why."
+    }
+
     func delegationState(_ entry: BotChatEntry) -> String {
         let key = threadKey(for: entry.toBotId)
         switch entry.outcome {

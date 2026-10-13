@@ -81,6 +81,19 @@ public enum GroupMentions {
         public var botIds: [String]
     }
 
+    /// True when a member's whole reply is the `[PASS]` marker: it has nothing to add, or the message
+    /// was for someone else. Tolerates case, surrounding whitespace and a trailing full stop, but not
+    /// extra words, so a real answer that merely mentions "[PASS]" is never swallowed.
+    public static func isPass(_ reply: String) -> Bool {
+        var t = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Room replies are stored as "**Name:** text"; the marker is what follows.
+        if t.hasPrefix("**"), let close = t.range(of: ":**") {
+            t = String(t[close.upperBound...])
+        }
+        t = t.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return t.caseInsensitiveCompare("[PASS]") == .orderedSame
+    }
+
     /// Resolves `@name` handles against room members. A handle matches a bot's
     /// name case-insensitively, with or without spaces, hyphens and underscores
     /// (`@ResearchBot`, `@research-bot`); trailing punctuation is ignored.

@@ -855,9 +855,11 @@ extension AppStore {
     ) async {
         var queue = initial
         var spoken: Set<String> = []
+        var passed: [String] = []
         var handoffs: [String: (from: String, text: String)] = [:]
         // Plain names, no "@": a bot that echoes this line must not count as mentioning everyone.
         let roster = members.map(\.name).joined(separator: ", ")
+        defer { noteRoomPasses(groupId: groupId, passed: passed, anyoneSpoke: spoken.count > passed.count) }
 
         while !queue.isEmpty, spoken.count < GroupMentions.maxTurns {
             let botId = queue.removeFirst()
@@ -879,6 +881,7 @@ extension AppStore {
                 \(source)
 
                 Answer as yourself. To pull a teammate in, write @ followed by their name.
+                If you have nothing new to add, or this is meant for someone else, reply with exactly [PASS] and nothing more.
                 """
             let runId = run.id
             let inner = Task { [weak self] in
@@ -897,8 +900,17 @@ extension AppStore {
             threads[groupId] = after
             save()
 
+            
             guard after.run?.id == runId, after.run?.status == .completed else { break }
             let reply = after.messages.last(where: { $0.role == .bot && $0.seq >= startSeq })?.firstText ?? ""
+            if GroupMentions.isPass(reply) {
+                // A pass stays out of the room: no bubble, no @mention chaining.
+                after.messages.removeAll { $0.role == .bot && $0.seq >= startSeq && $0.authorBotId == botId }
+                threads[groupId] = after
+                passed.append(bot.name)
+                save()
+                continue
+            }
             let pulled = GroupMentions.parse(reply, members: members).botIds
             for id in pulled where id != botId && !spoken.contains(id) && !queue.contains(id) {
                 queue.append(id)
