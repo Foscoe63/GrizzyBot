@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.11.5-3B82F6?style=for-the-badge" alt="Version 0.11.5">
+  <img src="https://img.shields.io/badge/version-0.11.6-3B82F6?style=for-the-badge" alt="Version 0.11.6">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,13 +49,18 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.5** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.6** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
 ---
 
 ## 🆕 What's new
+
+### 0.11.6 — quieter rooms, and a lead can stop a delegate
+
+- **A room member can pass.** A member with nothing to add, or a message meant for someone else, replies `[PASS]`: nothing is posted and nobody it @mentions is pulled in. If every bot asked passes, the room says so ("Ada had nothing to add") instead of going silent.
+- **A lead can stop a delegate.** `stop_bot` ends the run of a bot you handed work to with `message_bot`, marks the handoff failed, clears any approval it was waiting on, and tells the bot why (one extra turn for it). It only reaches bots you have an open job with, and like `check_bot` it has no switch of its own.
 
 ### 0.11.5 — delegates get the right tools
 
