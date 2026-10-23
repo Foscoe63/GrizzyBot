@@ -1567,6 +1567,7 @@ public final class AppStore {
         var inputTokens = 0
         var outputTokens = 0
         var promptTokens = 0
+        var tokensSaved = 0
         var steps = 0
         var replyText = ""
         var failed = false
@@ -1712,6 +1713,10 @@ public final class AppStore {
             inputTokens = result.inputTokens
             outputTokens = result.outputTokens
             promptTokens = result.promptTokens
+            tokensSaved = result.savings.estimatedTokensSaved
+            if !result.savings.isEmpty {
+                appendRunLog(botId: botId, kind: "context", text: result.savings.summaryLine)
+            }
             steps = result.steps
             transcript = result.messages
             if result.failed {
@@ -1843,7 +1848,8 @@ public final class AppStore {
                 model: selectedModel ?? ModelCatalog.defaultModelId,
                 promptTokens: promptTokens > 0 ? promptTokens : nil,
                 inputTokens: inputTokens,
-                outputTokens: outputTokens
+                outputTokens: outputTokens,
+                tokensSaved: tokensSaved > 0 ? tokensSaved : nil
             )
         )
         save()

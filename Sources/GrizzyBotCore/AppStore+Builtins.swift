@@ -96,13 +96,15 @@ extension AppStore {
         guard !mine.isEmpty else { return "No usage recorded for this bot yet." }
         let input = mine.reduce(0) { $0 + $1.inputTokens }
         let output = mine.reduce(0) { $0 + $1.outputTokens }
+        let saved = mine.reduce(0) { $0 + ($1.tokensSaved ?? 0) }
+        let savedLine = saved > 0 ? "\nContext management kept about \(ContextBreakdown.format(saved)) tokens out of prompts." : ""
         let weekAgo = Date.now.addingTimeInterval(-7 * 86_400)
         let recent = mine.filter { $0.createdAt >= weekAgo }
         let recentTokens = recent.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }
         return """
         **Usage** — \(mine.count) runs
         Sent: \(ContextBreakdown.format(input)) tokens · Received: \(ContextBreakdown.format(output)) tokens
-        Last 7 days: \(recent.count) runs, \(ContextBreakdown.format(recentTokens)) tokens
+        Last 7 days: \(recent.count) runs, \(ContextBreakdown.format(recentTokens)) tokens\(savedLine)
         """
     }
 }

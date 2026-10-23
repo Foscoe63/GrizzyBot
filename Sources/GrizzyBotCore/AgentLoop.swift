@@ -72,6 +72,10 @@ public struct AgentLoopRequest: Sendable {
     public var fallbacks: [ModelFallback] = []
     /// Names (never values) of the secrets the person has saved for this bot.
     public var secretNames: [String] = []
+    /// Compress big tool outputs (full text stays retrievable), pin notes, and expose `recall_result`.
+    public var contextSavings: Bool = true
+    /// Notes that must survive compaction for the whole run.
+    public var pinnedFacts: [String] = []
 
     public init(
         endpoint: ModelEndpoint,
@@ -192,6 +196,8 @@ public struct AgentLoopResult: Sendable {
     public var answeredBy: String?
     /// Models that failed before `answeredBy` took over, in order.
     public var failedOver: [String] = []
+    /// What compression, recall and compaction saved this turn.
+    public var savings = ContextSavings()
 
     public init(
         text: String,
@@ -206,8 +212,10 @@ public struct AgentLoopResult: Sendable {
         failed: Bool = false,
         failureReason: String? = nil,
         answeredBy: String? = nil,
-        failedOver: [String] = []
+        failedOver: [String] = [],
+        savings: ContextSavings = ContextSavings()
     ) {
+        self.savings = savings
         self.answeredBy = answeredBy
         self.failedOver = failedOver
         self.text = text
@@ -366,10 +374,9 @@ public enum ContextCompactor {
                 while tailStart > 1, copy[tailStart].role == "tool" { tailStart -= 1 }
                 let head = copy.prefix(1)
                 let tail = copy[tailStart...]
-                let dropped = tailStart - 1
                 let note = ChatMessage(
                     role: "user",
-                    content: "[Earlier in this job, \(dropped) messages were compacted to stay within context.]"
+                    content: ContextDigest.make(dropped: Array(copy[1..<tailStart]))
                 )
                 copy = Array(head) + [note] + Array(tail)
             }
@@ -394,7 +401,12 @@ public enum ContextCompactor {
         let start = max(1, copy.count - keepLast)
         for i in 1..<start {
             if copy[i].role == "tool", let content = copy[i].content, content.count > 900 {
-                copy[i].content = summarizePayload(content)
+                var shrunk = summarizePayload(content)
+                if let range = content.range(of: #"(?m)^\[stored as r\d+:.*\]$"#, options: .regularExpression),
+                   !shrunk.contains(String(content[range])) {
+                    shrunk += "\n" + String(content[range])
+                }
+                copy[i].content = shrunk
                 copy[i].imageJPEGBase64 = nil
             }
             if copy[i].role == "assistant", copy[i].toolCalls.count > 0 {
@@ -796,8 +808,35 @@ public enum AgentLoop {
         onDelta: (@Sendable (String) -> Void)? = nil,
         onStep: (@Sendable (Int, Int) -> Void)? = nil,
         onTool: (@Sendable (String, String, AgentToolCallResult) -> Void)? = nil,
-        execute: @escaping @Sendable (String, String) async -> AgentToolCallResult
+        execute appExecute: @escaping @Sendable (String, String) async -> AgentToolCallResult
     ) async throws -> AgentLoopResult {
+        let store = ResultStore()
+        let tracker = SavingsTracker()
+        let pins = PinnedFacts(
+            initial: PinnedFacts.extract(from: request.priorMessages)
+                + request.pinnedFacts
+                + (request.goal.isEmpty ? [] : ["Standing goal: \(request.goal)"])
+        )
+        let savingsOn = request.contextSavings
+        // recall_result and pin_fact belong to the loop; everything else is the app's.
+        let execute: @Sendable (String, String) async -> AgentToolCallResult = { name, arguments in
+            guard savingsOn else { return await appExecute(name, arguments) }
+            switch name {
+            case ContextTools.recallName:
+                let text = store.recall(arguments: arguments)
+                tracker.update { $0.recalls += 1; $0.recalledChars += text.count }
+                return AgentToolCallResult(output: text)
+            case ContextTools.pinName:
+                let fact = (ResultStore.parse(arguments)["fact"] as? String) ?? ""
+                let added = pins.add(fact)
+                tracker.update { $0.pinnedFacts = pins.all.count }
+                return AgentToolCallResult(
+                    output: added ? "Pinned. It will stay in context." : "Nothing to pin (empty or already pinned)."
+                )
+            default:
+                return await appExecute(name, arguments)
+            }
+        }
         var messages: [ChatMessage] = [.system(systemPrompt(for: request))]
         if !request.priorMessages.isEmpty {
             messages.append(contentsOf: request.priorMessages.filter { $0.role != "system" })
@@ -832,6 +871,11 @@ public enum AgentLoop {
         var compacted = false
         let maxSteps = max(1, request.maxSteps)
         var tools = request.tools
+        if savingsOn {
+            for tool in ContextTools.definitions where !tools.contains(where: { $0.function.name == tool.function.name }) {
+                tools.append(tool)
+            }
+        }
         var webFails = 0
         var mcpDeadEnds = 0
         var warnedMcpStall = false
@@ -842,9 +886,24 @@ public enum AgentLoop {
         var failedOver: [String] = []
         let hasMcpTools = tools.contains { $0.function.name == "mcp_call" }
 
+        /// The pin message is rebuilt each step so compaction can never drop it.
+        func refreshPins() {
+            guard savingsOn else { return }
+            messages.removeAll(where: PinnedFacts.isPinMessage)
+            if let pin = pins.message(), !messages.isEmpty { messages.insert(pin, at: min(1, messages.count)) }
+        }
+
         func persistable() -> [ChatMessage] {
             var kept = ContextCompactor.trimTranscript(messages, limit: 200)
             ContextCompactor.pruneImages(&kept, keep: 0)
+            if savingsOn {
+                // The store dies with this run, so don't leave pointers to it in the saved transcript.
+                for i in kept.indices where kept[i].role == "tool" || kept[i].role == "user" {
+                    if let content = kept[i].content, content.contains("stored as r") {
+                        kept[i].content = ContextTools.stripExpiredReferences(content)
+                    }
+                }
+            }
             return kept
         }
 
@@ -867,7 +926,8 @@ public enum AgentLoop {
                 failed: failed,
                 failureReason: failureReason,
                 answeredBy: failedOver.isEmpty ? nil : "\(activeEndpoint.provider)/\(activeEndpoint.model)",
-                failedOver: failedOver
+                failedOver: failedOver,
+                savings: tracker.snapshot
             )
         }
 
@@ -882,9 +942,16 @@ public enum AgentLoop {
                     try await Task.sleep(nanoseconds: ModelRequestRetry.backoffNanoseconds(attempt: attempt - 1))
                     if let lastError, ModelRequestRetry.shouldCompactOnRetry(lastError) {
                         retryBudget = max(8_000, retryBudget * 3 / 4)
+                        messages.removeAll(where: PinnedFacts.isPinMessage)
+                        let before = ContextCompactor.encodedSize(messages)
                         let tighter = ContextCompactor.compact(messages, budget: retryBudget)
                         messages = tighter.messages
-                        if tighter.compacted { compacted = true }
+                        if tighter.compacted {
+                            compacted = true
+                            let removed = max(0, before - ContextCompactor.encodedSize(messages))
+                            tracker.update { $0.compactions += 1; $0.compactedChars += removed }
+                        }
+                        refreshPins()
                     }
                 }
                 let chatRequest = ChatCompletionRequest(
@@ -940,6 +1007,8 @@ public enum AgentLoop {
         for step in 1...maxSteps {
             if Task.isCancelled { throw CancellationError() }
             onStep?(step, maxSteps)
+            messages.removeAll(where: PinnedFacts.isPinMessage)
+            let sizeBefore = ContextCompactor.encodedSize(messages)
             let packed = ContextCompactor.compact(messages, budget: request.charBudget)
             if packed.compacted, !flushedMemory, let rememberTool = tools.first(where: { $0.function.name == "remember" }) {
                 flushedMemory = true
@@ -955,7 +1024,12 @@ public enum AgentLoop {
                 outputTokens += usage.output
             }
             messages = packed.messages
-            if packed.compacted { compacted = true }
+            if packed.compacted {
+                compacted = true
+                let removed = max(0, sizeBefore - ContextCompactor.encodedSize(messages))
+                tracker.update { $0.compactions += 1; $0.compactedChars += removed }
+            }
+            refreshPins()
 
             let response: ChatCompletionResponse
             do {
@@ -1047,9 +1121,20 @@ public enum AgentLoop {
                 let raw = result.output.isEmpty ? "(empty tool result)" : result.output
                 // web_fetch is already capped at its source; cutting the middle out of it again
                 // is how star counts and licences went missing.
-                var output = (call.name != "mcp_list_tools" && call.name != "web_fetch" && raw.count > 3_500)
-                    ? ContextCompactor.summarizePayload(raw, head: 2_000, tail: 1_000)
-                    : raw
+                var output = raw
+                let loopOwned = call.name == ContextTools.recallName || call.name == ContextTools.pinName
+                if !loopOwned, call.name != "mcp_list_tools", call.name != "web_fetch", raw.count > 3_500 {
+                    if savingsOn, let stashed = store.stash(tool: call.name, raw: raw) {
+                        output = stashed
+                        tracker.update {
+                            $0.compressedOutputs += 1
+                            $0.originalChars += raw.count
+                            $0.sentChars += stashed.count
+                        }
+                    } else {
+                        output = ContextCompactor.summarizePayload(raw, head: 2_000, tail: 1_000)
+                    }
+                }
                 let vision = LLMRouting.supportsVisionImages(
                     provider: activeEndpoint.provider,
                     model: activeEndpoint.model
