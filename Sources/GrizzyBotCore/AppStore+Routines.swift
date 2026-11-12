@@ -178,6 +178,16 @@ extension AppStore {
         webhookPayload: String? = nil,
         viaWebhook: Bool = false
     ) {
+        var routine = routine
+        if routine.teamCheckin, !manual, !viaWebhook {
+            if TeamCheckin.shouldSkip(lastPersonMessage: lastPersonMessageDate()) {
+                recordGateOutcome(botId: botId, routine: routine, note: "skipped — you were chatting", error: nil)
+                return
+            }
+            routine.prompt = TeamCheckin.compose(
+                prompt: routine.prompt, snapshot: teamSnapshot(), silentStreak: routine.silentStreak
+            )
+        }
         let gate = routine.gate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !gate.isEmpty, !manual, !viaWebhook else {
             fireRoutineUngated(botId: botId, routine: routine, manual: manual, webhookPayload: webhookPayload, viaWebhook: viaWebhook)
@@ -280,6 +290,10 @@ extension AppStore {
 
     /// Keeps a continuity routine's last report for its next run. An all-clear heartbeat is not a report.
     func recordRoutineOutput(botId: String, run: Run?, text: String, failed: Bool) {
+        if let routine = routineForRun(run), routine.teamCheckin, !failed,
+           let idx = routines[botId]?.firstIndex(where: { $0.id == routine.id }) {
+            routines[botId]?[idx].silentStreak = HeartbeatPolicy.isIdle(text) ? routine.silentStreak + 1 : 0
+        }
         guard let routine = routineForRun(run), routine.continuity, !failed,
               !HeartbeatPolicy.isIdle(text),
               let idx = routines[botId]?.firstIndex(where: { $0.id == routine.id })

@@ -137,6 +137,7 @@
 		66EE0053301509B186F7CC07 /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38E648A6DDC4A0777E9D91B2 /* SyntaxHighlighter.swift */; };
 		66EEDE773AB744169B51AFB8 /* RightPanelView+Computer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBEB1A210960768451D7829 /* RightPanelView+Computer.swift */; };
 		67786054E57D901D86FA257D /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF394BDED582E532893E9AD /* Persistence.swift */; };
+		681F89E82D071131DA0F6491 /* TeamCheckinTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21768EE9D398794BA04020B5 /* TeamCheckinTests.swift */; };
 		68AAAF68F51CEC2D71C6EF44 /* AppStore+ImpliedTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC595CBF8592CC83DAAE0092 /* AppStore+ImpliedTools.swift */; };
 		69BCFEDA49356BA041DE8D31 /* McpToolRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D0BC9641DCCE35A309E36E /* McpToolRouting.swift */; };
 		6A9C60030459F24B02A0899D /* AppStore+Telegram.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6130146F49BBBB99B21E870C /* AppStore+Telegram.swift */; };
@@ -144,6 +145,7 @@
 		6CF70A06248892BE179A0257 /* ArtifactRuntime in Resources */ = {isa = PBXBuildFile; fileRef = 3FE866C9830374F9EE4A4D1E /* ArtifactRuntime */; };
 		6D4C0C456A35591369822A64 /* BotAccent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1323B5D2D602EA62C96DFAA /* BotAccent.swift */; };
 		6F05410CB238A0E4A209F86D /* GrizzyBotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 426B4B37E7B9E890A947CF9F /* GrizzyBotCore.framework */; };
+		6F402B7D3575ABA441001154 /* TeamCheckinSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C64704937D700C1D8403E5D /* TeamCheckinSettings.swift */; };
 		6F49041F1F18EB74984F2A9D /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC342E09BDBE58984F59E04D /* ChatView.swift */; };
 		6FE133697D4ACCAF7DCC381E /* CheckpointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61B2EBAB0004EF8B588C64B /* CheckpointTests.swift */; };
 		6FEF6EEED4274EB0912DC251 /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = A879DE77CAB82A98FA411202 /* MarkdownText.swift */; };
@@ -185,6 +187,7 @@
 		8E362F7AEB52E4E2BC7DFEDE /* MLXRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D3D9E11310BF773509A2486 /* MLXRuntime.swift */; };
 		8E6504AE29631E4E8D8AAF2B /* FoldersSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2BF796ED6CF876F292D34F7 /* FoldersSettingsView.swift */; };
 		8EA7E869D37444C20B99A8CC /* AppStore+Curator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A8122ABFCFE5D49D41F59B6 /* AppStore+Curator.swift */; };
+		8EFA83A9C1732A59755003FD /* TeamCheckin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FDE5EB146809D9017E54A6C /* TeamCheckin.swift */; };
 		8F48408EB23221B2F436A027 /* AppStore+MemoryTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 624B9EB440652DCE5ED4C04F /* AppStore+MemoryTimeline.swift */; };
 		8F9F1BAFAFAAB91E48F3F80D /* SnapshotDiff.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA565D425731760FDA52BEFB /* SnapshotDiff.swift */; };
 		9098DF2985E86EA87D9E5231 /* FindingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E8607FB9EC421097C977AB /* FindingsTests.swift */; };
@@ -434,6 +437,7 @@
 		0D5E4F9D55C5ADB319D3097E /* KnowledgePlane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgePlane.swift; sourceTree = "<group>"; };
 		0DB2D2419378187A5D98A63A /* MemoryLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryLedger.swift; sourceTree = "<group>"; };
 		0FA8557C595B2200EAACCBA6 /* GrantedFoldersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrantedFoldersTests.swift; sourceTree = "<group>"; };
+		0FDE5EB146809D9017E54A6C /* TeamCheckin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamCheckin.swift; sourceTree = "<group>"; };
 		107F8E16F2EC4C7CAAB5AB1D /* SpeechSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechSupport.swift; sourceTree = "<group>"; };
 		10DB5AECD55C40DF7FE4FAE1 /* AppSettingsOverlayView+Tools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppSettingsOverlayView+Tools.swift"; sourceTree = "<group>"; };
 		123816BD5C1D3CE3C8AB8F50 /* LocalMLXView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMLXView.swift; sourceTree = "<group>"; };
@@ -455,6 +459,7 @@
 		1F89AB1C5DBB68A861D07FE7 /* AguiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AguiClient.swift; sourceTree = "<group>"; };
 		20ED2EB103BBE287E0CA1CCD /* PrivacyFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyFilter.swift; sourceTree = "<group>"; };
 		211EE314F486DD00DCC02E86 /* RunQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunQueue.swift; sourceTree = "<group>"; };
+		21768EE9D398794BA04020B5 /* TeamCheckinTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamCheckinTests.swift; sourceTree = "<group>"; };
 		21F3B6B0B59AA23B0584273B /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		22F3DA327111B5D8887E084F /* DraftPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftPreview.swift; sourceTree = "<group>"; };
 		232C3155B97EAB06C1CB0218 /* RightPanelView+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RightPanelView+Settings.swift"; sourceTree = "<group>"; };
@@ -545,6 +550,7 @@
 		6858080F8B3B961CCD1E9226 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		6861A66B06A6E2D79FA220E6 /* MemoryLean.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryLean.swift; sourceTree = "<group>"; };
 		692FFF10618251274A4C0FFE /* GrizzyBotMLX.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = GrizzyBotMLX.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		6C64704937D700C1D8403E5D /* TeamCheckinSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamCheckinSettings.swift; sourceTree = "<group>"; };
 		6C8A405EE7C57534CBDDBE86 /* RecipeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeTests.swift; sourceTree = "<group>"; };
 		6DA34D298D8D56CBF85779D2 /* ThemePresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePresets.swift; sourceTree = "<group>"; };
 		6E36873F55BBBA4961D4F4A4 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -832,6 +838,7 @@
 				857ECAEC8EC2637B412B065C /* SlashCommandTests.swift */,
 				2C8AF18B9C627741E5A510CC /* StoreTests.swift */,
 				C9639CA89776B1C3FBD06A81 /* SyntaxHighlighterTests.swift */,
+				21768EE9D398794BA04020B5 /* TeamCheckinTests.swift */,
 				7892725815011FB23F13CCFD /* TeamPackageTests.swift */,
 				1C5D83D490089890E78F9024 /* TelegramStoreTests.swift */,
 				799F8F3268F4DA07E922B34D /* ThemePresetsTests.swift */,
@@ -1008,6 +1015,7 @@
 				F91A2645D5698998169C03B8 /* SidebarView.swift */,
 				02646B4AC3D01508A64AAE45 /* SkillsOverlayView.swift */,
 				107F8E16F2EC4C7CAAB5AB1D /* SpeechSupport.swift */,
+				6C64704937D700C1D8403E5D /* TeamCheckinSettings.swift */,
 				21F3B6B0B59AA23B0584273B /* Theme.swift */,
 				7D4339F43A20C198087B61D8 /* ThemeManager.swift */,
 				6DA34D298D8D56CBF85779D2 /* ThemePresets.swift */,
@@ -1156,6 +1164,7 @@
 				916FFD0C6C6F1C1DB4E2F235 /* Store.swift */,
 				98DE05508FC218AF0324D4AD /* StreamWatchdog.swift */,
 				38E648A6DDC4A0777E9D91B2 /* SyntaxHighlighter.swift */,
+				0FDE5EB146809D9017E54A6C /* TeamCheckin.swift */,
 				9821211725C5A204B18A3C10 /* TeamPackage.swift */,
 				072C680966DC5E4150E77779 /* TelegramClient.swift */,
 				3934720D314216DAD9647FAE /* TokenAccounting.swift */,
@@ -1582,6 +1591,7 @@
 				4EB54A526111A5A0F522FD81 /* Store.swift in Sources */,
 				AF19F9433EC3CD71F4574EC0 /* StreamWatchdog.swift in Sources */,
 				66EE0053301509B186F7CC07 /* SyntaxHighlighter.swift in Sources */,
+				8EFA83A9C1732A59755003FD /* TeamCheckin.swift in Sources */,
 				D08BC2F706585CC06EC430D7 /* TeamPackage.swift in Sources */,
 				D20E916294914DF8555B9A78 /* TelegramClient.swift in Sources */,
 				B30CFA49410B93A4ACCD60BF /* TokenAccounting.swift in Sources */,
@@ -1658,6 +1668,7 @@
 				895F38093E4BB53FC1A991A0 /* SlashCommandTests.swift in Sources */,
 				0895BD5E1460BE67397E9FD3 /* StoreTests.swift in Sources */,
 				71ED8102BA5EE663BB6F0CAD /* SyntaxHighlighterTests.swift in Sources */,
+				681F89E82D071131DA0F6491 /* TeamCheckinTests.swift in Sources */,
 				0B20615FD556B9E82CE7A172 /* TeamPackageTests.swift in Sources */,
 				6B7CBBF3D185C65887337F3C /* TelegramStoreTests.swift in Sources */,
 				740C1B71C1BE12ACA3E111A2 /* ThemePresetsTests.swift in Sources */,
@@ -1725,6 +1736,7 @@
 				D7F6B772596BF6184BEAAFC7 /* SidebarView.swift in Sources */,
 				A3DA8AD84F7220ABFE72688A /* SkillsOverlayView.swift in Sources */,
 				497108EB35AA26CB04983ABD /* SpeechSupport.swift in Sources */,
+				6F402B7D3575ABA441001154 /* TeamCheckinSettings.swift in Sources */,
 				97CC4700DE1377D590B135D2 /* Theme.swift in Sources */,
 				F1A2EFAB755820546B44E82B /* ThemeManager.swift in Sources */,
 				B29C01FFDC203C0D80A7B01D /* ThemePresets.swift in Sources */,

@@ -582,6 +582,10 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
     public var gate: String?
     /// Scheduled ticks the gate has skipped since the routine last ran for real.
     public var gateSkips: Int = 0
+    /// A time-of-day lead check-in: skipped while the person is chatting, handed a team snapshot. See `TeamCheckin`.
+    public var teamCheckin: Bool = false
+    /// Consecutive check-ins that found nothing to say.
+    public var silentStreak: Int = 0
 
     /// True when the clock fires this routine. A routine with no cron runs only on events.
     public var hasSchedule: Bool {
@@ -632,7 +636,7 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, botId, name, prompt, cron, timezone, active, notify
         case lastRunAt, nextRunAt, createdAt, inProgress, failCount, lastError
-        case webhookEnabled, heartbeat, continuity, lastOutput, gate, gateSkips
+        case webhookEnabled, heartbeat, continuity, lastOutput, gate, gateSkips, teamCheckin, silentStreak
     }
 
     public init(from decoder: Decoder) throws {
@@ -662,6 +666,8 @@ public struct Routine: Codable, Sendable, Hashable, Identifiable {
         lastOutput = try c.decodeIfPresent(String.self, forKey: .lastOutput)
         gate = try c.decodeIfPresent(String.self, forKey: .gate)
         gateSkips = try c.decodeIfPresent(Int.self, forKey: .gateSkips) ?? 0
+        teamCheckin = try c.decodeIfPresent(Bool.self, forKey: .teamCheckin) ?? false
+        silentStreak = try c.decodeIfPresent(Int.self, forKey: .silentStreak) ?? 0
     }
 }
 

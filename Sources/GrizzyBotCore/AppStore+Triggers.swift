@@ -128,4 +128,61 @@ extension AppStore {
         if let heartbeat { routines[botId]?[idx].heartbeat = heartbeat }
         save()
     }
+
+    // MARK: - Team check-ins
+
+    /// Check-ins at fixed local times (e.g. "09:00", "16:30") for the lead bot: one heartbeat routine
+    /// per time, each skipped while the person is mid-conversation and handed a team snapshot.
+    /// Replaces any earlier team check-ins for that bot. An empty `times` just removes them.
+    @discardableResult
+    public func setTeamCheckins(botId: String, times: [String], timezone: String = "") -> [Routine] {
+        guard bots.contains(where: { $0.id == botId }) else { return [] }
+        routines[botId, default: []].removeAll { $0.teamCheckin }
+        var made: [Routine] = []
+        for time in TeamCheckin.normalizedTimes(times) {
+            guard let cron = TeamCheckin.cron(forTime: time) else { continue }
+            let routine = Routine(
+                id: Ids.new(), botId: botId, name: "Check-in \(time)",
+                prompt: "Look at what is going on: tasks and approvals waiting on me, what changed, what is next today. "
+                    + "Say ONE short thing only if it is genuinely useful.",
+                cron: cron, timezone: timezone, notify: true,
+                nextRunAt: Cron.nextDate(cron, from: .now, timezone: timezone),
+                heartbeat: true, continuity: true
+            )
+            var r = routine
+            r.teamCheckin = true
+            routines[botId, default: []].append(r)
+            made.append(r)
+        }
+        save()
+        return made
+    }
+
+    /// The "HH:mm" times of this bot's team check-ins, earliest first.
+    public func teamCheckinTimes(botId: String) -> [String] {
+        let times = (routines[botId] ?? []).filter(\.teamCheckin).compactMap { r -> String? in
+            let f = r.cron.split(separator: " ")
+            guard f.count == 5, let m = Int(f[0]), let h = Int(f[1]) else { return nil }
+            return String(format: "%02d:%02d", h, m)
+        }
+        return times.sorted()
+    }
+
+    func lastPersonMessageDate() -> Date? {
+        threads.values.flatMap(\.messages).filter { $0.role == .user }.map(\.createdAt).max()
+    }
+
+    func teamSnapshot() -> TeamCheckin.Snapshot {
+        let names = Dictionary(uniqueKeysWithValues: bots.map { ($0.id, $0.name) })
+        let approvals = bots.compactMap { bot -> String? in
+            pendingApprovalMessageId(botId: bot.id) == nil ? nil : "\(bot.name) is waiting on an approval"
+        }
+        let since = Date.now.addingTimeInterval(-Double(TeamCheckin.routineWindowHours) * 3600)
+        let recent = routines.flatMap { botId, list in
+            list.filter { !$0.teamCheckin && ($0.lastRunAt ?? .distantPast) > since }
+                .map { "\($0.name) (\(names[botId] ?? botId))" }
+        }
+        let team = bots.filter { !$0.chiefOfStaff }.map(\.name)
+        return .init(pendingApprovals: approvals, recentRoutines: recent.sorted(), team: team)
+    }
 }
