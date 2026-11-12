@@ -742,6 +742,8 @@ public struct UsageRecord: Codable, Sendable, Hashable, Identifiable {
     public var inputTokens: Int
     public var outputTokens: Int
     public var createdAt: Date
+    /// Estimated tokens kept out of the prompt by output compression and compaction. Nil on older records.
+    public var tokensSaved: Int?
 
     public init(
         id: String,
@@ -752,8 +754,10 @@ public struct UsageRecord: Codable, Sendable, Hashable, Identifiable {
         promptTokens: Int? = nil,
         inputTokens: Int,
         outputTokens: Int,
-        createdAt: Date = .now
+        createdAt: Date = .now,
+        tokensSaved: Int? = nil
     ) {
+        self.tokensSaved = tokensSaved
         self.id = id
         self.botId = botId
         self.runId = runId
