@@ -1449,6 +1449,19 @@ public final class AppStore {
         var provider = bot.modelProvider ?? modelProvider
         var providerSettings = modelProviderSettings(for: provider ?? ModelCatalog.defaultProvider)
         var selectedModel = bot.modelId ?? providerSettings.modelId ?? modelId
+        // A provider switched off in Models must not keep serving turns (the
+        // workspace default can still point at it, e.g. Local MLX after the
+        // user moves to LM Studio). Fall back to an enabled provider that has
+        // a model chosen.
+        if chatCompleter == nil, let current = provider, !isProviderEnabled(current),
+           let fallback = enabledModelSources().first(where: { source in
+               let s = modelProviderSettings(for: source.provider)
+               return !(s.modelId ?? "").isEmpty
+           }) {
+            provider = fallback.provider
+            providerSettings = modelProviderSettings(for: fallback.provider)
+            selectedModel = providerSettings.modelId ?? selectedModel
+        }
         // Short, conversational turns go to the bot's light model when it has one; the reply says so.
         let route = ModelRouter.route(
             prompt: prompt,

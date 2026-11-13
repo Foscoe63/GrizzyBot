@@ -19,9 +19,15 @@ public actor MLXLocalGenerator: MLXTextGenerating {
     private var loadedPath: String?
     private var container: ModelContainer?
 
-    /// Fraction of physical memory MLX's buffer cache may hold. Left modest so
-    /// a resident model does not squeeze the rest of the machine.
-    private static let cacheLimitFraction = 0.5
+    /// KV cache from the previous turn plus the prompt tokens it covers. The
+    /// next prompt usually starts with the same system prompt and history, so
+    /// only the new tail needs prefilling. Cleared whenever the model changes.
+    private var promptCache: PromptCache?
+
+    /// MLX's recycled-buffer cache is on top of the weights, so a generous
+    /// limit let a 39 GB model grow to ~75 GB. Keep it small; the cache only
+    /// speeds up allocator reuse.
+    private static let cacheLimitBytes = 1 << 30
 
     public init() {}
 
@@ -36,12 +42,11 @@ public actor MLXLocalGenerator: MLXTextGenerating {
         if container != nil {
             self.container = nil
             loadedPath = nil
+            promptCache = nil
             MLX.Memory.clearCache()
         }
 
-        MLX.Memory.cacheLimit = Int(
-            Double(ProcessInfo.processInfo.physicalMemory) * Self.cacheLimitFraction
-        )
+        MLX.Memory.cacheLimit = Self.cacheLimitBytes
 
         let loaded = try await loadModelContainer(
             from: url,
@@ -55,6 +60,7 @@ public actor MLXLocalGenerator: MLXTextGenerating {
     public func unload() {
         container = nil
         loadedPath = nil
+        promptCache = nil
         MLX.Memory.clearCache()
     }
 
@@ -81,7 +87,17 @@ public actor MLXLocalGenerator: MLXTextGenerating {
         )
 
         let prepared = try await container.prepare(input: input)
-        let stream = try await container.generate(input: prepared, parameters: parameters)
+        // Release scratch buffers (prefill/KV growth) once the turn ends.
+        defer { MLX.Memory.clearCache() }
+        let reusable = promptCache
+        promptCache = nil  // re-stored below only if the turn finishes cleanly
+        let started = try await container.perform(
+            nonSendable: SendableInput(prepared, reusable)
+        ) { context, box in
+            try Self.startGeneration(box: box, parameters: parameters, context: context)
+        }
+        let stream = started.stream
+        let activeCache = started.cache
 
         var text = ""
         // Tool calls the runtime recognized itself. When the model's template
@@ -112,6 +128,15 @@ public actor MLXLocalGenerator: MLXTextGenerating {
             }
         }
 
+        // Keep the prompt's cache for the next turn: trim off what this turn
+        // generated so the cache covers exactly the prompt tokens.
+        if !Task.isCancelled, activeCache.trimmable {
+            let extra = (activeCache.layers.first?.offset ?? 0) - activeCache.promptTokens.count
+            if extra >= 0, activeCache.layers.allSatisfy({ $0.trim(extra) == extra }) {
+                promptCache = activeCache
+            }
+        }
+
         // Hand native calls back in the envelope the parser understands, so
         // `MLXChatClient` has one path to follow either way.
         if !nativeCalls.isEmpty {
@@ -124,6 +149,69 @@ public actor MLXLocalGenerator: MLXTextGenerating {
             generatedTokens: generatedTokens,
             finishReason: nativeCalls.isEmpty ? finishReason : "tool_calls"
         )
+    }
+
+    // MARK: - Prompt cache
+
+    /// Layers plus the prompt tokens they hold. A reference type because the
+    /// generation task mutates the layers in place.
+    final class PromptCache: @unchecked Sendable {
+        let layers: [KVCache]
+        var promptTokens: [Int]
+        let trimmable: Bool
+        init(layers: [KVCache], promptTokens: [Int]) {
+            self.layers = layers
+            self.promptTokens = promptTokens
+            self.trimmable = layers.allSatisfy { $0.isTrimmable }
+        }
+    }
+
+    struct SendableInput {
+        let input: LMInput
+        let reusable: PromptCache?
+        init(_ input: LMInput, _ reusable: PromptCache?) {
+            self.input = input
+            self.reusable = reusable
+        }
+    }
+
+    struct Started: @unchecked Sendable {
+        let stream: AsyncStream<Generation>
+        let cache: PromptCache
+    }
+
+    /// Start generation, prefilling only the part of the prompt the cached
+    /// layers don't already cover. Text-only prompts on trimmable caches get
+    /// reuse; anything else (images, hybrid-state layers) prefills in full.
+    static func startGeneration(
+        box: SendableInput,
+        parameters: GenerateParameters,
+        context: ModelContext
+    ) throws -> Started {
+        let input = box.input
+        let tokens = input.text.tokens.reshaped(-1).asArray(Int.self)
+        let textOnly = input.image == nil && input.video == nil && input.audio == nil
+
+        var cache = PromptCache(
+            layers: context.model.newCache(parameters: parameters), promptTokens: tokens)
+        var feed = input
+
+        if textOnly, let old = box.reusable, old.trimmable {
+            var shared = 0
+            let limit = min(old.promptTokens.count, tokens.count)
+            while shared < limit, old.promptTokens[shared] == tokens[shared] { shared += 1 }
+            // Always feed at least the last token so the model has logits to sample from.
+            shared = min(shared, tokens.count - 1)
+            let drop = (old.layers.first?.offset ?? 0) - shared
+            if shared > 0, drop >= 0, old.layers.allSatisfy({ $0.trim(drop) == drop }) {
+                cache = PromptCache(layers: old.layers, promptTokens: tokens)
+                feed = LMInput(tokens: MLXArray(Array(tokens[shared...])))
+            }
+        }
+
+        let stream = try MLXLMCommon.generate(
+            input: feed, cache: cache.layers, parameters: parameters, context: context)
+        return Started(stream: stream, cache: cache)
     }
 
     // MARK: - Bridging
