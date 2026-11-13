@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.12.0-3B82F6?style=for-the-badge" alt="Version 0.12.0">
+  <img src="https://img.shields.io/badge/version-0.12.1-3B82F6?style=for-the-badge" alt="Version 0.12.1">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,13 +49,18 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.12.0** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.12.1** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
 ---
 
 ## 🆕 What's new
+
+### 0.12.1 — readable, collapsible always-allow rules
+
+- **Always-allow rules are legible.** In a bot's settings the rule text was nearly the same colour as the background; it is now white.
+- **The list folds.** The "Always-allow rules" heading has a chevron that turns to open and close the list.
 
 ### 0.12.0 — a smarter knowledge index, leaner context, and team check-ins
 
