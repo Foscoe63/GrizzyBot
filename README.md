@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.12.1-3B82F6?style=for-the-badge" alt="Version 0.12.1">
+  <img src="https://img.shields.io/badge/version-0.12.2-3B82F6?style=for-the-badge" alt="Version 0.12.2">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,13 +49,19 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.12.1** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.12.2** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
 ---
 
 ## 🆕 What's new
+
+### 0.12.2 — leaner Local MLX and a provider switch that sticks
+
+- **Local MLX uses far less memory.** Its buffer cache was allowed to grow to half of RAM on top of the model weights; it is now capped at 1 GB and cleared after each turn.
+- **Follow-up turns start faster.** Local MLX keeps the previous turn's prompt cache and only processes the new part of the prompt. Models whose layers cannot be trimmed still process the full prompt.
+- **Turning a provider off sticks.** A disabled provider (for example Local MLX after you move to LM Studio) no longer keeps serving chats; GrizzyBot falls back to an enabled provider that has a model chosen.
 
 ### 0.12.1 — readable, collapsible always-allow rules
 
