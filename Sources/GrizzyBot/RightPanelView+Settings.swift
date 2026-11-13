@@ -163,42 +163,59 @@ extension RightPanelView {
                     .foregroundStyle(Theme.textMuted)
                     .padding(.top, 6)
 
-                Text("Always-allow rules")
-                    .font(.system(size: 13))
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { allowRulesOpen.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .rotationEffect(.degrees(allowRulesOpen ? 90 : 0))
+                            .frame(width: 12)
+                        Text("Always-allow rules")
+                            .font(.system(size: 13))
+                        Spacer()
+                    }
                     .foregroundStyle(Theme.textSecondary)
-                    .padding(.top, 16)
-                if bot.allowRules.isEmpty, bot.alwaysAllowTools.isEmpty {
-                    Text("None. Choosing “Always allow” on an approval adds a rule here.")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Theme.textMuted)
-                        .padding(.top, 4)
+                    .contentShape(Rectangle())
                 }
-                ForEach(bot.allowRules) { rule in
-                    HStack {
-                        Text(rule.summary)
-                            .font(.system(size: 12.5, design: .monospaced))
-                            .foregroundStyle(Theme.textCream)
-                            .lineLimit(2)
-                        Spacer()
-                        Button("Remove") { store.removeAllowRule(bot.id, ruleId: rule.id) }
-                            .buttonStyle(.plain)
+                .buttonStyle(.plain)
+                .padding(.top, 16)
+                .accessibilityLabel("Always-allow rules")
+                .accessibilityValue(allowRulesOpen ? "expanded" : "collapsed")
+                if allowRulesOpen {
+                    if bot.allowRules.isEmpty, bot.alwaysAllowTools.isEmpty {
+                        Text("None. Choosing “Always allow” on an approval adds a rule here.")
                             .font(.system(size: 12.5))
-                            .foregroundStyle(Theme.orange)
+                            .foregroundStyle(Theme.textMuted)
+                            .padding(.top, 4)
                     }
-                    .padding(.top, 6)
-                }
-                ForEach(bot.alwaysAllowTools, id: \.self) { tool in
-                    HStack {
-                        Text("\(tool) — everything")
-                            .font(.system(size: 12.5, design: .monospaced))
-                            .foregroundStyle(Theme.textCream)
-                        Spacer()
-                        Button("Remove") { store.removeAlwaysAllowTool(bot.id, tool: tool) }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(Theme.orange)
+                    ForEach(bot.allowRules) { rule in
+                        HStack {
+                            Text(rule.summary)
+                                .font(.system(size: 12.5, design: .monospaced))
+                                .foregroundStyle(Color.white)
+                                .lineLimit(2)
+                            Spacer()
+                            Button("Remove") { store.removeAllowRule(bot.id, ruleId: rule.id) }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.orange)
+                        }
+                        .padding(.top, 6)
                     }
-                    .padding(.top, 6)
+                    ForEach(bot.alwaysAllowTools, id: \.self) { tool in
+                        HStack {
+                            Text("\(tool) — everything")
+                                .font(.system(size: 12.5, design: .monospaced))
+                                .foregroundStyle(Color.white)
+                            Spacer()
+                            Button("Remove") { store.removeAlwaysAllowTool(bot.id, tool: tool) }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.orange)
+                        }
+                        .padding(.top, 6)
+                    }
                 }
 
                 Text("Visibility")
