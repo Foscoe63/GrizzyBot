@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.11.6-3B82F6?style=for-the-badge" alt="Version 0.11.6">
+  <img src="https://img.shields.io/badge/version-0.12.0-3B82F6?style=for-the-badge" alt="Version 0.12.0">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,13 +49,23 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.11.6** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.12.0** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
 ---
 
 ## 🆕 What's new
+
+### 0.12.0 — a smarter knowledge index, leaner context, and team check-ins
+
+- **Knowledge search is an index now.** Folder sources are split into heading-scoped sections, so a hit is the part of a note that matched, titled with its heading trail. Ranking is hybrid: keyword (BM25) plus on-device semantic similarity (NaturalLanguage embeddings; keyword-only if unavailable). Only files whose size or modification time changed are re-read, so an unchanged vault costs a directory pass. `[[wikilinks]]` are followed and shown as linked notes. Settings → Knowledge shows "N indexed, M skipped" with reasons, a **Rebuild** button, and a **test search** that shows what a given bot (or you) would get back.
+- **Scope a source.** Index only chosen subfolders and grant it to specific bots; a source can also be switched off without being deleted. Subfolders that are absolute, `~`, or climb out through `..` or a symlink are refused.
+- **Tool output costs less context.** Large tool results are kept in full per run and shown to the model compressed by type (JSON, logs, code, text). The new `recall_result` tool searches or reads the original. Compaction now leaves a digest of the dropped messages instead of a stub, and the new `pin_fact` tool keeps a note across compaction and turns. Savings are counted in the run log and usage records.
+- **Team check-ins.** The Chief of Staff can run heartbeat check-ins at fixed local times (up to six), skipped while you're chatting. Each is handed a snapshot of waiting approvals, recently run routines and the roster, and answers `HEARTBEAT_OK` when there is nothing to say. Configure them in the Chief of Staff's settings.
+- **Hosted model lists.** Connecting a hosted provider (OpenRouter, OpenAI, Anthropic, …) can fetch its model list, and the composer model picker is searchable.
+- **Settings tidy-up.** The Settings pages share one layout kit, and Governance gained more detail.
+- **Fixes.** A stopped run no longer leaves live Allow / Always allow / Deny buttons on its approval card, and cards orphaned by older builds are cancelled when a workspace loads. A room member who passes keeps clean sidebar previews.
 
 ### 0.11.6 — quieter rooms, and a lead can stop a delegate
 
@@ -330,6 +340,7 @@ Bots only get the tools you enable. Settings → **Tools** lists **MCP first** (
 | 🐚 | **Shell** | `shell` runs `zsh -lc` with cwd in the bot home. When a working folder is set, writes there are also allowed. Needs approval unless the bot is set to auto-approve. Timeout 5–300s (default 120). |
 | 🌐 | **Web** | `web_search` (search + fetch). Optional Brave Search key; otherwise DuckDuckGo + Wikipedia. |
 | 🧠 | **Memory** | `remember`, `search_memory`, `forget`. |
+| 📌 | **Context** | `recall_result` searches or reads the full original of a tool output that was shown compressed; `pin_fact` keeps a note that survives compaction. |
 | 🕰️ | **Sessions** | `search_sessions` — keyword search (BM25) over this bot's own earlier chats and tasks, with dates. Available wherever memory tools are. |
 | 📚 | **Knowledge** | `search_knowledge` — granted folder and plugin corpora (Drive, OneDrive, Box). |
 | 🖥️ | **Computer** | `computer_open`, `computer_screenshot`, `computer_click`, `computer_scroll`, `computer_type`, `computer_key`, `request_takeover`. |
@@ -430,7 +441,7 @@ A bot × server matrix in Settings. Empty matrix allows every enabled MCP server
 
 ### 📚 Knowledge
 
-Folder corpora stay on this Mac. Plugin sources (**Google Drive**, **OneDrive**, **Box**) sync through the connected account on search, then BM25. Empty grant list means every bot; otherwise `grantedBotIds` is the ACL.
+Folder corpora stay on this Mac. They are chunked by heading and indexed with hybrid keyword + on-device semantic ranking; only changed files are re-read, and `[[wikilinks]]` are followed. Each source can be limited to subfolders, switched off, and granted to specific bots, and Settings → Knowledge has a rebuild button and a test search. Plugin sources (**Google Drive**, **OneDrive**, **Box**) sync through the connected account on search, then BM25. Empty grant list means every bot; otherwise `grantedBotIds` is the ACL.
 
 ### 🃏 Components
 
@@ -536,6 +547,7 @@ Cron jobs that send a prompt to a bot.
 
 - Scheduler while the app is open (cap two concurrent routine runs).
 - **Background routines** (signed Release): a LaunchAgent helper wakes the app with `-grizzybot-tick-routines`. If GrizzyBot is already open, the helper pings it and exits. A headless tick stays alive until the run finishes; a run that parks waiting for an approval nobody is there to give is abandoned after a few minutes.
+- **Team check-ins** (Chief of Staff settings): heartbeat routines at fixed local times, skipped for 20 minutes after you last wrote, with a snapshot of waiting approvals, recent routines and the roster.
 - Menu bar lists upcoming routines and runs a specific one, not “whatever is first.”
 - Due routines with no model skip honestly and still advance `nextRunAt`.
 
