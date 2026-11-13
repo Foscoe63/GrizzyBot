@@ -14,27 +14,31 @@ extension AppSettingsOverlayView {
                 title: "Composio Connect",
                 configured: !(store.appConfig.composioConnectKey ?? "").isEmpty,
                 text: $composioConnect,
-                onClear: { store.clearSecret(.composioConnect) }
+                onClear: { store.clearSecret(.composioConnect) },
+                onCommit: { persistKeys() }
             )
             secretRow(
                 title: "Composio API",
                 configured: store.appConfig.composioApiKey != nil,
                 text: $composioApi,
-                onClear: { store.clearSecret(.composioApi) }
+                onClear: { store.clearSecret(.composioApi) },
+                onCommit: { persistKeys() }
             )
                 .padding(.top, 12)
             secretRow(
                 title: "Box.com",
                 configured: store.appConfig.boxConfigured,
                 text: $boxToken,
-                onClear: { store.clearSecret(.box) }
+                onClear: { store.clearSecret(.box) },
+                onCommit: { persistKeys() }
             )
                 .padding(.top, 12)
             secretRow(
                 title: "Brave Search (optional)",
                 configured: store.appConfig.braveSearchConfigured,
                 text: $braveSearchKey,
-                onClear: { store.clearSecret(.braveSearch) }
+                onClear: { store.clearSecret(.braveSearch) },
+                onCommit: { persistKeys() }
             )
                 .padding(.top, 12)
             Text("Box.com is an optional developer token for the Box plugin when you are not using Composio Connect. Brave Search is used for web_search when set; otherwise DuckDuckGo and Wikipedia.")
@@ -149,14 +153,16 @@ extension AppSettingsOverlayView {
                 title: "Google Client ID",
                 configured: !(store.appConfig.googleClientId ?? "").isEmpty,
                 text: $googleClientId,
-                onClear: { store.clearSecret(.googleClientId) }
+                onClear: { store.clearSecret(.googleClientId) },
+                onCommit: { persistGoogleKeys() }
             )
             .padding(.top, 12)
             secretRow(
                 title: "Google Client Secret",
                 configured: !(store.appConfig.googleClientSecret ?? "").isEmpty,
                 text: $googleClientSecret,
-                onClear: { store.clearSecret(.googleClientSecret) }
+                onClear: { store.clearSecret(.googleClientSecret) },
+                onCommit: { persistGoogleKeys() }
             )
             .padding(.top, 12)
 

@@ -129,12 +129,10 @@ struct TelegramSettingsBody: View {
         }
         .pickerStyle(.menu)
 
-        Toggle("Send me a note when a routine finishes", isOn: Binding(
+        SettingsToggle(title: "Send me a note when a routine finishes", isOn: Binding(
             get: { settings.notifyRoutines },
             set: { store.setTelegramNotifyRoutines($0) }
         ))
-        .toggleStyle(.switch)
-        .font(.system(size: 13))
 
         Button("Disconnect Telegram") { store.disconnectTelegram() }
             .buttonStyle(.plain)
@@ -147,10 +145,23 @@ struct TelegramSettingsBody: View {
 struct WebhookSettingsBody: View {
     @Environment(AppStore.self) private var store
     @State private var portText = ""
+    @State private var portNote: String?
+
+    private func applyPort() {
+        guard let port = Int(portText.trimmingCharacters(in: .whitespaces)), (1024...65_535).contains(port) else {
+            portNote = "Port must be a number between 1024 and 65535."
+            return
+        }
+        var config = store.appConfig
+        config.webhookPort = port
+        store.saveAppConfig(config)
+        portText = ""
+        portNote = "Listening on port \(port)."
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Toggle("Accept webhooks on this Mac", isOn: Binding(
+            SettingsToggle(title: "Accept webhooks on this Mac", isOn: Binding(
                 get: { store.appConfig.webhooksEnabled },
                 set: { on in
                     var config = store.appConfig
@@ -158,23 +169,19 @@ struct WebhookSettingsBody: View {
                     store.saveAppConfig(config)
                 }
             ))
-            .toggleStyle(.switch)
-            .font(.system(size: 13))
 
             HStack(spacing: 8) {
                 Text("Port")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.textSecondary)
-                GrizzyField(placeholder: String(store.appConfig.webhookPort), text: $portText)
+                GrizzyField(placeholder: String(store.appConfig.webhookPort), text: $portText, onCommit: { applyPort() })
                     .frame(width: 100)
-                GrizzyButton(title: "Set", variant: .cream, size: .sm) {
-                    if let port = Int(portText), (1024...65_535).contains(port) {
-                        var config = store.appConfig
-                        config.webhookPort = port
-                        store.saveAppConfig(config)
-                        portText = ""
-                    }
-                }
+                GrizzyButton(title: "Set", variant: .cream, size: .sm) { applyPort() }
+            }
+            if let portNote {
+                Text(portNote)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textSecondary)
             }
             Text("Listens on 127.0.0.1 only. Each routine has its own secret (turn on its Webhook option in the routine editor). To reach it from outside, tunnel just this port — for example with Tailscale Funnel.")
                 .font(.system(size: 12.5))
@@ -191,7 +198,7 @@ struct ControlPlaneSettingsBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Toggle("Let MCP clients use my bots", isOn: Binding(
+            SettingsToggle(title: "Let MCP clients use my bots", isOn: Binding(
                 get: { store.appConfig.controlPlaneEnabled },
                 set: { on in
                     var config = store.appConfig
@@ -200,8 +207,6 @@ struct ControlPlaneSettingsBody: View {
                     if on { shownToken = store.controlPlaneToken() ?? store.rotateControlPlaneToken() }
                 }
             ))
-            .toggleStyle(.switch)
-            .font(.system(size: 13))
 
             if store.appConfig.controlPlaneEnabled {
                 Text("http://127.0.0.1:\(store.appConfig.controlPlanePort)/mcp")
@@ -240,17 +245,19 @@ struct TracingSettingsBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            GrizzyField(label: "OTLP/HTTP endpoint", placeholder: "http://localhost:4318 (empty = off)", text: $endpoint)
-            GrizzyButton(title: "Save", variant: .cream, size: .sm) {
-                var config = store.appConfig
-                config.otlpEndpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-                store.saveAppConfig(config)
-            }
+            GrizzyField(label: "OTLP/HTTP endpoint", placeholder: "http://localhost:4318 (empty = off)", text: $endpoint, onCommit: { saveEndpoint() })
+            GrizzyButton(title: "Save", variant: .cream, size: .sm) { saveEndpoint() }
             Text("One span per run and one per tool call: tool name, duration, success, model, token counts. No prompts, no tool arguments, no file contents. Works with Jaeger, Grafana Tempo, Langfuse, Honeycomb, and any OpenTelemetry collector.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.textSecondary)
         }
         .onAppear { endpoint = store.appConfig.otlpEndpoint }
+    }
+
+    private func saveEndpoint() {
+        var config = store.appConfig
+        config.otlpEndpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        store.saveAppConfig(config)
     }
 }
 
@@ -371,7 +378,7 @@ struct CompanionSettingsBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Toggle("Phone companion", isOn: Binding(
+            SettingsToggle(title: "Phone companion", isOn: Binding(
                 get: { store.appConfig.companionEnabled },
                 set: { on in
                     var config = store.appConfig
@@ -380,10 +387,8 @@ struct CompanionSettingsBody: View {
                     if on { shownToken = store.companionToken() ?? store.rotateCompanionToken() }
                 }
             ))
-            .toggleStyle(.switch)
-            .font(.system(size: 13))
 
-            Toggle("Reachable from other devices (Tailscale or this network)", isOn: Binding(
+            SettingsToggle(title: "Reachable from other devices (Tailscale or this network)", isOn: Binding(
                 get: { store.appConfig.companionAllowNetwork },
                 set: { on in
                     var config = store.appConfig
@@ -392,8 +397,6 @@ struct CompanionSettingsBody: View {
                     Task { await store.restartCompanion() }
                 }
             ))
-            .toggleStyle(.switch)
-            .font(.system(size: 13))
             .disabled(!store.appConfig.companionEnabled)
 
             if store.appConfig.companionEnabled {

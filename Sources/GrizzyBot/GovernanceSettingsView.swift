@@ -237,10 +237,11 @@ struct KnowledgeSettingsView: View {
     @State private var name = ""
     @State private var path = ""
     @State private var pluginSlug = ""
+    @State private var roots = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Folder corpora stay on this Mac. Plugin sources (Google Drive, OneDrive, Box) sync through the connected account on search, then BM25. Empty grant list means every bot. ACL is grantedBotIds on the source.")
+            Text("Folder corpora stay on this Mac. Plugin sources (Google Drive, OneDrive, Box) sync through the connected account on search, then BM25. Add as many sources as you like. Each one can be limited to specific subfolders and specific bots; with no bots selected, every bot can search it.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.textSecondary)
             if !store.isOwner {
@@ -253,13 +254,23 @@ struct KnowledgeSettingsView: View {
                 .disabled(!store.isOwner)
             GrizzyField(placeholder: "Folder path (~/Documents/Policies)", text: $path)
                 .disabled(!store.isOwner)
+            GrizzyField(placeholder: "Subfolders (optional, comma-separated: Policies, HR/2026)", text: $roots)
+                .disabled(!store.isOwner)
             GrizzyButton(title: "Add folder source", variant: .cream, size: .sm) {
                 let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                 let folder = path.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty, !folder.isEmpty else { return }
-                store.addKnowledgeSource(KnowledgeSource(name: trimmed, kind: .folder, path: folder))
+                store.addKnowledgeSource(
+                    KnowledgeSource(
+                        name: trimmed,
+                        kind: .folder,
+                        path: folder,
+                        roots: KnowledgeSourceRow.parseRoots(roots)
+                    )
+                )
                 name = ""
                 path = ""
+                roots = ""
             }
             .disabled(!store.isOwner)
             .opacity(store.isOwner ? 1 : 0.4)
@@ -278,24 +289,7 @@ struct KnowledgeSettingsView: View {
             .opacity(store.isOwner ? 1 : 0.4)
 
             ForEach(store.knowledgeSources) { source in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(source.name)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(Theme.textBright)
-                        Text("\(source.kind.rawValue) · \(source.path)")
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                    Spacer()
-                    Button("Remove") {
-                        store.removeKnowledgeSource(source.id)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Theme.orange)
-                    .disabled(!store.isOwner)
-                }
-                .padding(.vertical, 6)
+                KnowledgeSourceRow(source: source)
             }
             if store.knowledgeSources.isEmpty {
                 Text("No knowledge sources yet.")
@@ -303,6 +297,215 @@ struct KnowledgeSettingsView: View {
                     .foregroundStyle(Theme.textMuted)
             }
         }
+        .task { await store.refreshKnowledgeStats() }
+    }
+}
+
+struct KnowledgeSourceRow: View {
+    @Environment(AppStore.self) private var store
+    let source: KnowledgeSource
+    @State private var expanded = false
+    @State private var rootsText = ""
+    @State private var testQuery = ""
+    @State private var testBotId = ""
+    @State private var testHits: [KnowledgeHit]?
+    @State private var testing = false
+
+    static func parseRoots(_ text: String) -> [String] {
+        text.split(whereSeparator: { $0 == "," || $0 == "\n" })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private var botSummary: String {
+        if source.grantedBotIds.isEmpty { return "all bots" }
+        let names = store.bots.filter { source.grantedBotIds.contains($0.id) }.map(\.name)
+        return names.isEmpty ? "no matching bots" : names.joined(separator: ", ")
+    }
+
+    private var detail: String {
+        var parts = [source.kind.rawValue, source.path]
+        if source.kind == .folder, !source.roots.isEmpty {
+            parts.append("subfolders: " + source.roots.joined(separator: ", "))
+        }
+        parts.append("bots: " + botSummary)
+        if !source.enabled { parts.append("off") }
+        return parts.joined(separator: " · ")
+    }
+
+    private var stats: KnowledgeIndexStats? { store.knowledgeStats[source.id] }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(source.name)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.textBright)
+                    Text(detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { source.enabled },
+                    set: { store.updateKnowledgeSource(source.id, enabled: $0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .help(source.enabled ? "Turn this source off without deleting it" : "Turn this source back on")
+                .disabled(!store.isOwner)
+                Button(expanded ? "Done" : "Edit") {
+                    expanded.toggle()
+                    rootsText = source.roots.joined(separator: ", ")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.textSecondary)
+                Button("Remove") {
+                    store.removeKnowledgeSource(source.id)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.orange)
+                .disabled(!store.isOwner)
+            }
+            if source.kind == .folder, source.enabled, let stats {
+                Text(stats.summary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(stats.skippedFiles > 0 ? Theme.orange : Theme.textMuted)
+            }
+            if expanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let stats, source.enabled {
+                        ForEach(stats.notes, id: \.self) { note in
+                            Text(note)
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.orange)
+                        }
+                    }
+                    if source.kind == .folder {
+                        GrizzyField(
+                            label: "Subfolders",
+                            placeholder: "Blank indexes the whole folder. Comma-separated, relative to the path.",
+                            text: $rootsText,
+                            onCommit: saveRoots
+                        )
+                        .disabled(!store.isOwner)
+                        GrizzyButton(title: "Save subfolders", variant: .outline, size: .sm, action: saveRoots)
+                            .disabled(!store.isOwner)
+                    }
+                    Text("Bots that can search this source")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                    Text("Select none to allow every bot.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textMuted)
+                    ForEach(store.bots) { bot in
+                        Toggle(bot.name, isOn: botBinding(bot.id))
+                            .toggleStyle(.checkbox)
+                            .foregroundStyle(Theme.textBright)
+                            .disabled(!store.isOwner)
+                    }
+                    if source.kind == .folder {
+                        GrizzyButton(title: "Re-index from scratch", variant: .outline, size: .sm) {
+                            Task { await store.refreshKnowledgeStats(rebuild: source.id) }
+                        }
+                        .disabled(!source.enabled)
+                    }
+                    testSearchPanel
+                }
+                .padding(.leading, 4)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var testSearchPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Test search")
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+            Picker("Search as", selection: $testBotId) {
+                Text("Owner (ignore bot access)").tag("")
+                ForEach(store.bots) { bot in
+                    Text(bot.name).tag(bot.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            GrizzyField(placeholder: "Try a question a bot might ask", text: $testQuery, onCommit: runTest)
+            GrizzyButton(title: testing ? "Searching…" : "Search", variant: .outline, size: .sm, action: runTest)
+                .disabled(testing || testQuery.trimmingCharacters(in: .whitespaces).isEmpty)
+            if !testBotId.isEmpty {
+                Text(source.enabled && source.allows(botId: testBotId)
+                    ? "This bot can search \(source.name)."
+                    : "This bot cannot search \(source.name).")
+                    .font(.system(size: 12))
+                    .foregroundStyle(source.enabled && source.allows(botId: testBotId) ? Theme.textMuted : Theme.orange)
+            }
+            if let testHits {
+                if testHits.isEmpty {
+                    Text("No hits.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                ForEach(Array(testHits.enumerated()), id: \.offset) { _, hit in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(hit.sourceName) · \(hit.title)")
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(Theme.textBright)
+                        Text(scoreLine(hit))
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Theme.textMuted)
+                        Text(hit.snippet)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(4)
+                        if !hit.linked.isEmpty {
+                            Text("Links: " + hit.linked.joined(separator: ", "))
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private func scoreLine(_ hit: KnowledgeHit) -> String {
+        var parts = [String(format: "score %.2f", hit.score)]
+        if hit.keywordScore > 0 { parts.append(String(format: "keyword %.2f", hit.keywordScore)) }
+        if let semantic = hit.semanticScore { parts.append(String(format: "semantic %.2f", semantic)) }
+        parts.append(hit.relativePath.isEmpty ? hit.path : hit.relativePath)
+        return parts.joined(separator: " · ")
+    }
+
+    private func runTest() {
+        let query = testQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, !testing else { return }
+        testing = true
+        Task {
+            let hits = await store.knowledgeTestSearch(query: query, asBot: testBotId.isEmpty ? nil : testBotId)
+            testHits = hits
+            testing = false
+        }
+    }
+
+    private func saveRoots() {
+        store.updateKnowledgeSource(source.id, roots: Self.parseRoots(rootsText))
+    }
+
+    private func botBinding(_ botId: String) -> Binding<Bool> {
+        Binding(
+            get: { source.grantedBotIds.contains(botId) },
+            set: { on in
+                var ids = source.grantedBotIds
+                ids.removeAll { $0 == botId }
+                if on { ids.append(botId) }
+                store.updateKnowledgeSource(source.id, grantedBotIds: ids)
+            }
+        )
     }
 }
 

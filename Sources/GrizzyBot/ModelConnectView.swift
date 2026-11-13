@@ -414,6 +414,26 @@ struct ModelConnectView: View {
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textSecondary)
 
+            if !usesCustomBase && !isMLX {
+                Button {
+                    refreshTask?.cancel()
+                    refreshTask = Task { await refreshModels() }
+                } label: {
+                    Text(probing ? "Loading models…" : "Refresh models")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.textBright)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .stroke(Theme.borderInputsDark, lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(probing)
+                .padding(.top, 8)
+            }
+
             if modelsForProvider.isEmpty {
                 Text(usesCustomBase ? "Refresh models or add one below" : "No models listed")
                     .font(.system(size: 15))
@@ -427,14 +447,16 @@ struct ModelConnectView: View {
                     }
                     .padding(.top, 8)
             } else {
+                // Built once per body: the label closure runs for every row on
+                // every keystroke, and modelsForProvider is not cheap.
+                let models = modelsForProvider
+                let labels = Dictionary(models.map { ($0.id, $0.label) }, uniquingKeysWith: { first, _ in first })
                 GrizzySelect(
-                    options: modelsForProvider.map(\.id),
+                    options: models.map(\.id),
                     selection: $selectedModelId,
                     style: .field,
                     searchable: true,
-                    label: { id in
-                        modelsForProvider.first(where: { $0.id == id })?.label ?? id
-                    }
+                    label: { id in labels[id] ?? id }
                 )
                 .padding(.top, 8)
 
@@ -616,6 +638,23 @@ struct ModelConnectView: View {
             refreshTask = nil
         }
         do {
+            if !usesCustomBase && !isMLX {
+                let hosted = baseUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+                let models = try await LocalProviders.fetchHostedModels(
+                    baseUrl: hosted.isEmpty ? LLMRouting.defaultBaseURL(for: selectedProvider) : hosted,
+                    apiKey: apiKey.isEmpty ? nil : apiKey
+                )
+                if Task.isCancelled { return }
+                let previous = selectedModelId
+                customModels = models
+                if !models.contains(where: { $0.id == previous }),
+                   !ModelCatalog.models(forProvider: selectedProvider).contains(where: { $0.id == previous }),
+                   let first = models.first {
+                    selectedModelId = first.id
+                }
+                stashCurrentProviderDraft()
+                return
+            }
             let url = baseUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? (providerEntry?.defaultBaseUrl ?? "")
                 : baseUrl

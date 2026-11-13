@@ -53,6 +53,9 @@ public final class AppStore {
     public var mcpServers: [McpServer] = []
     public var actionPolicy: ActionPolicy = .openDefault
     public var knowledgeSources: [KnowledgeSource] = []
+    /// Latest "N indexed, M skipped" numbers per folder source. Not persisted.
+    public var knowledgeStats: [String: KnowledgeIndexStats] = [:]
+    @ObservationIgnored let knowledgeIndexer = KnowledgeIndexer()
     public var grantedFolders: [GrantedFolder] = []
     public var pluginGrants: [PluginGrant] = []
     public var sandboxComponents: [SandboxComponent] = []
@@ -2676,13 +2679,8 @@ public final class AppStore {
             let query = s("query", "q")
             guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
             await syncPluginKnowledge(query: query, botId: botId)
-            let docs = knowledgeDocuments()
-            let hits = KnowledgePlane.search(
-                query: query,
-                botId: botId,
-                sources: knowledgeSources,
-                documents: docs
-            )
+            let hits = await knowledgeIndexer.search(query: query, botId: botId, sources: knowledgeSources)
+            await refreshKnowledgeStats()
             recordAudit(
                 type: .knowledgeSearched,
                 botId: botId,
@@ -2695,10 +2693,13 @@ public final class AppStore {
             if hits.isEmpty {
                 return AgentToolCallResult(output: "No knowledge hits for that query.")
             }
-            let text = hits.map { "• [\($0.sourceName)] \($0.path): \($0.snippet)" }.joined(separator: "\n")
+            let text = hits.map { hit -> String in
+                let links = hit.linked.isEmpty ? "" : "\n  Linked notes: " + hit.linked.joined(separator: ", ")
+                return "• [\(hit.sourceName)] \(hit.relativePath.isEmpty ? hit.path : hit.relativePath) › \(hit.title)\n  \(hit.snippet)\(links)"
+            }.joined(separator: "\n")
             return AgentToolCallResult(
                 output: text,
-                blocks: [.card(lines: hits.prefix(8).map { CardLine(k: $0.sourceName, v: $0.snippet) })]
+                blocks: [.card(lines: hits.prefix(8).map { CardLine(k: $0.title.isEmpty ? $0.sourceName : $0.title, v: $0.snippet) })]
             )
 
         case "present_component":

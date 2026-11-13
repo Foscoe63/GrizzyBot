@@ -140,23 +140,24 @@ struct StallClockTests {
 }
 
 @Suite("Knowledge ACL")
-struct KnowledgePlaneTests {
+struct KnowledgeAclTests {
     @Test("ungranted bots cannot search a source")
-    func acl() {
+    func acl() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("KnowledgeAcl-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try "expense policy reimbursement".write(to: dir.appendingPathComponent("a.md"), atomically: true, encoding: .utf8)
         let source = KnowledgeSource(
             name: "Policies",
             kind: .folder,
-            path: "/tmp",
+            path: dir.path,
             grantedBotIds: ["allowed"]
         )
         #expect(KnowledgePlane.sourcesVisible(to: "allowed", from: [source]).count == 1)
         #expect(KnowledgePlane.sourcesVisible(to: "other", from: [source]).isEmpty)
-        let docs = [
-            MemoryDocument(id: "1", scope: "knowledge", botId: source.id, path: "/tmp/a.md", content: "expense policy reimbursement"),
-        ]
-        let hits = KnowledgePlane.search(query: "expense", botId: "other", sources: [source], documents: docs)
+        let indexer = KnowledgeIndexer(semantic: false)
+        let hits = await indexer.search(query: "expense", botId: "other", sources: [source])
         #expect(hits.isEmpty)
-        let allowed = KnowledgePlane.search(query: "expense", botId: "allowed", sources: [source], documents: docs)
+        let allowed = await indexer.search(query: "expense", botId: "allowed", sources: [source])
         #expect(!allowed.isEmpty)
     }
 }
@@ -376,13 +377,14 @@ struct PublishedComponentTests {
 
 @Suite("Knowledge plugin ingest")
 struct KnowledgePluginTests {
-    @Test("plugin search text becomes BM25 documents under the source ACL")
-    func ingest() {
+    @Test("plugin search text becomes searchable sections under the source ACL")
+    func ingest() async {
         let source = KnowledgeSource(name: "Drive", kind: .plugin, path: "google-drive", grantedBotIds: ["allowed"])
-        let docs = KnowledgePlane.documents(from: "Q3 expense policy reimbursement", source: source)
-        let hits = KnowledgePlane.search(query: "expense", botId: "allowed", sources: [source], documents: docs)
+        let indexer = KnowledgeIndexer(semantic: false)
+        await indexer.setPluginText("Q3 expense policy reimbursement", for: source)
+        let hits = await indexer.search(query: "expense", botId: "allowed", sources: [source])
         #expect(!hits.isEmpty)
-        let blocked = KnowledgePlane.search(query: "expense", botId: "other", sources: [source], documents: docs)
+        let blocked = await indexer.search(query: "expense", botId: "other", sources: [source])
         #expect(blocked.isEmpty)
     }
 }

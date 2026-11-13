@@ -16,7 +16,7 @@ struct FolderWatchersSettingsBlock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Toggle("Enable folder watchers", isOn: Binding(
+            SettingsToggle(title: "Enable folder watchers", isOn: Binding(
                 get: { store.appConfig.enableFolderWatchers },
                 set: { value in
                     var config = store.appConfig
@@ -24,7 +24,6 @@ struct FolderWatchersSettingsBlock: View {
                     store.saveAppConfig(config)
                 }
             ))
-            .toggleStyle(.switch)
 
             if store.folderWatchers.isEmpty {
                 Text("No watchers yet. Choose a folder below and click Add watcher — a card will appear here.")

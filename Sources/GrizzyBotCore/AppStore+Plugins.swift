@@ -678,14 +678,14 @@ extension AppStore {
         for source in visible where source.kind == .plugin {
             do {
                 let text = try await readPlugin(slug: source.path, query: query)
-                let docs = KnowledgePlane.documents(from: text, source: source)
-                memory.removeAll { $0.scope == "knowledge" && $0.botId == source.id }
-                memory.append(contentsOf: docs)
+                await knowledgeIndexer.setPluginText(text, for: source)
+                let stats = await knowledgeIndexer.stats(for: source.id)
+                knowledgeStats[source.id] = stats
                 recordAudit(
                     type: .connectorSyncSucceeded,
                     botId: botId,
                     tool: "search_knowledge",
-                    reason: "Synced \(source.path) (\(docs.count) docs).",
+                    reason: "Synced \(source.path) (\(stats?.chunks ?? 0) sections).",
                     allowed: true,
                     forwarded: true,
                     attributes: ["source": .string(source.path)]
@@ -704,17 +704,24 @@ extension AppStore {
         }
     }
 
-    func knowledgeDocuments() -> [MemoryDocument] {
-        var docs: [MemoryDocument] = []
-        for source in knowledgeSources {
-            switch source.kind {
-            case .folder:
-                docs.append(contentsOf: KnowledgePlane.indexFolder(source: source))
-            case .plugin:
-                docs.append(contentsOf: memory.filter { $0.scope == "knowledge" && $0.botId == source.id })
+    /// Re-checks folder sources against disk (cheap when nothing changed) and publishes the
+    /// "N indexed, M skipped" numbers. `force` rebuilds one source from scratch.
+    public func refreshKnowledgeStats(rebuild sourceId: String? = nil) async {
+        for source in knowledgeSources where source.kind == .folder {
+            guard source.enabled else {
+                knowledgeStats[source.id] = nil
+                continue
             }
+            knowledgeStats[source.id] = await knowledgeIndexer.refresh(source, force: source.id == sourceId)
         }
-        return docs
+    }
+
+    /// What a bot would get back for `query`. `botId == nil` searches as the owner.
+    /// Plugin sources are not synced here, so they only show what the last real search fetched.
+    public func knowledgeTestSearch(query: String, asBot botId: String?) async -> [KnowledgeHit] {
+        let hits = await knowledgeIndexer.search(query: query, botId: botId, sources: knowledgeSources)
+        await refreshKnowledgeStats()
+        return hits
     }
 
     public func setStallTimeout(_ ms: Int) {
@@ -747,10 +754,45 @@ extension AppStore {
         save()
     }
 
+    /// Edits a source's scope: which subfolders to index and which bots may search it.
+    /// Empty `roots` indexes the whole folder; empty `grantedBotIds` means every bot.
+    public func updateKnowledgeSource(
+        _ id: String,
+        name: String? = nil,
+        roots: [String]? = nil,
+        grantedBotIds: [String]? = nil,
+        enabled: Bool? = nil
+    ) {
+        guard isOwner, let index = knowledgeSources.firstIndex(where: { $0.id == id }) else { return }
+        if let name {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { knowledgeSources[index].name = trimmed }
+        }
+        if let roots {
+            knowledgeSources[index].roots = roots
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+        if let grantedBotIds {
+            let known = Set(bots.map(\.id))
+            knowledgeSources[index].grantedBotIds = grantedBotIds.filter { known.contains($0) }
+        }
+        if let enabled { knowledgeSources[index].enabled = enabled }
+        save()
+        let source = knowledgeSources[index]
+        Task { [weak self] in
+            guard let self else { return }
+            if source.enabled { await self.refreshKnowledgeStats() } else { self.knowledgeStats[id] = nil }
+        }
+    }
+
     public func removeKnowledgeSource(_ id: String) {
         guard isOwner else { return }
         knowledgeSources.removeAll { $0.id == id }
         memory.removeAll { $0.scope == "knowledge" && $0.botId == id }
+        knowledgeStats[id] = nil
+        let indexer = knowledgeIndexer
+        Task { await indexer.drop(id) }
         save()
     }
 

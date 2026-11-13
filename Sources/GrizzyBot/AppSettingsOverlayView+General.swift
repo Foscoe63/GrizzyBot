@@ -51,80 +51,35 @@ extension AppSettingsOverlayView {
             title: "Chat",
             subtitle: "How conversations look."
         ) {
-            Toggle("Your messages take the bot's colour (one-on-one chats)", isOn: Binding(
-                get: { store.appConfig.botColoredChats },
-                set: { value in
-                    var config = store.appConfig
-                    config.botColoredChats = value
-                    store.saveAppConfig(config)
-                }
-            ))
-            .toggleStyle(.switch)
+            configToggle("Bot colour in one-on-one chats", "Your messages take the bot's colour. Off keeps them neutral.", \.botColoredChats)
         }
 
         settingsCard(
             title: "Background",
-            subtitle: "Routines run on a timer while GrizzyBot is open. Enable background routines to wake the app via a LaunchAgent (signed Release builds)."
+            subtitle: "Routines run on a timer while GrizzyBot is open. Background routines wake the app through a LaunchAgent (signed Release builds)."
         ) {
-            Toggle("Show menu bar extra", isOn: Binding(
-                get: { store.appConfig.showMenuBar },
-                set: { value in
-                    var config = store.appConfig
-                    config.showMenuBar = value
-                    if !value { config.menuBarOnly = false }
-                    store.saveAppConfig(config)
-                    if !value { MainWindowController.applyMenuBarOnly(false) }
+            configToggle("Show menu bar icon", "Keeps GrizzyBot one click away.", \.showMenuBar) { on in
+                if !on {
+                    updateConfig { $0.menuBarOnly = false }
+                    MainWindowController.applyMenuBarOnly(false)
                 }
-            ))
-            .toggleStyle(.switch)
-            Toggle("Menu bar only", isOn: Binding(
-                get: { store.appConfig.menuBarOnly },
-                set: { value in
-                    var config = store.appConfig
-                    config.menuBarOnly = value
-                    if value { config.showMenuBar = true }
-                    store.saveAppConfig(config)
-                    MainWindowController.applyMenuBarOnly(value)
-                }
-            ))
-            .toggleStyle(.switch)
-            .padding(.top, 8)
-            Text("When enabled, GrizzyBot launches to the menu bar. Use Open GrizzyBot to show the main window.")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
-            Toggle("Launch at login", isOn: Binding(
-                get: { store.appConfig.launchAtLogin },
-                set: { value in
-                    var config = store.appConfig
-                    config.launchAtLogin = value
-                    store.saveAppConfig(config)
-                    _ = LoginItemController.setEnabled(value)
-                }
-            ))
-            .toggleStyle(.switch)
-            .padding(.top, 8)
-            Text(LoginItemController.statusMessage)
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
-            Toggle("Background routines", isOn: Binding(
-                get: { store.appConfig.backgroundRoutines },
-                set: { value in
-                    var config = store.appConfig
-                    config.backgroundRoutines = value
-                    store.saveAppConfig(config)
-                    _ = RoutineAgentController.setEnabled(value)
-                }
-            ))
-            .toggleStyle(.switch)
-            .padding(.top, 8)
+            }
+            configToggle("Menu bar only", "Launch to the menu bar; use Open GrizzyBot to show the main window.", \.menuBarOnly) { on in
+                if on { updateConfig { $0.showMenuBar = true } }
+                MainWindowController.applyMenuBarOnly(on)
+            }
+            configToggle("Launch at login", LoginItemController.statusMessage, \.launchAtLogin) { on in
+                applyBackgroundService(LoginItemController.setEnabled(on), on: on, keyPath: \.launchAtLogin, name: "Launch at login")
+            }
+            configToggle("Background routines", "Lets due routines wake the app even when it is closed.", \.backgroundRoutines) { on in
+                applyBackgroundService(RoutineAgentController.setEnabled(on), on: on, keyPath: \.backgroundRoutines, name: "Background routines")
+            }
             #if DEBUG
             Text("Launch at login and background routines require a signed Release build. SMAppService rejects ad-hoc Debug bundles.")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 4)
+                .padding(.top, 8)
             #endif
         }
 
@@ -147,19 +102,15 @@ extension AppSettingsOverlayView {
             title: "Messages while a bot is working",
             subtitle: store.appConfig.queueMode.summary
         ) {
-            Picker("When I send mid-run", selection: Binding(
-                get: { store.appConfig.queueMode },
-                set: { value in
-                    var config = store.appConfig
-                    config.queueMode = value
-                    store.saveAppConfig(config)
-                }
-            )) {
-                ForEach(QueueMode.allCases) { mode in
-                    Text(mode.label).tag(mode)
-                }
+            SettingsRow(title: "When I send mid-run") {
+                SettingsSegmented(
+                    options: QueueMode.allCases.map { ($0, $0.label) },
+                    selection: Binding(
+                        get: { store.appConfig.queueMode },
+                        set: { value in updateConfig { $0.queueMode = value } }
+                    )
+                )
             }
-            .pickerStyle(.menu)
         }
 
         settingsCard(
@@ -322,9 +273,10 @@ extension AppSettingsOverlayView {
                 title: "ElevenLabs API key",
                 configured: store.appConfig.ttsConfigured,
                 text: $ttsKey,
-                onClear: { store.clearSecret(.tts) }
+                onClear: { store.clearSecret(.tts) },
+                onCommit: { persistVoice() }
             )
-            GrizzyField(label: "Voice", placeholder: "Rachel", text: $ttsVoice)
+            GrizzyField(label: "Voice", placeholder: "Rachel", text: $ttsVoice, onCommit: { persistVoice() })
                 .padding(.top, 12)
             GrizzyButton(title: "Save voice", variant: .cream, size: .sm) {
                 persistVoice()
@@ -336,5 +288,26 @@ extension AppSettingsOverlayView {
     @ViewBuilder
     var themesSection: some View {
         ThemesSettingsView()
+    }
+}
+
+extension AppSettingsOverlayView {
+    /// A background service can refuse to register (unsigned build, missing plist, approval pending).
+    /// Never leave the switch on for something that is not actually running.
+    func applyBackgroundService(
+        _ result: LoginItemResult,
+        on: Bool,
+        keyPath: WritableKeyPath<AppConfig, Bool>,
+        name: String
+    ) {
+        switch result {
+        case .enabled, .disabled:
+            break
+        case .unavailableInDebug:
+            sessionNotice = "\(name) needs a signed Release build. Your choice is saved and applies there."
+        case .failed(let reason):
+            updateConfig { $0[keyPath: keyPath] = !on }
+            sessionNotice = "\(name) could not be \(on ? "turned on" : "turned off"): \(reason)"
+        }
     }
 }
