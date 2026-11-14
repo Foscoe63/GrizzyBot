@@ -75,6 +75,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var autoDispatch: Bool = false
     /// Whether the Chief of Staff and room routing may hand this bot work without being asked.
     public var dispatchable: Bool = true
+    /// Allow/exclude selectors and lean turns for the tools shown to this bot's model. Nil offers every enabled tool.
+    public var toolSelection: ToolSelection?
 
     public init(
         id: String,
@@ -161,7 +163,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case pinned, hidden, unread, autoApprove, shellNetwork, speakReplies, notifications, chiefOfStaff
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
         case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, goal
-        case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable
+        case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable, toolSelection
     }
 
     public init(from decoder: Decoder) throws {
@@ -209,6 +211,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         allowRules = try c.decodeIfPresent([AllowRule].self, forKey: .allowRules) ?? []
         autoDispatch = try c.decodeIfPresent(Bool.self, forKey: .autoDispatch) ?? false
         dispatchable = try c.decodeIfPresent(Bool.self, forKey: .dispatchable) ?? true
+        toolSelection = try c.decodeIfPresent(ToolSelection.self, forKey: .toolSelection)
     }
 }
 

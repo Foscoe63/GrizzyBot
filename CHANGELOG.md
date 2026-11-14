@@ -2,6 +2,12 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## Unreleased
+
+- **Tool selection.** A bot's settings gain a Tool selection section for small-context local models: an allow list and an exclude list (`read_file`, `builtin:*`, `mcp:*`, `mcp:gmail:*`, `mcp:gmail:send`; exclude wins) and *lean turns*, which send only the tools a turn looks like it needs while the rest stay one `capabilities_load` away. The loop's own tools are never removed, and unknown selectors are flagged.
+- **Meeting notes.** The new `meeting_notes` tool and `/meeting` command turn a transcript (pasted, or a .vtt / .srt / .txt file) into a summary, decisions, action items with owners, open questions and attendees, saved as an artifact with a card in chat. Long transcripts are done in parts. It works from a transcript only; GrizzyBot cannot join a call, and a meeting link is explained rather than fetched.
+- **Router memory and timeout.** A repeat of a recent message to the same bots is routed from memory instead of calling the router model again, each router call is timed, and Settings → General → Delegation has a "Give up after" deadline (1–30 s, default 6).
+
 ## 0.13.0 — teams as files
 
 - **Review before you import.** Every way of opening a team (file, link, library, Open With, drop) shows one review sheet first: what it adds, which departments to install, and an accounts checklist. After import it shows what was created and what is still to connect.

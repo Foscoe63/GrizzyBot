@@ -76,6 +76,8 @@ public struct AgentLoopRequest: Sendable {
     public var contextSavings: Bool = true
     /// Notes that must survive compaction for the whole run.
     public var pinnedFacts: [String] = []
+    /// Tools the bot may use that this turn left out to save context. `capabilities_load` brings one back.
+    public var deferredTools: [ChatTool] = []
 
     public init(
         endpoint: ModelEndpoint,
@@ -155,6 +157,8 @@ public struct AgentToolCallResult: Sendable {
     /// Tokens spent by work this tool ran (a helper's own model calls).
     public var extraInputTokens: Int
     public var extraOutputTokens: Int
+    /// Built-in tools asked for via capabilities_load; the loop adds any that were held back.
+    public var activatedToolNames: [String] = []
 
     public init(
         output: String,
@@ -165,8 +169,10 @@ public struct AgentToolCallResult: Sendable {
         loadedSkillBodies: [(id: String, body: String)] = [],
         endTurn: Bool = false,
         extraInputTokens: Int = 0,
-        extraOutputTokens: Int = 0
+        extraOutputTokens: Int = 0,
+        activatedToolNames: [String] = []
     ) {
+        self.activatedToolNames = activatedToolNames
         self.extraInputTokens = extraInputTokens
         self.extraOutputTokens = extraOutputTokens
         self.output = output
@@ -686,8 +692,11 @@ public enum AgentLoop {
             AppConfig.keysHelp,
             PromptSection.computer(request.computerNote),
         ]
-        if let builtinNote = PromptSection.builtinAvailability(tools: request.tools) {
+        if let builtinNote = PromptSection.builtinAvailability(tools: request.tools + request.deferredTools) {
             lines.append(builtinNote)
+        }
+        if let deferredNote = ToolSelection.deferredNote(request.deferredTools) {
+            lines.append(deferredNote)
         }
         if !request.homePath.isEmpty {
             lines.append("Home path: \(request.homePath)")
@@ -871,6 +880,7 @@ public enum AgentLoop {
         var compacted = false
         let maxSteps = max(1, request.maxSteps)
         var tools = request.tools
+        var deferredPool = request.deferredTools
         if savingsOn {
             for tool in ContextTools.definitions where !tools.contains(where: { $0.function.name == tool.function.name }) {
                 tools.append(tool)
@@ -1182,6 +1192,16 @@ public enum AgentLoop {
                         stepNotes.append(.user(
                             "First-class MCP tools are now available this turn: \(names). Call them directly by name with their arguments — do not wrap in mcp_call, toolport_call_tool, or call_tool_by_name."
                         ))
+                    }
+                }
+                if !result.activatedToolNames.isEmpty {
+                    let wanted = Set(result.activatedToolNames)
+                    let arriving = deferredPool.filter { wanted.contains($0.function.name) }
+                    if !arriving.isEmpty {
+                        deferredPool.removeAll { wanted.contains($0.function.name) }
+                        tools.append(contentsOf: arriving)
+                        let names = arriving.map(\.function.name).joined(separator: ", ")
+                        stepNotes.append(.user("Tools now available: \(names). Call them directly."))
                     }
                 }
                 if !result.loadedSkillBodies.isEmpty {

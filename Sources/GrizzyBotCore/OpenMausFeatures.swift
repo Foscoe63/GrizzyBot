@@ -126,6 +126,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var otlpEndpoint: String
     /// https address of a team library index (see TeamLibrary). Empty shows only the built-in teams.
     public var teamLibraryURL: String
+    /// How long the router model gets to answer before the message goes to its normal bot.
+    public var routerTimeoutSeconds: Double
     /// In a 1:1 chat, your messages take the bot's colour. Off keeps them neutral.
     public var botColoredChats: Bool
     /// A phone-friendly web companion served from this Mac (add it to the Home Screen).
@@ -171,6 +173,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         controlPlanePort: Int = ControlPlaneServer.defaultPort,
         otlpEndpoint: String = "",
         teamLibraryURL: String = "",
+        routerTimeoutSeconds: Double = RoutingMemory.defaultTimeout,
         botColoredChats: Bool = true,
         companionEnabled: Bool = false,
         companionPort: Int = 8802,
@@ -186,6 +189,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         self.controlPlanePort = controlPlanePort
         self.otlpEndpoint = otlpEndpoint
         self.teamLibraryURL = teamLibraryURL
+        self.routerTimeoutSeconds = RoutingMemory.clampedTimeout(routerTimeoutSeconds)
         self.profileName = profileName
         self.profileEmail = profileEmail
         self.composioConnectKey = composioConnectKey
@@ -224,7 +228,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, impliedToolsGranted, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
         case themeAppearanceMode, activeThemePresetId, agentStallTimeoutMs
         case privacyFilter, memoryRelevanceMode, queueMode, webhooksEnabled, webhookPort, telegram, localGateway, enableFolderWatchers
-        case controlPlaneEnabled, controlPlanePort, otlpEndpoint, teamLibraryURL, botColoredChats
+        case controlPlaneEnabled, controlPlanePort, otlpEndpoint, teamLibraryURL, routerTimeoutSeconds, botColoredChats
         case companionEnabled, companionPort, companionAllowNetwork, routerModel
     }
 
@@ -265,6 +269,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         controlPlanePort = try c.decodeIfPresent(Int.self, forKey: .controlPlanePort) ?? ControlPlaneServer.defaultPort
         otlpEndpoint = try c.decodeIfPresent(String.self, forKey: .otlpEndpoint) ?? ""
         teamLibraryURL = try c.decodeIfPresent(String.self, forKey: .teamLibraryURL) ?? ""
+        routerTimeoutSeconds = RoutingMemory.clampedTimeout(try c.decodeIfPresent(Double.self, forKey: .routerTimeoutSeconds) ?? RoutingMemory.defaultTimeout)
         botColoredChats = try c.decodeIfPresent(Bool.self, forKey: .botColoredChats) ?? true
         companionEnabled = try c.decodeIfPresent(Bool.self, forKey: .companionEnabled) ?? false
         companionPort = try c.decodeIfPresent(Int.self, forKey: .companionPort) ?? 8802
@@ -308,6 +313,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encode(controlPlanePort, forKey: .controlPlanePort)
         try c.encode(otlpEndpoint, forKey: .otlpEndpoint)
         try c.encode(teamLibraryURL, forKey: .teamLibraryURL)
+        try c.encode(routerTimeoutSeconds, forKey: .routerTimeoutSeconds)
         try c.encode(botColoredChats, forKey: .botColoredChats)
         try c.encode(companionEnabled, forKey: .companionEnabled)
         try c.encode(companionPort, forKey: .companionPort)

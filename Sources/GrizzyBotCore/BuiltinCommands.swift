@@ -18,6 +18,8 @@ public enum BuiltinCommand: String, CaseIterable, Sendable {
     case learn
     /// Run a saved, parameterised task.
     case recipe
+    /// Notes from a meeting transcript.
+    case meeting
 
     public var summary: String {
         switch self {
@@ -29,6 +31,7 @@ public enum BuiltinCommand: String, CaseIterable, Sendable {
         case .rollback: return "undo the last file changes (/rollback list to see them)"
         case .learn: return "propose a skill from the work in this chat (you review it before it is used)"
         case .recipe: return "run a saved recipe: /recipe name key=value (/recipe alone lists them)"
+        case .meeting: return "write meeting notes from a transcript: paste it, or give a .vtt/.srt/.txt file path"
         }
     }
 
@@ -36,7 +39,7 @@ public enum BuiltinCommand: String, CaseIterable, Sendable {
     public var isLocal: Bool {
         switch self {
         case .context, .compact, .usage, .rollback: return true
-        case .goal, .plan, .learn, .recipe: return false
+        case .goal, .plan, .learn, .recipe, .meeting: return false
         }
     }
 }
@@ -53,6 +56,15 @@ public enum BuiltinCommands {
         then list anything you would need to ask the person first.
 
         Task: \(task)
+        """
+    }
+
+    /// `transcriptPath` is where the transcript was saved (or the path the person gave).
+    public static func meetingPrompt(transcriptPath: String) -> String {
+        """
+        Write notes for a meeting. Call meeting_notes once with path "\(transcriptPath)" and nothing else; it writes \
+        the summary, decisions, action items, open questions and attendees, and saves them as an artifact. \
+        Then reply in two or three lines: what the meeting decided and who owes what. Do not retype the notes.
         """
     }
 

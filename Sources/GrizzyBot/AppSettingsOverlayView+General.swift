@@ -45,6 +45,31 @@ extension AppSettingsOverlayView {
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.textMuted)
                 .padding(.top, 6)
+            if store.appConfig.routerModel != nil {
+                HStack {
+                    Stepper(
+                        "Give up after \(Int(store.appConfig.routerTimeoutSeconds)) s",
+                        value: Binding(
+                            get: { store.appConfig.routerTimeoutSeconds },
+                            set: {
+                                var config = store.appConfig
+                                config.routerTimeoutSeconds = RoutingMemory.clampedTimeout($0)
+                                store.saveAppConfig(config)
+                            }
+                        ),
+                        in: RoutingMemory.timeoutRange,
+                        step: 1
+                    )
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                }
+                .padding(.top, 8)
+                Text("A message waits this long for the router before going to its usual bot. A small hosted or local model should answer in well under a second; if the timings below are slower, pick a smaller model or lower the limit. \(store.routingMemory.summary)")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.top, 4)
+            }
         }
 
         settingsCard(

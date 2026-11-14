@@ -355,6 +355,7 @@ public enum AgentToolCatalog {
         .init(id: "artifact_list", label: "Artifact list", subtitle: "List shared artifacts on this Mac"),
         .init(id: "artifact_read", label: "Artifact read", subtitle: "Read an artifact's contents"),
         .init(id: "artifact_delete", label: "Artifact delete", subtitle: "Delete a shared artifact"),
+        .init(id: "meeting_notes", label: "Meeting notes", subtitle: "Turn a transcript into a summary, decisions and action items"),
         .init(id: "capabilities_discover", label: "Discover capabilities", subtitle: "Search skills and MCP tools on demand"),
         .init(id: "capabilities_load", label: "Load capabilities", subtitle: "Activate discovered skills or MCP tools"),
         .init(id: "todo", label: "Todo", subtitle: "Write a multi-step checklist for this turn"),
@@ -616,6 +617,16 @@ extension AgentToolCatalog {
             "list_files",
             description: "List a directory. Empty lists the working folder when set, otherwise the bot home. Absolute/~ folders outside the working folder pause for approval.",
             properties: ["directory": stringProp("Relative directory, empty for the file root, or an absolute/~ path")],
+            required: []
+        )
+        add(
+            "meeting_notes",
+            description: "Write meeting notes (summary, decisions, action items with owners, open questions, attendees) from a transcript: pass the transcript text, or the path of a .vtt/.srt/.txt transcript file. Long transcripts are handled in parts. This does not join meetings; it only works from a transcript the person provides.",
+            properties: [
+                "transcript": stringProp("The transcript text. Omit when giving a path."),
+                "path": stringProp("Path to a transcript file (.vtt, .srt, .txt, .md)"),
+                "title": stringProp("Meeting title, if known"),
+            ],
             required: []
         )
         add(

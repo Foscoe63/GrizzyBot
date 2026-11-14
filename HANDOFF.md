@@ -54,6 +54,8 @@ Release (`.github/workflows/release.yml`): import Developer ID P12, Release buil
 - **Tests:** `DispatchTests.swift` uses `ByBotClient`, which answers each bot from its own script (found via "You are <name>" in the system prompt) so several bots can run at once.
 - Adding a Swift file means `xcodegen generate` and committing `GrizzyBot.xcodeproj` too.
 
+- **Unreleased trio:** `ToolSelection` (+ `ToolSelectionView`, per-bot `toolSelection`, applied in `AppStore+AgentRun` / `+ToolExecution` / `AgentLoop`), `MeetingNotes` (`meeting_notes` tool, `/meeting`; transcript only, cannot join a call), `RoutingMemory` (cache + timings in `AppStore+Dispatch`, `routerTimeoutSeconds`). Not yet done: bump the version, refresh overlay goldens for the new settings UI.
+
 ## Product notes
 
 - **Computer host prompt:** In-app browser vs This Mac (legacy `docker` → in-app browser).

@@ -59,6 +59,22 @@ extension AppStore {
         save()
     }
 
+    /// Saves a bot's tool selection. A selection that changes nothing is stored as nil.
+    public func setBotToolSelection(_ botId: String, _ selection: ToolSelection) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
+        var cleaned = selection
+        cleaned.allow = ToolSelection.parseLines(selection.allow.joined(separator: "\n")).selectors
+        cleaned.exclude = ToolSelection.parseLines(selection.exclude.joined(separator: "\n")).selectors
+        bots[idx].toolSelection = cleaned.isDefault ? nil : cleaned
+        bots[idx].updatedAt = .now
+        save()
+    }
+
+    /// MCP server names as selectors spell them (`mcp:<name>:*`).
+    public var toolSelectionServerNames: Set<String> {
+        Set(mcpServers.map { McpNativeNaming.slug($0) })
+    }
+
     public func addBotFallback(_ botId: String, choice: BotModelChoice) {
         guard let idx = bots.firstIndex(where: { $0.id == botId }),
               case .catalog(let provider, let modelId, _) = choice else { return }

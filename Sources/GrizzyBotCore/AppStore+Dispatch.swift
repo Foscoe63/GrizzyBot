@@ -60,9 +60,18 @@ extension AppStore {
     }
 
     /// The optional router model. Any failure — no key, a slow answer, a malformed one — is "no opinion".
+    /// A repeat of a recent message is answered from memory, and every call is timed.
     func modelRoute(_ message: String, candidates: [Bot]) async -> RouteDecision? {
         guard let choice = appConfig.routerModel, !candidates.isEmpty else { return nil }
         let profiles = candidates.map(profile(for:))
+        let key = RoutingMemory.key(message: message, candidateIds: candidates.map(\.id))
+        if let hit = routingMemory.lookup(key), let match = profiles.first(where: { $0.id == hit.botId }) {
+            routingMemory.recordCacheHit()
+            return RouteDecision(botId: match.id, botName: match.name, confidence: 0.8, reason: hit.reason, source: .model)
+        }
+        let timeout = RoutingMemory.clampedTimeout(appConfig.routerTimeoutSeconds)
+        let started = Date()
+        func elapsedMs() -> Int { Int(Date().timeIntervalSince(started) * 1_000) }
         do {
             let cleaned = try PrivacyFilter.applyForSend(
                 message,
@@ -76,12 +85,15 @@ extension AppStore {
                 endpoint: endpoint,
                 messages: ModelRouting.messages(for: cleaned, candidates: profiles),
                 tools: [],
-                timeout: 12,
-                stallMs: 8_000
+                timeout: timeout,
+                stallMs: Int(timeout * 1_000 * 2 / 3)
             )
-            let response = try await Self.withDeadline(seconds: 12) { try await client.complete(request) }
-            return ModelRouting.parse(response.text, candidates: profiles)
+            let response = try await Self.withDeadline(seconds: timeout) { try await client.complete(request) }
+            let decision = ModelRouting.parse(response.text, candidates: profiles)
+            routingMemory.record(key: key, decision: decision, failed: false, milliseconds: elapsedMs())
+            return decision
         } catch {
+            routingMemory.record(key: key, decision: nil, failed: true, milliseconds: elapsedMs())
             return nil
         }
     }

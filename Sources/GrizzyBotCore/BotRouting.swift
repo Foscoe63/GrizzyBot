@@ -98,6 +98,14 @@ public struct RouteDecision: Sendable, Equatable {
     public var source: Source
 
     public enum Source: String, Sendable { case mention, rules, model }
+
+    public init(botId: String, botName: String, confidence: Double, reason: String, source: Source) {
+        self.botId = botId
+        self.botName = botName
+        self.confidence = confidence
+        self.reason = reason
+        self.source = source
+    }
 }
 
 /// Picks which bot should take a message. Rules first: free, instant, explainable, and the same answer

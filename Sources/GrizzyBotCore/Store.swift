@@ -914,6 +914,8 @@ public final class AppStore {
     /// A team waiting for the person to review it. Every way of opening a team (file, link, drop,
     /// library) lands here, and nothing is created until they confirm.
     public var pendingTeamPackage: TeamPackage?
+    /// Recent router-model decisions and timings (see `RoutingMemory`).
+    public var routingMemory = RoutingMemory()
 
     /// When set, routine ticks skip UI navigation and the app may terminate after background runs finish.
     public var headlessRoutineTick = false

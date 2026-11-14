@@ -306,6 +306,45 @@ extension AppStore {
                 return AgentToolCallResult(output: "Read failed: \(error.localizedDescription)")
             }
 
+        case "meeting_notes":
+            var transcript = s("transcript")
+            var title = s("title")
+            if transcript.isEmpty {
+                let path = resolveToolPath(s("path"))
+                guard !path.isEmpty else {
+                    return AgentToolCallResult(output: "Give the transcript text, or the path of a transcript file.")
+                }
+                if let gated = hostGate(tool: "read_file.host", paths: path, argumentsJSON: argumentsJSON) { return gated }
+                do {
+                    transcript = try botHome.readFlexible(botId: botId, path: path)
+                } catch {
+                    return AgentToolCallResult(output: "Read failed: \(error.localizedDescription)")
+                }
+                if title.isEmpty { title = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent }
+            }
+            if transcript.count < 400, let link = MeetingLink.detect(in: transcript) {
+                return AgentToolCallResult(output: link.explanation)
+            }
+            guard transcript.utf8.count <= MeetingTranscript.maxBytes else {
+                return AgentToolCallResult(output: "That transcript is over 4 MB. Split it and run it in parts.")
+            }
+            do {
+                let notes = try await MeetingNotesWriter.write(transcript: transcript, title: title) { messages in
+                    let request = ChatCompletionRequest(endpoint: endpoint, messages: messages, tools: [], timeout: 120, stallMs: 60_000)
+                    return try await client.complete(request).text
+                }
+                let markdown = notes.markdown()
+                var blocks: [MessageBlock] = [.card(lines: notes.cardLines)]
+                var saved = ""
+                if let record = createArtifact(title: notes.title.isEmpty ? "Meeting notes" : notes.title + " — notes", kind: .markdown, content: markdown) {
+                    saved = "\nSaved as the artifact “\(record.title)”."
+                    blocks.append(.card(lines: [CardLine(k: "artifact", v: record.title)]))
+                }
+                return AgentToolCallResult(output: markdown + saved, blocks: blocks)
+            } catch {
+                return AgentToolCallResult(output: "Meeting notes failed: \(error.localizedDescription)")
+            }
+
         case "edit_file":
             let path = resolveToolPath(s("path"))
             let content = s("content")
@@ -964,6 +1003,7 @@ extension AppStore {
             var notes: [String] = []
             var skillBodies: [(id: String, body: String)] = []
             var promoted: [McpPromotedTool] = []
+            var activatedBuiltins: [String] = []
             let botSkills = skills(for: bot)
             for id in ids {
                 if let skill = botSkills.first(where: { $0.id == id || $0.name.lowercased() == id }) {
@@ -1014,7 +1054,12 @@ extension AppStore {
                 }
                 if !found {
                     if AgentToolCatalog.builtin.contains(where: { $0.id == id }) {
-                        notes.append("builtin \(id) is already in the tool schema when enabled")
+                        if !bot.isToolEnabled(id) || bot.toolSelection?.permits(id) == false {
+                            notes.append("builtin \(id) is turned off for this bot")
+                        } else {
+                            activatedBuiltins.append(id)
+                            notes.append("builtin \(id) is available")
+                        }
                     } else {
                         notes.append("unknown id \(id)")
                     }
@@ -1027,7 +1072,8 @@ extension AppStore {
                 output: notes.isEmpty ? "Nothing loaded." : notes.joined(separator: "\n"),
                 blocks: [.card(lines: notes.prefix(8).map { CardLine(k: "load", v: $0) })],
                 promotedMcpTools: promoted,
-                loadedSkillBodies: skillBodies
+                loadedSkillBodies: skillBodies,
+                activatedToolNames: activatedBuiltins
             )
 
         case "todo":
@@ -1366,7 +1412,7 @@ extension AppStore {
             }
             let helperId = Ids.new()
             do {
-                let nestedTools = AgentToolCatalog.chatTools(
+                var nestedTools = AgentToolCatalog.chatTools(
                     enabledIds: bot.enabledTools,
                     mcpServers: mcpServers,
                     includeDelegation: false,
@@ -1374,6 +1420,9 @@ extension AppStore {
                     promotedMcp: Array(mcpPromotedTools.values),
                     mcpAdvertised: mcpAdvertisedTools
                 )
+                if let selection = bot.toolSelection, !selection.isDefault {
+                    nestedTools = nestedTools.filter { selection.permits($0.function.name) }
+                }
                 let provider = endpoint.provider
                 let helperTaint = RunTaint()
                 let nested = try await AgentLoop.run(

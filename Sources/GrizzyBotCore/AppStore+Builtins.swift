@@ -18,6 +18,16 @@ extension AppStore {
             return nil
         case .recipe:
             return recipeReply(argument: argument)
+        case .meeting:
+            let text = argument.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard bot.isToolEnabled("meeting_notes") else {
+                return "Turn on the **Meeting notes** tool in this bot's tool list (its settings) first."
+            }
+            if text.isEmpty {
+                return "Usage: `/meeting <transcript text>` or `/meeting <path to a .vtt, .srt or .txt transcript>`. I write the summary, decisions and action items. I can't join a call myself."
+            }
+            if text.count < 400, let link = MeetingLink.detect(in: text) { return link.explanation }
+            return nil
         case .plan:
             let task = argument.trimmingCharacters(in: .whitespacesAndNewlines)
             return task.isEmpty ? "Usage: `/plan <task>` — I'll write a plan without carrying it out." : nil
@@ -37,6 +47,19 @@ extension AppStore {
             save()
             return nil
         }
+    }
+
+    /// A path the `meeting_notes` tool can read: the one the person gave, or the pasted text saved to the bot's home.
+    func meetingTranscriptPath(_ argument: String, botId: String) -> String {
+        let text = argument.trimmingCharacters(in: .whitespacesAndNewlines)
+        let looksLikePath = !text.contains("\n") && text.count < 400
+            && (text.hasPrefix("/") || text.hasPrefix("~") || text.hasPrefix("./")
+                || [".vtt", ".srt", ".txt", ".md"].contains { text.lowercased().hasSuffix($0) })
+        if looksLikePath { return text }
+        let stamp = Int(Date().timeIntervalSince1970)
+        let path = "meetings/transcript-\(stamp).txt"
+        writeBotFile(botId: botId, path: path, content: text)
+        return path
     }
 
     func contextBreakdown(for bot: Bot) -> ContextBreakdown {

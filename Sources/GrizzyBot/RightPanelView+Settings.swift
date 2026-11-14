@@ -163,6 +163,8 @@ extension RightPanelView {
                     .foregroundStyle(Theme.textMuted)
                     .padding(.top, 6)
 
+                ToolSelectionSection(bot: bot)
+
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) { allowRulesOpen.toggle() }
                 } label: {

@@ -346,7 +346,7 @@ extension AppStore {
         let client: any ChatCompleting = chatCompleter ?? Self.defaultClient(for: provider)
         await warmMcpCatalog(bot: bot, prompt: prompt)
         hydratePromotedFromAdvertised(bot: bot)
-        let tools = AgentToolCatalog.chatTools(
+        let allTools = AgentToolCatalog.chatTools(
             enabledIds: runtimeBot(bot).enabledTools,
             mcpServers: mcpServers,
             includeDelegation: true,
@@ -354,6 +354,14 @@ extension AppStore {
             promotedMcp: Array(mcpPromotedTools.values),
             mcpAdvertised: mcpAdvertisedTools
         )
+        var tools = allTools
+        var deferredTools: [ChatTool] = []
+        if let selection = bot.toolSelection, !selection.isDefault {
+            let used = Set(thread.llmMessages.flatMap(\.toolCalls).map(\.name))
+            let applied = selection.apply(to: allTools, prompt: prompt, usedToolNames: used)
+            tools = applied.offered
+            deferredTools = applied.deferred
+        }
         var prior = thread.messages.filter { $0.id != progressMsg.id }
         if prior.last?.role == .user {
             prior.removeLast()
@@ -398,6 +406,7 @@ extension AppStore {
             case .plan: agentPromptRaw = BuiltinCommands.planPrompt(task: argument)
             case .learn: agentPromptRaw = SkillLearning.prompt(topic: argument)
             case .recipe: agentPromptRaw = recipePrompt(argument: argument) ?? prompt
+            case .meeting: agentPromptRaw = BuiltinCommands.meetingPrompt(transcriptPath: meetingTranscriptPath(argument, botId: botId))
             case .goal: agentPromptRaw = BuiltinCommands.goalKickoff(goal: bot.goal ?? argument)
             default: agentPromptRaw = prompt
             }
@@ -497,6 +506,7 @@ extension AppStore {
                 goal: bot.goal ?? ""
             )
             loopRequest.fallbacks = fallbacks
+            loopRequest.deferredTools = deferredTools
             loopRequest.secretNames = botSecretNames(botId: botId)
             let execute: @Sendable (String, String) async -> AgentToolCallResult = { [weak self] name, arguments in
                 guard let self else {
