@@ -2,7 +2,7 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
-## Unreleased
+## 0.13.0 — teams as files
 
 - **Review before you import.** Every way of opening a team (file, link, library, Open With, drop) shows one review sheet first: what it adds, which departments to install, and an accounts checklist. After import it shows what was created and what is still to connect.
 - **Teams carry a connector checklist.** A team file can list the accounts it works best with (Gmail, Slack, …). Nothing is connected for you and no credentials are included.

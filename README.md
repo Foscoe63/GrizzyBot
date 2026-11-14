@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6">
-  <img src="https://img.shields.io/badge/version-0.12.2-3B82F6?style=for-the-badge" alt="Version 0.12.2">
+  <img src="https://img.shields.io/badge/version-0.13.0-3B82F6?style=for-the-badge" alt="Version 0.13.0">
   <img src="https://img.shields.io/badge/license-MIT-0E7C7B?style=for-the-badge" alt="MIT License">
 </p>
 
@@ -49,13 +49,20 @@
 
 > **Bring your own model.** Connect a cloud or local provider and every send runs a real tool-calling loop. Without a model, a scripted fallback still drives the UI so you can explore offline.
 >
-> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.12.2** (project format `xcode16_3` via XcodeGen)
+> **Requires** macOS 15+ · **Xcode 27** / Swift 6 · Version **0.13.0** (project format `xcode16_3` via XcodeGen)
 >
 > The version lives in `project.yml` (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`) and nowhere else — the Info.plist expands the build settings, and `Scripts/make-app.sh` reads them out of that file. Bump it there and run `xcodegen generate`.
 
 ---
 
 ## 🆕 What's new
+
+### 0.13.0 — teams as files
+
+- **Review before you import.** Every way of opening a team (file, link, library, Open With) shows one review sheet: what it adds, which departments to install, and an accounts checklist.
+- **Connectors and departments in team files.** Optional fields; older team files still import unchanged. Nothing is connected for you and no credentials are included.
+- **Export step and team library.** Settings → Teams → Export team… and Browse teams… (three built-in teams plus any online index you point it at).
+- **Import from a link or Finder.** https only, 512 KB cap; Open With → GrizzyBot or drop on the Dock icon.
 
 ### 0.12.2 — leaner Local MLX and a provider switch that sticks
 
