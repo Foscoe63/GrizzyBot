@@ -14,7 +14,7 @@ jobs:
     env:
       KEYCHAIN: build.keychain-db
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # mlx-swift needs Swift tools 6.3. The image default is older than that,
       # so pick the newest Xcode present rather than pinning a version that
