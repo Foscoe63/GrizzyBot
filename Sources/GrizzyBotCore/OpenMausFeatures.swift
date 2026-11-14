@@ -124,6 +124,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var controlPlanePort: Int
     /// OTLP/HTTP endpoint (e.g. http://localhost:4318) that receives one span per run and tool call. Empty is off.
     public var otlpEndpoint: String
+    /// https address of a team library index (see TeamLibrary). Empty shows only the built-in teams.
+    public var teamLibraryURL: String
     /// In a 1:1 chat, your messages take the bot's colour. Off keeps them neutral.
     public var botColoredChats: Bool
     /// A phone-friendly web companion served from this Mac (add it to the Home Screen).
@@ -168,6 +170,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         controlPlaneEnabled: Bool = false,
         controlPlanePort: Int = ControlPlaneServer.defaultPort,
         otlpEndpoint: String = "",
+        teamLibraryURL: String = "",
         botColoredChats: Bool = true,
         companionEnabled: Bool = false,
         companionPort: Int = 8802,
@@ -182,6 +185,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         self.controlPlaneEnabled = controlPlaneEnabled
         self.controlPlanePort = controlPlanePort
         self.otlpEndpoint = otlpEndpoint
+        self.teamLibraryURL = teamLibraryURL
         self.profileName = profileName
         self.profileEmail = profileEmail
         self.composioConnectKey = composioConnectKey
@@ -220,7 +224,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, impliedToolsGranted, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
         case themeAppearanceMode, activeThemePresetId, agentStallTimeoutMs
         case privacyFilter, memoryRelevanceMode, queueMode, webhooksEnabled, webhookPort, telegram, localGateway, enableFolderWatchers
-        case controlPlaneEnabled, controlPlanePort, otlpEndpoint, botColoredChats
+        case controlPlaneEnabled, controlPlanePort, otlpEndpoint, teamLibraryURL, botColoredChats
         case companionEnabled, companionPort, companionAllowNetwork, routerModel
     }
 
@@ -260,6 +264,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         controlPlaneEnabled = try c.decodeIfPresent(Bool.self, forKey: .controlPlaneEnabled) ?? false
         controlPlanePort = try c.decodeIfPresent(Int.self, forKey: .controlPlanePort) ?? ControlPlaneServer.defaultPort
         otlpEndpoint = try c.decodeIfPresent(String.self, forKey: .otlpEndpoint) ?? ""
+        teamLibraryURL = try c.decodeIfPresent(String.self, forKey: .teamLibraryURL) ?? ""
         botColoredChats = try c.decodeIfPresent(Bool.self, forKey: .botColoredChats) ?? true
         companionEnabled = try c.decodeIfPresent(Bool.self, forKey: .companionEnabled) ?? false
         companionPort = try c.decodeIfPresent(Int.self, forKey: .companionPort) ?? 8802
@@ -302,6 +307,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encode(controlPlaneEnabled, forKey: .controlPlaneEnabled)
         try c.encode(controlPlanePort, forKey: .controlPlanePort)
         try c.encode(otlpEndpoint, forKey: .otlpEndpoint)
+        try c.encode(teamLibraryURL, forKey: .teamLibraryURL)
         try c.encode(botColoredChats, forKey: .botColoredChats)
         try c.encode(companionEnabled, forKey: .companionEnabled)
         try c.encode(companionPort, forKey: .companionPort)

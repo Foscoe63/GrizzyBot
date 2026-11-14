@@ -911,6 +911,9 @@ public final class AppStore {
 
     /// Why the last workspace import or backup failed, for the Settings notice. Nil after a success.
     public var lastWorkspaceError: String?
+    /// A team waiting for the person to review it. Every way of opening a team (file, link, drop,
+    /// library) lands here, and nothing is created until they confirm.
+    public var pendingTeamPackage: TeamPackage?
 
     /// When set, routine ticks skip UI navigation and the app may terminate after background runs finish.
     public var headlessRoutineTick = false

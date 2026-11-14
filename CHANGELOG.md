@@ -2,6 +2,16 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## Unreleased
+
+- **Review before you import.** Every way of opening a team (file, link, library, Open With, drop) shows one review sheet first: what it adds, which departments to install, and an accounts checklist. After import it shows what was created and what is still to connect.
+- **Teams carry a connector checklist.** A team file can list the accounts it works best with (Gmail, Slack, …). Nothing is connected for you and no credentials are included.
+- **Departments.** A team file can group bots and rooms into named departments, and you can install just some of them.
+- **A proper export step.** Settings → Teams → Export team… lets you choose the bots, label each with a department, and pick which connected accounts to suggest (service name only).
+- **Team library.** Settings → Teams → Browse teams… lists three built-in teams (Newsroom, Support Desk, Research Lab) and any online library you point it at: a JSON index of team files that anyone can host.
+- **Import from a link, and from Finder.** Fetch an https team file (512 KB cap), drop one on the Teams settings, or use Open With → GrizzyBot on a `.team.md` file or drag it onto the Dock icon. Older team files still import unchanged.
+- **Local servers check Host and Origin.** The control-plane and companion servers refuse requests from other websites.
+
 ## 0.12.2 — leaner Local MLX and a provider switch that sticks
 
 - **Local MLX uses far less memory.** Its buffer cache was allowed to grow to half of RAM on top of the model weights; it is now capped at 1 GB and cleared after each turn.

@@ -196,6 +196,12 @@ targets:
         NSBonjourServices:
           - "_http._tcp"
         SentryDSN: "$(SENTRY_DSN)"
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Markdown
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - net.daringfireball.markdown
         CFBundleURLTypes:
           - CFBundleURLName: com.grizzybot.app
             CFBundleURLSchemes:

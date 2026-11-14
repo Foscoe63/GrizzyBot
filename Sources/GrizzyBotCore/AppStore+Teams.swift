@@ -2,7 +2,10 @@ import Foundation
 
 extension AppStore {
     /// Builds a package from the chosen bots (all visible bots when none are named).
-    public func exportTeamPackage(name: String, summary: String = "", botIds: [String]? = nil) -> TeamPackage {
+    public func exportTeamPackage(name: String, summary: String = "", botIds: [String]? = nil,
+        connectors: [TeamPackage.ConnectorSpec] = [], departments: [TeamPackage.DepartmentSpec] = [],
+        departmentByBotId: [String: String] = [:]
+    ) -> TeamPackage {
         let chosen = bots.filter { bot in
             !bot.hidden && (botIds?.contains(bot.id) ?? true)
         }
@@ -32,7 +35,48 @@ extension AppStore {
             let members = group.memberIds.compactMap { nameOf[$0] }
             return members.count >= 2 ? TeamPackage.RoomSpec(name: group.name, members: members) : nil
         }
-        return TeamPackage(name: name, summary: summary, bots: specs, rooms: roomSpecs, routines: routineSpecs)
+        var depts = departments
+        if depts.isEmpty, !departmentByBotId.isEmpty {
+            var byName: [String: String] = [:]
+            for bot in chosen { if let d = departmentByBotId[bot.id] { byName[bot.name] = d } }
+            depts = TeamPackage.departments(from: byName, rooms: roomSpecs, order: chosen.map(\.name))
+        }
+        return TeamPackage(name: name, summary: summary, bots: specs, rooms: roomSpecs, routines: routineSpecs,
+                           connectors: connectors, departments: depts)
+    }
+
+    /// Accounts the person has connected, as checklist entries an author can pick from when sharing.
+    public var connectableAccounts: [TeamPackage.ConnectorSpec] {
+        connections.filter(\.connected).map { TeamPackage.ConnectorSpec(slug: $0.slug, name: $0.name) }
+    }
+
+    /// Puts a team in front of the person for review. Nothing is created yet.
+    public func proposeTeam(_ package: TeamPackage) {
+        pendingTeamPackage = package
+    }
+
+    /// Reads a team file from disk (double-click, drop, or picker) and proposes it.
+    public func proposeTeam(file url: URL) throws {
+        proposeTeam(try TeamPackage.load(file: url))
+    }
+
+    /// Closes the review without importing (or after it finished).
+    public func dismissPendingTeam() {
+        pendingTeamPackage = nil
+    }
+
+    /// Imports the pending team, optionally only some departments. Returns the bots created. The team
+    /// stays pending so the review can show what happened; call `dismissPendingTeam()` when done.
+    @discardableResult
+    public func confirmPendingTeam(departments names: [String]? = nil, includeUngrouped: Bool = true) -> [Bot] {
+        guard let package = pendingTeamPackage else { return [] }
+        let chosen: TeamPackage
+        if let names, !package.departments.isEmpty {
+            chosen = package.restricted(toDepartments: names, includeUngrouped: includeUngrouped)
+        } else {
+            chosen = package
+        }
+        return importTeamPackage(chosen)
     }
 
     /// Creates the bots, rooms, and (paused) routines. Imported bots ask before they act, and skills that
@@ -74,8 +118,21 @@ extension AppStore {
             let routine = createRoutine(botId: owner.id, name: r.name, prompt: r.prompt, cron: r.cron, active: false)
             setRoutineOptions(routine.id, continuity: r.continuity, heartbeat: r.heartbeat)
         }
+        for dept in package.departments {
+            let ids = dept.bots.compactMap { byName[$0]?.id }
+            let alreadyRoom = package.rooms.contains { Set($0.members) == Set(dept.bots) }
+            if ids.count >= 2, !alreadyRoom { _ = createGroup(name: dept.name, memberIds: ids) }
+        }
         save()
         return created
+    }
+
+    /// Which of a team's suggested accounts are connected here and which still need setting up.
+    public func connectorChecklist(for package: TeamPackage) -> (connected: [TeamPackage.ConnectorSpec], missing: [TeamPackage.ConnectorSpec]) {
+        let live = Set(connections.filter(\.connected).map { $0.slug.lowercased() })
+        let have = package.connectors.filter { live.contains($0.slug.lowercased()) }
+        let need = package.connectors.filter { !live.contains($0.slug.lowercased()) }
+        return (have, need)
     }
 
     private func uniqueBotName(_ wanted: String) -> String {
