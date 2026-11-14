@@ -574,7 +574,7 @@ public struct StoreFolderWatcherRunner: FolderWatcherRunning {
     }
 }
 
-private final class WatcherCallbackBox: @unchecked Sendable {
+private final class WatcherCallbackBox: Sendable {
     let watcherId: String
     /// The service that opened this stream. Carried through the FSEvents info
     /// pointer so an event reaches the instance that asked for it — with a

@@ -426,6 +426,7 @@ public struct BotHomeStore: Sendable {
             throw BotHomeError.shellLaunch(String(cString: strerror(spawned)))
         }
         handle.started(pid: pid)
+        let childPid = pid
 
         let stdout = ShellOutputBuffer(limit: 1_000_000)
         let stderr = ShellOutputBuffer(limit: 1_000_000)
@@ -444,7 +445,7 @@ public struct BotHomeStore: Sendable {
         let status = ExitStatusBox()
         DispatchQueue.global(qos: .userInitiated).async {
             var raw: Int32 = 0
-            while waitpid(pid, &raw, 0) < 0, errno == EINTR {}
+            while waitpid(childPid, &raw, 0) < 0, errno == EINTR {}
             status.value = raw
             exited.set()
             finished.signal()
@@ -646,6 +647,7 @@ public enum BotHomeError: Error, LocalizedError, Sendable, Equatable {
 
 
 /// Lets Stop (task cancellation) reach into a running shell command and kill its process group.
+// @unchecked Sendable: `pid` and `cancelled` are guarded by `lock`.
 final class ShellProcessHandle: @unchecked Sendable {
     private let lock = NSLock()
     private var pid: pid_t = 0
@@ -674,6 +676,7 @@ final class ShellProcessHandle: @unchecked Sendable {
     }
 }
 
+// @unchecked Sendable: `raw` is guarded by `lock`.
 private final class ExitStatusBox: @unchecked Sendable {
     private let lock = NSLock()
     private var raw: Int32 = 0
@@ -683,6 +686,7 @@ private final class ExitStatusBox: @unchecked Sendable {
     }
 }
 
+// @unchecked Sendable: `at` is guarded by `lock`.
 private final class ExitFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var at: Date?
@@ -696,6 +700,7 @@ private final class ExitFlag: @unchecked Sendable {
 }
 
 /// Collects up to `limit` bytes from a pipe, discarding the rest so the writer never blocks.
+// @unchecked Sendable: `data` is guarded by `lock`; `limit` is immutable.
 private final class ShellOutputBuffer: @unchecked Sendable {
     private let lock = NSLock()
     private var data = Data()

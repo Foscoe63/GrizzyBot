@@ -238,6 +238,9 @@ public actor ControlPlaneServer {
     }
 
     private func routeJSON(_ request: HTTPRequestParser.Request) async -> (Int, [String: Any]) {
+        guard RequestOriginGuard.allows(headers: request.headers, loopbackOnly: true) else {
+            return (403, ["error": "forbidden origin"])
+        }
         if request.method == "GET", request.path == "/health" { return (200, ["ok": true]) }
         guard request.path == "/mcp" else { return (404, ["error": "not found"]) }
         guard request.method == "POST" else { return (405, ["error": "use POST"]) }

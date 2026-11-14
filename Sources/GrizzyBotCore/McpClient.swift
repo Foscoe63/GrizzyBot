@@ -99,6 +99,7 @@ public struct McpCallResult: Sendable {
 }
 
 /// Minimal JSON-compatible box for MCP schemas/arguments.
+// @unchecked Sendable: holds only immutable JSON values (nil, Bool, numbers, String, arrays, dictionaries) that are never mutated after decoding.
 public struct AnyCodableMCP: Codable, @unchecked Sendable, Hashable {
     public let value: Any
 
@@ -170,6 +171,7 @@ struct McpJSONRPCErrorBody: Decodable {
     var message: String
 }
 
+// @unchecked Sendable: wraps an immutable JSON value from `JSONSerialization` so it can cross a task boundary.
 struct SendableJSON: @unchecked Sendable {
     let value: Any
     init(_ value: Any) { self.value = value }

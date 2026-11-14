@@ -37,6 +37,7 @@ public struct MemoryVector: Sendable, Equatable {
 /// The embedding is optional on purpose. `sentenceEmbedding(for:)` returns nil
 /// when the assets are missing, and callers fall back to keyword-only retrieval
 /// rather than losing memory entirely.
+// @unchecked Sendable: every call into `NLEmbedding` is serialised by `embeddingLock`; the cache is guarded by its own lock.
 public final class MemoryEmbedder: @unchecked Sendable {
     public static let shared = MemoryEmbedder()
 

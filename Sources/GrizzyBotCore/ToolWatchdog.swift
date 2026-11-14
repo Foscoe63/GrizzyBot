@@ -62,6 +62,7 @@ public enum ToolWatchdog {
     }
 
     /// Resumes the continuation exactly once, whichever of work, timer, or Stop gets there first.
+    // @unchecked Sendable: all mutable state is guarded by `lock`, except the two callbacks, which are set before the gate is shared.
     private final class Gate: @unchecked Sendable {
         // Guarded by `lock`.
         private let lock = NSLock()

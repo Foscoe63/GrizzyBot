@@ -155,6 +155,7 @@ public actor MLXLocalGenerator: MLXTextGenerating {
 
     /// Layers plus the prompt tokens they hold. A reference type because the
     /// generation task mutates the layers in place.
+    // @unchecked Sendable: `promptTokens` is mutated only by the single generation task that owns the cache; the cache is handed off between turns, never used by two at once. `KVCache` layers are not Sendable.
     final class PromptCache: @unchecked Sendable {
         let layers: [KVCache]
         var promptTokens: [Int]
@@ -175,6 +176,7 @@ public actor MLXLocalGenerator: MLXTextGenerating {
         }
     }
 
+    // @unchecked Sendable: carries the non-Sendable generation stream and `PromptCache` from one task to its single consumer.
     struct Started: @unchecked Sendable {
         let stream: AsyncStream<Generation>
         let cache: PromptCache

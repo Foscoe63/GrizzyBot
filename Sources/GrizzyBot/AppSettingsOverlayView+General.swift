@@ -154,7 +154,7 @@ extension AppSettingsOverlayView {
                         sessionNotice = "Saved \(url.lastPathComponent)"
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     } else {
-                        sessionNotice = "Could not write backup"
+                        sessionNotice = store.lastWorkspaceError ?? "Could not write backup"
                     }
                 }
                 .buttonStyle(.plain)
@@ -164,7 +164,7 @@ extension AppSettingsOverlayView {
                     guard let data = SessionFilePanel.openJSON() else { return }
                     sessionNotice = store.importWorkspaceJSON(data)
                         ? "Restored workspace backup"
-                        : "Not a GrizzyBot workspace backup"
+                        : (store.lastWorkspaceError ?? "Not a GrizzyBot workspace backup")
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 12.5))

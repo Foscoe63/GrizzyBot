@@ -169,6 +169,7 @@ public struct MLXChatClient: ChatCompleting {
 /// held back as soon as it could be the start of a known tag and released once
 /// it provably is not. Only the visible prose is forwarded; the authoritative
 /// split still happens in `MLXToolCallParser` over the full output.
+// @unchecked Sendable: parser state is guarded by `lock`.
 final class MLXStreamFilter: @unchecked Sendable {
     private static let openers = [
         "<think>", "<thinking>", "<reasoning>", "<tool_call>", "[TOOL_CALLS]", "```",

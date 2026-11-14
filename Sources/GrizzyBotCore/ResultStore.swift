@@ -2,6 +2,7 @@ import Foundation
 
 /// Full tool outputs for one agent run. The model sees a compressed view in its transcript and can
 /// pull the rest back with `recall_result`, so compression never loses anything for good.
+// @unchecked Sendable: `entries` and `order` are guarded by `lock`.
 public final class ResultStore: @unchecked Sendable {
     struct Entry {
         let id: String
