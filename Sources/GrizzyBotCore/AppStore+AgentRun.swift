@@ -759,6 +759,9 @@ extension AppStore {
         telegramAfterRun(botId: botId, threadKey: threadKey, silent: silentHeartbeat)
         releaseWorkingFolderOverrideIfNeeded(botId: botId)
         settleQueue(botId: botId, threadKey: threadKey, runId: runId)
+        if failed {
+            reportIncident(botId: botId, threadKey: threadKey, run: thread2.run, reason: failureReason ?? replyText)
+        }
     }
 
     func runScriptedAgent(botId: String, threadKey: String, runId: String, prompt: String) async {

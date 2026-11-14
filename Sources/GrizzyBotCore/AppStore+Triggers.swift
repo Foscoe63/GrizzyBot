@@ -137,7 +137,7 @@ extension AppStore {
     @discardableResult
     public func setTeamCheckins(botId: String, times: [String], timezone: String = "") -> [Routine] {
         guard bots.contains(where: { $0.id == botId }) else { return [] }
-        routines[botId, default: []].removeAll { $0.teamCheckin }
+        routines[botId, default: []].removeAll { $0.teamCheckin && $0.name != DayWatch.routineName }
         var made: [Routine] = []
         for time in TeamCheckin.normalizedTimes(times) {
             guard let cron = TeamCheckin.cron(forTime: time) else { continue }
@@ -160,12 +160,36 @@ extension AppStore {
 
     /// The "HH:mm" times of this bot's team check-ins, earliest first.
     public func teamCheckinTimes(botId: String) -> [String] {
-        let times = (routines[botId] ?? []).filter(\.teamCheckin).compactMap { r -> String? in
+        let times = (routines[botId] ?? []).filter { $0.teamCheckin && $0.name != DayWatch.routineName }.compactMap { r -> String? in
             let f = r.cron.split(separator: " ")
             guard f.count == 5, let m = Int(f[0]), let h = Int(f[1]) else { return nil }
             return String(format: "%02d:%02d", h, m)
         }
         return times.sorted()
+    }
+
+    // MARK: - Day watch
+
+    public func isDayWatchOn(botId: String) -> Bool {
+        (routines[botId] ?? []).contains { $0.name == DayWatch.routineName && $0.teamCheckin }
+    }
+
+    /// Turns the "Keep an eye on my day" routine on or off for the lead bot.
+    @discardableResult
+    public func setDayWatch(botId: String, enabled: Bool, timezone: String = "") -> Routine? {
+        guard bots.contains(where: { $0.id == botId }) else { return nil }
+        routines[botId, default: []].removeAll { $0.name == DayWatch.routineName && $0.teamCheckin }
+        guard enabled else { save(); return nil }
+        var r = Routine(
+            id: Ids.new(), botId: botId, name: DayWatch.routineName, prompt: DayWatch.prompt,
+            cron: DayWatch.cron, timezone: timezone, notify: true,
+            nextRunAt: Cron.nextDate(DayWatch.cron, from: .now, timezone: timezone),
+            heartbeat: true, continuity: true
+        )
+        r.teamCheckin = true
+        routines[botId, default: []].append(r)
+        save()
+        return r
     }
 
     func lastPersonMessageDate() -> Date? {
@@ -183,6 +207,12 @@ extension AppStore {
                 .map { "\($0.name) (\(names[botId] ?? botId))" }
         }
         let team = bots.filter { !$0.chiefOfStaff }.map(\.name)
-        return .init(pendingApprovals: approvals, recentRoutines: recent.sorted(), team: team)
+        let failing = routines.flatMap { botId, list in
+            list.filter { !$0.teamCheckin && $0.failCount > 0 }
+                .map { "\($0.name) (\(names[botId] ?? botId))" + ($0.lastError.map { ": \($0.prefix(80))" } ?? "") }
+        }
+        var snap = TeamCheckin.Snapshot(pendingApprovals: approvals, recentRoutines: recent.sorted(), team: team)
+        snap.failedRoutines = failing.sorted()
+        return snap
     }
 }

@@ -16,6 +16,7 @@ public enum TeamCheckin {
         public var pendingApprovals: [String]   // "Bot: tool/detail"
         public var recentRoutines: [String]     // "Routine (Bot)"
         public var team: [String]               // "Bot (title)"
+        public var failedRoutines: [String] = []  // "Routine (Bot): error"
 
         public init(pendingApprovals: [String] = [], recentRoutines: [String] = [], team: [String] = []) {
             self.pendingApprovals = pendingApprovals
@@ -57,6 +58,7 @@ public enum TeamCheckin {
         let context = [
             line("Pending approvals", snapshot.pendingApprovals, none: "No pending approvals."),
             line("Routines that ran in the last \(routineWindowHours)h", snapshot.recentRoutines, none: "No routines ran in the last \(routineWindowHours)h."),
+            snapshot.failedRoutines.isEmpty ? "" : "Routines that are failing: " + snapshot.failedRoutines.prefix(10).joined(separator: "; "),
             snapshot.team.isEmpty ? "" : "Team: " + snapshot.team.joined(separator: ", "),
         ].filter { !$0.isEmpty }.joined(separator: "\n")
         let streak = silentStreak >= silentStreakNote
@@ -70,4 +72,18 @@ public enum TeamCheckin {
         \(context)
         """
     }
+}
+
+/// "Keep an eye on my day": a standing watch for the lead bot. Built on team check-ins, so it is
+/// skipped while the person is chatting and stays silent (`HEARTBEAT_OK`) unless something needs them.
+/// Turning it off is removing the routine; pausing the routine pauses the watch.
+public enum DayWatch {
+    public static let routineName = "Day watch"
+    /// Weekday working hours, every two hours.
+    public static let cron = "0 9,11,13,15,17 * * 1-5"
+    public static let prompt = """
+    Keep an eye on my day. Using the calendar and mail tools you have (skip any you don't), and the snapshot below, \
+    look for: meetings starting soon or clashing, important unread email, approvals waiting on me, and failing routines. \
+    Say ONE short note about what needs me now, most urgent first. If nothing does, reply exactly HEARTBEAT_OK.
+    """
 }

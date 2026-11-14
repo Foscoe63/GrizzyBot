@@ -56,6 +56,8 @@ Release (`.github/workflows/release.yml`): import Developer ID P12, Release buil
 
 - **Unreleased trio:** `ToolSelection` (+ `ToolSelectionView`, per-bot `toolSelection`, applied in `AppStore+AgentRun` / `+ToolExecution` / `AgentLoop`), `MeetingNotes` (`meeting_notes` tool, `/meeting`; transcript only, cannot join a call), `RoutingMemory` (cache + timings in `AppStore+Dispatch`, `routerTimeoutSeconds`). Not yet done: bump the version, refresh overlay goldens for the new settings UI.
 
+- **Also unreleased:** `TeamIncidents` + `AppStore+Incidents` (failed runs → Chief, hook at the end of the LLM run in `+AgentRun`), `DayWatch` (in `TeamCheckin.swift`, `setDayWatch` in `+Triggers`), `HeadlessCLI` + `Sources/GrizzyBotCLI` (SwiftPM product `grizzybot-cli`, not in the Xcode project; not named `grizzybot` because of the case-insensitive clash with `GrizzyBot`), `VoiceCall` (rules) + `Sources/GrizzyBot/VoiceCallController.swift` (mic/speaker loop, phone button in `ChatView`). The voice loop itself is untested by automation (needs mic); the rules are covered by `VoiceCallTests`.
+
 ## Product notes
 
 - **Computer host prompt:** In-app browser vs This Mac (legacy `docker` → in-app browser).

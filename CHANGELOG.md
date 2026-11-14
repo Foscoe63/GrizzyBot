@@ -2,11 +2,15 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
-## Unreleased
+## 0.14.0 — incident reports, day watch, CLI, voice calls
 
 - **Tool selection.** A bot's settings gain a Tool selection section for small-context local models: an allow list and an exclude list (`read_file`, `builtin:*`, `mcp:*`, `mcp:gmail:*`, `mcp:gmail:send`; exclude wins) and *lean turns*, which send only the tools a turn looks like it needs while the rest stay one `capabilities_load` away. The loop's own tools are never removed, and unknown selectors are flagged.
 - **Meeting notes.** The new `meeting_notes` tool and `/meeting` command turn a transcript (pasted, or a .vtt / .srt / .txt file) into a summary, decisions, action items with owners, open questions and attendees, saved as an artifact with a card in chat. Long transcripts are done in parts. It works from a transcript only; GrizzyBot cannot join a call, and a meeting link is explained rather than fetched.
 - **Router memory and timeout.** A repeat of a recent message to the same bots is routed from memory instead of calling the router model again, each router call is timed, and Settings → General → Delegation has a "Give up after" deadline (1–30 s, default 6).
+- **Incident reports to the Chief of Staff.** When a bot's run fails (in a chat or a scheduled/webhook routine), the Chief of Staff gets a clearly labelled report that is not from the person: which bot, why, and the last request and reply, quoted and bounded. It can retry with a corrected brief through `message_bot` or tell you. At most five reports an hour, the third on the same bot says to stop retrying, and nothing is sent when the Chief itself failed, there is no Chief, or the run was stopped or was a delegated job.
+- **Keep an eye on my day.** A toggle beside Daily check-ins runs a weekday watch (9–17, every two hours) for the lead bot: it uses the calendar and mail tools you've connected plus a team snapshot (now including failing routines) and stays silent with `HEARTBEAT_OK` unless something needs you. Skipped while you're chatting.
+- **Command-line client.** `swift build -c release --product grizzybot-cli` builds a tool that drives a running app through its control plane: `list`, `status`, `chat`, `search`, `run <bot> "<task>"` (waits for the reply), `stop`, `model`, `tools`, with `--json`, `GRIZZYBOT_TOKEN` / `GRIZZYBOT_PORT`, and exit codes (0 ok, 1 app error, 2 usage, 3 app unreachable, 4 token rejected). Approvals stay in the app.
+- **Live voice calls.** The phone button in a chat starts a hands-free call: it listens, sends when you pause, reads the reply aloud (code and links are summarised, long replies are cut with "the rest is in the chat"), and asks for approvals out loud. Only a short, clear "allow", "always allow" or "deny" counts; anything else asks again. Say "hang up" to end it. The mic is off while the bot speaks.
 
 ## 0.13.0 — teams as files
 

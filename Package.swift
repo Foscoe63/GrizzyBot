@@ -72,6 +72,14 @@ let package = Package(
             dependencies: ["GrizzyBotMLX", "GrizzyBotCore"],
             path: "Tests/GrizzyBotMLXTests"
         ),
+        // `grizzybot-cli`: a command-line client for a running app's control plane. Not named
+        // `grizzybot` because that collides with the `GrizzyBot` binary on a case-insensitive disk.
+        // SwiftPM only: `swift build -c release --product grizzybot-cli`; symlink it as `grizzybot`.
+        .executableTarget(
+            name: "grizzybot-cli",
+            dependencies: ["GrizzyBotCore"],
+            path: "Sources/GrizzyBotCLI"
+        ),
         .executableTarget(
             name: "GrizzyBotRoutineAgent",
             dependencies: ["GrizzyBotCore"],

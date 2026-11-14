@@ -26,6 +26,14 @@ struct TeamCheckinSettings: View {
                     .onSubmit(save)
                 GrizzyButton(title: "Save", variant: .cream, size: .sm, action: save)
             }
+            Toggle("Keep an eye on my day", isOn: Binding(
+                get: { store.isDayWatchOn(botId: botId) },
+                set: { store.setDayWatch(botId: botId, enabled: $0) }
+            ))
+            .font(.system(size: 12.5))
+            Text("Weekdays 9–17, every two hours: calendar, mail, approvals and failing routines. Silent unless something needs you.")
+                .font(.system(size: 11.5))
+                .foregroundStyle(Theme.textMuted)
         }
         .padding(.top, 8)
         .onAppear(perform: load)

@@ -246,6 +246,9 @@ extension AppStore {
     }
 
     /// Every text block of a thread's newest bot message, not just the first.
+    /// The bot's latest reply text in its main chat (used by voice calls).
+    public func lastReplyText(botId: String) -> String { latestBotReply(threadKey: threadKey(for: botId)) }
+
     func latestBotReply(threadKey key: String) -> String {
         guard let message = threads[key]?.messages.last(where: { $0.role == .bot }) else { return "" }
         return message.blocks.compactMap { block -> String? in

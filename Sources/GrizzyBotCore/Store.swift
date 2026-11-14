@@ -916,6 +916,8 @@ public final class AppStore {
     public var pendingTeamPackage: TeamPackage?
     /// Recent router-model decisions and timings (see `RoutingMemory`).
     public var routingMemory = RoutingMemory()
+    /// When each bot's failed runs were last reported to the Chief of Staff (see `TeamIncidents`).
+    var incidentHistory: [String: [Date]] = [:]
 
     /// When set, routine ticks skip UI navigation and the app may terminate after background runs finish.
     public var headlessRoutineTick = false

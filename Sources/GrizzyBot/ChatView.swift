@@ -19,6 +19,7 @@ struct ChatView: View {
     @State private var sessionNotice: String?
     @State private var pendingFiles: [URL] = []
     @State private var dictation = DictationSession()
+    @State private var call = VoiceCallController()
     @State private var searchQuery = ""
     @State private var searchThisThread = false
     @State private var pasteOverride = false
@@ -704,6 +705,25 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 28)
             }
+            if call.isActive {
+                HStack(spacing: 8) {
+                    Text("On a call with \(call.botName) · \(callPhaseLabel)")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Theme.orange)
+                    if !call.transcript.isEmpty {
+                        Text(call.transcript)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.textMuted)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Button("Hang up") { call.hangUp() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Theme.redError)
+                }
+                .padding(.horizontal, 28)
+            }
             if dictation.isListening, !dictation.transcript.isEmpty {
                 Text(dictation.transcript)
                     .font(.system(size: 13))
@@ -743,6 +763,19 @@ struct ChatView: View {
                     onTabComplete: completeSlashSuggestion
                 )
                 .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 110, alignment: .leading)
+
+                Button {
+                    if call.isActive { call.hangUp() }
+                    else if let bot { call.start(store: store, botId: bot.id) }
+                } label: {
+                    Image(systemName: call.isActive ? "phone.down.fill" : "phone.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(call.isActive ? Theme.redError : Theme.textLetter)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help(call.isActive ? "Hang up" : "Start a voice call")
+                .disabled(dictation.isListening)
 
                 Button {
                     if dictation.isListening {
@@ -1042,6 +1075,15 @@ struct ChatView: View {
             return
         }
         store.send(botId: bot.id, text: text, attaching: files)
+    }
+
+    private var callPhaseLabel: String {
+        switch call.phase {
+        case .listening: "listening"
+        case .thinking: "thinking"
+        case .speaking: "speaking"
+        case .waitingForApproval: "needs your approval"
+        }
     }
 
     @discardableResult

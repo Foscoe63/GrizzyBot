@@ -58,6 +58,9 @@ enum ReplySpeaker {
         }
     }
 
+    /// True while a reply is being read out (macOS voice or ElevenLabs audio).
+    static var isSpeaking: Bool { synth.isSpeaking || player?.isPlaying == true }
+
     static func stop() {
         synth.stopSpeaking(at: .immediate)
         player?.stop()
