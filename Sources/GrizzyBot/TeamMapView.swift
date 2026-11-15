@@ -24,6 +24,7 @@ struct TeamMapView: View {
     @State private var sentTo: (ids: [String], chief: String?)?
     @State private var flash: Set<String> = []
     @State private var announcement = ""
+    @State private var sheetError = ""
     @State private var canvasSize = CGSize(width: 800, height: 500)
 
     private let space = "teamMapCanvas"
@@ -51,11 +52,11 @@ struct TeamMapView: View {
         }
         .background(Theme.bgMain)
         .sheet(isPresented: $creating) { departmentSheet(title: "New department", text: $newName, confirm: "Create") {
-            if store.createDepartment(newName) { creating = false } else { announcement = "That name is taken or empty." }
+            if store.createDepartment(newName) { creating = false } else { sheetError = "That name is taken or empty." }
         } }
         .sheet(item: Binding(get: { renaming.map { Named(name: $0) } }, set: { renaming = $0?.name })) { item in
             departmentSheet(title: "Rename \(item.name)", text: $renameText, confirm: "Save") {
-                if store.renameDepartment(item.name, to: renameText) { renaming = nil } else { announcement = "That name is taken or empty." }
+                if store.renameDepartment(item.name, to: renameText) { renaming = nil } else { sheetError = "That name is taken or empty." }
             }
         }
         .confirmationDialog(pendingMove.map { "Move \($0.bot.name) to \($0.dept.isEmpty ? "General" : $0.dept)?" } ?? "",
@@ -96,7 +97,7 @@ struct TeamMapView: View {
                 .accessibilityLabel("Computers")
                 .popover(isPresented: $showComputers, arrowEdge: .bottom) { computersList }
             Menu {
-                Button("New department") { newName = ""; creating = true }
+                Button("New department") { newName = ""; sheetError = ""; creating = true }
             } label: {
                 Label("Add", systemImage: "plus").font(.system(size: 12, weight: .medium))
             }
@@ -268,7 +269,7 @@ struct TeamMapView: View {
 
     private func panelMenu(_ section: TeamMapSection) -> some View {
         Menu {
-            Button("Rename") { renameText = section.name; renaming = section.key }
+            Button("Rename") { renameText = section.name; sheetError = ""; renaming = section.key }
                 .disabled(section.key.isEmpty)
             Button("Delete department", role: .destructive) { deleting = section.key }
                 .disabled(section.key.isEmpty)
@@ -490,7 +491,7 @@ struct TeamMapView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(Theme.textBright)
             TextField("Name", text: text).textFieldStyle(.roundedBorder).onSubmit(action)
-            if !announcement.isEmpty { Text(announcement).font(.system(size: 12)).foregroundStyle(Theme.textSecondary) }
+            if !sheetError.isEmpty { Text(sheetError).font(.system(size: 12)).foregroundStyle(Theme.textSecondary) }
             HStack {
                 Spacer()
                 Button("Cancel") { creating = false; renaming = nil }.buttonStyle(.plain).foregroundStyle(Theme.textSecondary)
