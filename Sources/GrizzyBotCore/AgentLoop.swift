@@ -26,8 +26,11 @@ public struct BotRosterEntry: Sendable, Equatable {
     public var isChiefOfStaff: Bool
     /// What the bot can actually do ("web, files, shell"), from the tools switched on for it.
     public var abilities: String
+    /// Where the bot is filed ("" is General). Shown only when the roster spans more than one department.
+    public var department: String
 
-    public init(name: String, title: String = "", isChild: Bool = false, isChiefOfStaff: Bool = false, abilities: String = "") {
+    public init(name: String, title: String = "", isChild: Bool = false, isChiefOfStaff: Bool = false, abilities: String = "", department: String = "") {
+        self.department = department
         self.abilities = abilities
         self.name = name
         self.title = title
@@ -80,6 +83,8 @@ public struct AgentLoopRequest: Sendable {
     public var deferredTools: [ChatTool] = []
     /// The ready-made shared-instructions block for this bot's department ("" when it has none).
     public var departmentInstructions: String = ""
+    /// What a Chief of Staff is in charge of (empty for every other bot).
+    public var authorityNote: String = ""
 
     public init(
         endpoint: ModelEndpoint,
@@ -644,8 +649,10 @@ public enum AgentLoop {
                     ? "You are the chief of staff for this workspace. No other bots exist yet — spawn_bot when a job deserves its own standing bot."
                     : nil
             }
+            let spansDepartments = Set(entries.map(\.department)).count > 1
             let lines = entries.map { entry -> String in
                 var tags: [String] = []
+                if spansDepartments { tags.append("department: \(entry.department.isEmpty ? "General" : entry.department)") }
                 if entry.isChiefOfStaff { tags.append("chief of staff") }
                 if entry.isChild { tags.append("you created it") }
                 let role = entry.title.isEmpty ? "" : " — \(entry.title)"
@@ -733,6 +740,10 @@ public enum AgentLoop {
             canMessage: request.tools.contains(where: { $0.function.name == "message_bot" })
         ) {
             lines.append(roster)
+        }
+        let authority = request.authorityNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !authority.isEmpty {
+            lines.append(authority)
         }
         let memory = request.memory.trimmingCharacters(in: .whitespacesAndNewlines)
         if !memory.isEmpty {

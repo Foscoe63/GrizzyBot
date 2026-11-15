@@ -966,7 +966,8 @@ extension AppStore {
                     title: $0.title.isEmpty ? $0.description : $0.title,
                     isChild: $0.parentBotId == bot.id,
                     isChiefOfStaff: $0.chiefOfStaff,
-                    abilities: profile(for: $0).abilitySummary
+                    abilities: profile(for: $0).abilitySummary,
+                    department: department(of: $0.id)
                 )
             }
     }

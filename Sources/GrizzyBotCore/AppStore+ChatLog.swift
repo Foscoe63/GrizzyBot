@@ -266,7 +266,12 @@ extension AppStore {
         let open = botChat.indices.filter {
             botChat[$0].fromBotId == lead && botChat[$0].toBotId == peer.id && botChat[$0].outcome == .sent
         }
-        guard !open.isEmpty else {
+        // A Chief in charge of the peer's department may stop it without having handed it the job.
+        let byAuthority = hasAuthority(lead, over: peer.id)
+        guard !open.isEmpty || byAuthority else {
+            if let chief = bots.first(where: { $0.id == lead }), chief.chiefOfStaff {
+                return "You have no open job with \(peer.name), so you can't stop it. " + authorityRefusal(chief: chief, target: peer)
+            }
             return "You have no open job with \(peer.name), so you can't stop it. Use message_bot to reach it."
         }
         let key = threadKey(for: peer.id)

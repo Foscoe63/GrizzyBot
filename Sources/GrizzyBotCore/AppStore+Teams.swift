@@ -163,6 +163,7 @@ extension AppStore {
     public func createDepartment(_ rawName: String, botIds: [String] = []) -> Bool {
         let name = String(rawName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
         guard !name.isEmpty, !departmentExists(name) else { return false }
+        grantNewDepartment(name)
         teamMap.departments.append(name)
         for id in botIds { moveBot(id, toDepartment: name, save: false) }
         save()
@@ -179,6 +180,7 @@ extension AppStore {
         if let p = teamMap.positions.removeValue(forKey: old) { teamMap.positions[name] = p }
         if let o = teamMap.botOrders.removeValue(forKey: old) { teamMap.botOrders[name] = o }
         if let brief = teamMap.instructions.removeValue(forKey: old) { teamMap.instructions[name] = brief }
+        renameManagedDepartment(old, to: name)
         save()
         return true
     }
@@ -191,6 +193,7 @@ extension AppStore {
         teamMap.positions[name] = nil
         teamMap.botOrders[name] = nil
         teamMap.instructions[name] = nil
+        dropManagedDepartment(name)
         save()
     }
 

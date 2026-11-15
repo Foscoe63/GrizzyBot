@@ -335,6 +335,7 @@ extension RightPanelView {
                     ) {
                         store.setAutoDispatch(bot.id, enabled: !bot.autoDispatch)
                     }
+                    ChiefDepartmentsSettings(botId: bot.id)
                     TeamCheckinSettings(botId: bot.id)
                 }
 

@@ -1205,6 +1205,9 @@ extension AppStore {
                 parentBotId: botId
             )
             activeBotId = previousSelection
+            // A bot a bot creates is filed where its creator is, so authority and instructions follow it there.
+            let creatorDepartment = department(of: botId)
+            if !creatorDepartment.isEmpty { moveBot(child.id, toDepartment: creatorDepartment) }
             if !firstPrompt.isEmpty {
                 send(botId: child.id, text: firstPrompt)
             }
@@ -1388,7 +1391,10 @@ extension AppStore {
             if target.id == botId {
                 return AgentToolCallResult(output: "You cannot delete yourself.")
             }
-            if target.parentBotId != botId {
+            if target.parentBotId != botId && !hasAuthority(botId, over: target.id) {
+                if let chief = bots.first(where: { $0.id == botId }), chief.chiefOfStaff {
+                    return AgentToolCallResult(output: "You can only delete bots you spawned. " + authorityRefusal(chief: chief, target: target))
+                }
                 return AgentToolCallResult(output: "You can only delete bots you spawned.")
             }
             if !confirm.isEmpty, target.name.caseInsensitiveCompare(confirm) != .orderedSame {
