@@ -52,6 +52,13 @@ extension AppSettingsOverlayView {
         }
 
         settingsCard(
+            title: "External coding agents",
+            subtitle: "Coding agents a bot can hand a job to, such as opencode. Turn on “External coding agent” in a bot's tools to let it. Each job asks you first, and an agent can never run commands."
+        ) {
+            ExternalAgentsBlock()
+        }
+
+        settingsCard(
             title: "Default tools for new bots",
             subtitle: "Applied when you create a bot. Existing bots keep their own Tools list. MCP servers are configured above."
         ) {

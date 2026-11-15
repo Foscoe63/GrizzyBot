@@ -21,7 +21,7 @@ public struct BotTemplate: Sendable, Hashable, Identifiable {
         blurb: String,
         instructions: String,
         skillIds: [String],
-        toolIds: [String] = AgentToolCatalog.builtinIds,
+        toolIds: [String] = AgentToolCatalog.allIds,
         mcpTools: [String: [String]] = BotTemplates.hindsightOnly
     ) {
         self.id = id

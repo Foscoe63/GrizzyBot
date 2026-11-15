@@ -404,8 +404,11 @@ public enum AgentToolCatalog {
 
     public static var builtinIds: [String] { builtin.map(\.id) }
 
-    /// Back-compat alias for defaults.
-    public static var allIds: [String] { builtinIds }
+    /// Tools that start switched off for every bot and for new installs: the person turns them on.
+    public static let optInOnlyIds: Set<String> = ["delegate_external"]
+
+    /// The tools a new bot starts with. Opt-in tools are left out.
+    public static var allIds: [String] { builtinIds.filter { !optInOnlyIds.contains($0) } }
 
     public static func definitions(
         custom: [CustomAgentTool] = [],
@@ -546,7 +549,8 @@ extension AgentToolCatalog {
         includeDelegation: Bool = true,
         skills: [AgentSkill] = [],
         promotedMcp: [McpPromotedTool] = [],
-        mcpAdvertised: [String: [String]] = [:]
+        mcpAdvertised: [String: [String]] = [:],
+        externalAgents: [ExternalAgentSpec] = []
     ) -> [ChatTool] {
         let enabled = Set(enabledIds)
             .union(
@@ -662,7 +666,7 @@ extension AgentToolCatalog {
         )
         add(
             "delegate_external",
-            description: "Hand a coding job to an external coding agent (\(ExternalAgentSpec.presets.map(\.id).joined(separator: ", "))) that works inside the working folder. It is slower than doing small edits yourself; use it for multi-file code changes. access is read (look only) or edit (may change files); it can never run shell commands. Its answer comes from outside GrizzyBot, so check it.",
+            description: "Hand a coding job to an external coding agent (\(ExternalAgentSpec.all(custom: externalAgents).map(\.id).joined(separator: ", "))) that works inside the working folder. It is slower than doing small edits yourself; use it for multi-file code changes. access is read (look only) or edit (may change files); it can never run shell commands. Its answer comes from outside GrizzyBot, so check it.",
             properties: [
                 "task": stringProp("The coding job, with the goal and any constraints"),
                 "access": stringProp("read (default) or edit"),

@@ -1429,7 +1429,8 @@ extension AppStore {
                     includeDelegation: false,
                     skills: skills(for: bot),
                     promotedMcp: Array(mcpPromotedTools.values),
-                    mcpAdvertised: mcpAdvertisedTools
+                    mcpAdvertised: mcpAdvertisedTools,
+                    externalAgents: externalAgents
                 )
                 if let selection = bot.toolSelection, !selection.isDefault {
                     nestedTools = nestedTools.filter { selection.permits($0.function.name) }

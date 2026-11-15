@@ -352,7 +352,8 @@ extension AppStore {
             includeDelegation: true,
             skills: skills(for: bot),
             promotedMcp: Array(mcpPromotedTools.values),
-            mcpAdvertised: mcpAdvertisedTools
+            mcpAdvertised: mcpAdvertisedTools,
+            externalAgents: externalAgents
         )
         var tools = allTools
         var deferredTools: [ChatTool] = []

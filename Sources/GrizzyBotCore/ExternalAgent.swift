@@ -1,7 +1,7 @@
 import Foundation
 
 /// An external coding agent GrizzyBot can hand a job to over ACP.
-public struct ExternalAgentSpec: Sendable, Equatable {
+public struct ExternalAgentSpec: Sendable, Equatable, Codable, Identifiable, Hashable {
     public var id: String
     public var name: String
     /// Executable followed by its arguments.
@@ -13,14 +13,66 @@ public struct ExternalAgentSpec: Sendable, Equatable {
         self.command = command
     }
 
-    /// Built in for now; a settings screen for custom agents comes later.
+    /// Built in. Settings adds custom ones beside these.
     public static let presets: [ExternalAgentSpec] = [
         ExternalAgentSpec(id: "opencode", name: "opencode", command: ["opencode", "acp"]),
     ]
 
-    public static func named(_ id: String) -> ExternalAgentSpec? {
+    /// Built-in agents first, then the ones the person added.
+    public static func all(custom: [ExternalAgentSpec]) -> [ExternalAgentSpec] { presets + custom }
+
+    public static func isPreset(_ id: String) -> Bool { presets.contains { $0.id == id } }
+
+    /// An agent by id or name, case-insensitively. Empty means the first built-in agent.
+    public static func named(_ id: String, custom: [ExternalAgentSpec] = []) -> ExternalAgentSpec? {
         let key = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return key.isEmpty ? presets.first : presets.first { $0.id == key }
+        if key.isEmpty { return presets.first }
+        return all(custom: custom).first { $0.id.lowercased() == key || $0.name.lowercased() == key }
+    }
+
+    /// A lowercase id from a display name, never one a built-in agent already uses.
+    public static func makeId(from name: String, existing: [ExternalAgentSpec]) -> String {
+        let base = name.lowercased()
+            .map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
+            .split(separator: "-").joined(separator: "-")
+        let root = base.isEmpty ? "agent" : base
+        let taken = Set(all(custom: existing).map(\.id))
+        if !taken.contains(root) { return root }
+        var n = 2
+        while taken.contains("\(root)-\(n)") { n += 1 }
+        return "\(root)-\(n)"
+    }
+
+    /// Splits a command line into words, honouring single and double quotes and backslash escapes.
+    /// Nothing is run through a shell; this only decides where one argument ends.
+    public static func parseCommandLine(_ line: String) -> [String] {
+        var words: [String] = []
+        var current = ""
+        var quote: Character?
+        var started = false
+        var escaped = false
+        for ch in line {
+            if escaped { current.append(ch); escaped = false; continue }
+            if ch == "\\" && quote != "'" { escaped = true; started = true; continue }
+            if let q = quote {
+                if ch == q { quote = nil } else { current.append(ch) }
+            } else if ch == "\"" || ch == "'" {
+                quote = ch; started = true
+            } else if ch.isWhitespace {
+                if started { words.append(current); current = ""; started = false }
+            } else {
+                current.append(ch); started = true
+            }
+        }
+        if started { words.append(current) }
+        return words
+    }
+
+    /// Why a command line cannot be used, or nil when it can.
+    public static func commandProblem(_ command: [String]) -> String? {
+        guard let first = command.first, !first.isEmpty else { return "Enter the command that starts the agent." }
+        if first.contains("=") && !first.hasPrefix("/") { return "Start with the program name, not VAR=value." }
+        return nil
     }
 }
 

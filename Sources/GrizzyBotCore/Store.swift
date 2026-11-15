@@ -57,6 +57,8 @@ public final class AppStore {
     public var knowledgeStats: [String: KnowledgeIndexStats] = [:]
     @ObservationIgnored let knowledgeIndexer = KnowledgeIndexer()
     public var grantedFolders: [GrantedFolder] = []
+    /// External coding agents the person added, beside the built-in ones.
+    public var externalAgents: [ExternalAgentSpec] = []
     public var pluginGrants: [PluginGrant] = []
     public var sandboxComponents: [SandboxComponent] = []
     public var mcpAdvertisedTools: [String: [String]] = [:]
@@ -347,7 +349,15 @@ public final class AppStore {
         seedSeenToolIdsIfNeeded()
         var catalogChanged = false
         for id in AgentToolCatalog.builtinIds + CanvasBoardStore.toolIds + ArtifactStore.toolIds {
-            if optInNewTool(id) { catalogChanged = true }
+            if AgentToolCatalog.optInOnlyIds.contains(id) {
+                // Known, but never switched on for anyone behind their back.
+                if !appConfig.seenToolIds.contains(id) {
+                    appConfig.seenToolIds.append(id)
+                    catalogChanged = true
+                }
+            } else if optInNewTool(id) {
+                catalogChanged = true
+            }
         }
         if catalogChanged {
             save()
@@ -455,6 +465,7 @@ public final class AppStore {
         mcpServers = []
         folderWatchers = []
         grantedFolders = []
+        externalAgents = []
         actionPolicy = .openDefault
         knowledgeSources = []
         pluginGrants = []
@@ -498,6 +509,7 @@ public final class AppStore {
         groups = ws.groups
         botChat = ws.botChat
         grantedFolders = ws.grantedFolders
+        externalAgents = ws.externalAgents
         appConfig = ws.appConfig
         customTools = ws.customTools
         mcpServers = ws.mcpServers.map { server in
@@ -586,7 +598,8 @@ public final class AppStore {
             sandboxComponents: sandboxComponents,
             mcpAdvertisedTools: mcpAdvertisedTools,
             botChat: botChat,
-            grantedFolders: grantedFolders
+            grantedFolders: grantedFolders,
+            externalAgents: externalAgents
         )
     }
 
