@@ -2,8 +2,10 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
-## Unreleased
+## 0.15.0 — team map and external coding agents
 
+- **Team map.** A Team screen groups bots into departments on a canvas: drag bots between panels, drag panels to place them, pick a lead per department, and message a department or the whole team from the box under the map. Departments carry shared instructions that go into every member's prompt, shared memory notes you accept, reject, edit, pin or undo (a proposed note shows as a card in the chat), a Chief of Staff whose authority follows departments, and usage by department. Team notes are included in past-chat search.
+- **External coding agents.** A new opt-in `delegate_external` tool hands a coding job to an agent that speaks the Agent Client Protocol, such as `opencode acp`. Read access is the default; edit access needs you to approve it, and an agent's own permission requests are answered by a fixed policy (never run commands, never "always allow"). Settings → Tools → External coding agents adds, tests and removes agents.
 - **OpenCode model pinning.** The external coding agent tool takes an optional `model` (`lmstudio/<id>` for a model loaded in LM Studio, or any `provider/model` OpenCode knows); GrizzyBot sets it over ACP for that job and refuses clearly if OpenCode will not switch. Settings → Tools → External coding agents shows an install note when `opencode` is missing and lists the models LM Studio has loaded. `~/.opencode/bin` is on the agent's PATH.
 
 ## 0.14.0 — incident reports, day watch, CLI, voice calls
