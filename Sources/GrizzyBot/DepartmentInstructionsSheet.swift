@@ -33,7 +33,7 @@ struct DepartmentInstructionsSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
             GrizzyTextEditor(
                 placeholder: "Goals\n- Ship the onboarding refresh\n\nDecisions\n- Keep customer data local\n\nPreferences\n- Use concise weekly updates",
-                text: $text, fontSize: 12.5, textColor: Theme.textCream, lines: 12...14
+                text: $text, fontSize: 12.5, textColor: Theme.textBright, lines: 12...14
             )
             .accessibilityLabel("\(label) shared instructions")
             HStack(alignment: .top) {

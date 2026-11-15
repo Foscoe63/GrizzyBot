@@ -135,7 +135,7 @@ public enum TeamMapLogic {
     /// keeps its history under its old name. Records with no department land in an "Earlier" bucket.
     public static func usageByDepartment(_ records: [UsageRecord], since: Date, sections: [TeamMapSection]) -> [DepartmentUsage] {
         var rows: [String: DepartmentUsage] = [:]
-        var earlier = DepartmentUsage(key: "", name: "Before departments were tracked", filed: false, inputTokens: 0, outputTokens: 0, runs: 0)
+        var earlier = DepartmentUsage(key: "", name: "Earlier (not filed)", filed: false, inputTokens: 0, outputTokens: 0, runs: 0)
         for section in sections {
             rows[section.key] = DepartmentUsage(key: section.key, name: section.name, filed: true, inputTokens: 0, outputTokens: 0, runs: 0)
         }

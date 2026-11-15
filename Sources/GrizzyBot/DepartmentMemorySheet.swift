@@ -83,7 +83,7 @@ struct DepartmentMemorySheet: View {
                 if !isProposal && !loaded { Text("not in prompt").font(.system(size: 10.5)).foregroundStyle(Theme.textMuted) }
             }
             if !fact.detail.isEmpty {
-                Text(fact.detail).font(.system(size: 12.5)).foregroundStyle(Theme.textCream).fixedSize(horizontal: false, vertical: true)
+                Text(fact.detail).font(.system(size: 12.5)).foregroundStyle(Theme.textBright).fixedSize(horizontal: false, vertical: true)
             }
             if !fact.aliases.isEmpty {
                 Text("Also: " + fact.aliases.joined(separator: ", ")).font(.system(size: 11.5)).foregroundStyle(Theme.textMuted)

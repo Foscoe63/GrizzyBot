@@ -137,10 +137,10 @@ struct TeamMapView: View {
             ForEach(rows) { row in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
-                        Text(row.name).foregroundStyle(row.filed ? Theme.textBright : Theme.textMuted)
-                        Spacer()
+                        Text(row.name).foregroundStyle(row.filed ? Theme.textBright : Theme.textMuted).lineLimit(1)
+                        Spacer(minLength: 12)
                         Text("\(row.runs) run\(row.runs == 1 ? "" : "s") · \(TokenAccounting.grouped(row.tokens)) tokens")
-                            .foregroundStyle(Theme.textSecondary).monospacedDigit()
+                            .foregroundStyle(Theme.textSecondary).monospacedDigit().lineLimit(1).fixedSize()
                     }
                     .font(.system(size: 12))
                     GeometryReader { g in
@@ -151,7 +151,7 @@ struct TeamMapView: View {
             Text("Counted in the department a bot was in when it ran, so moving a bot never rewrites its past.")
                 .font(.system(size: 11)).foregroundStyle(Theme.textMuted).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14).frame(width: 340)
+        .padding(14).frame(width: 400)
     }
 
     private var computersList: some View {

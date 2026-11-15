@@ -157,7 +157,7 @@ struct DepartmentUsageTests {
         store.createDepartment("Quiet")
         store.usage = [record("Research", 100, 50), record("Research", 10, 5), record("", 20, 10), record(nil, 7, 3)]
         let rows = store.departmentUsage()
-        #expect(rows.map(\.name) == ["Research", "General", "Quiet", "Before departments were tracked"])
+        #expect(rows.map(\.name) == ["Research", "General", "Quiet", "Earlier (not filed)"])
         #expect(rows[0].tokens == 165 && rows[0].runs == 2)
         #expect(rows[1].tokens == 30)
         #expect(rows[2].tokens == 0 && rows[2].runs == 0)
