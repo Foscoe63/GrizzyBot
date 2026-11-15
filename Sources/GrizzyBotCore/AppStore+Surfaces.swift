@@ -280,6 +280,12 @@ extension AppStore {
         activeGroupId = nil
     }
 
+    public func showTeamMapPage() {
+        mainView = .teamMap
+        panel = nil
+        activeGroupId = nil
+    }
+
     public func showChat() {
         mainView = .chat
     }

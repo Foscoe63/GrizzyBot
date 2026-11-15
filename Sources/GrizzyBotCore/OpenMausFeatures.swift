@@ -53,6 +53,7 @@ public enum ShellMainView: String, Codable, Sendable, Equatable {
     case chat
     case routines
     case botChat
+    case teamMap
 }
 
 public enum ThemeAppearanceMode: String, Codable, Sendable, CaseIterable, Identifiable {

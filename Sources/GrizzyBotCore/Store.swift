@@ -59,6 +59,7 @@ public final class AppStore {
     public var grantedFolders: [GrantedFolder] = []
     /// External coding agents the person added, beside the built-in ones.
     public var externalAgents: [ExternalAgentSpec] = []
+    public var teamMap = TeamMapState()
     public var pluginGrants: [PluginGrant] = []
     public var sandboxComponents: [SandboxComponent] = []
     public var mcpAdvertisedTools: [String: [String]] = [:]
@@ -466,6 +467,7 @@ public final class AppStore {
         folderWatchers = []
         grantedFolders = []
         externalAgents = []
+        teamMap = TeamMapState()
         actionPolicy = .openDefault
         knowledgeSources = []
         pluginGrants = []
@@ -510,6 +512,7 @@ public final class AppStore {
         botChat = ws.botChat
         grantedFolders = ws.grantedFolders
         externalAgents = ws.externalAgents
+        teamMap = ws.teamMap
         appConfig = ws.appConfig
         customTools = ws.customTools
         mcpServers = ws.mcpServers.map { server in
@@ -599,7 +602,8 @@ public final class AppStore {
             mcpAdvertisedTools: mcpAdvertisedTools,
             botChat: botChat,
             grantedFolders: grantedFolders,
-            externalAgents: externalAgents
+            externalAgents: externalAgents,
+            teamMap: teamMap
         )
     }
 
