@@ -81,6 +81,8 @@ public actor AcpClient {
         guard let first = command.first, !first.isEmpty else {
             throw AcpError.launchFailed("no command")
         }
+        // Writing to an agent that has already exited must fail with an error, not kill the app.
+        signal(SIGPIPE, SIG_IGN)
         process.executableURL = URL(fileURLWithPath: first.hasPrefix("/") ? first : "/usr/bin/env")
         process.arguments = first.hasPrefix("/") ? Array(command.dropFirst()) : command
         var env = ProcessInfo.processInfo.environment
