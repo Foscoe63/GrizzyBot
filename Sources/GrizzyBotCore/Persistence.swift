@@ -240,11 +240,33 @@ public struct Persistence: Sendable {
 
     public func saveWorkspace(_ workspace: UserWorkspace, userId: String, providerCredentials: [String: ProviderCredential] = [:]) {
         let disk = WorkspaceSecrets.from(workspace: workspace).stripped(from: workspace)
+        guard preserveBeforeOverwrite(replacingWith: workspace) else { return }
         save(disk, to: "workspace.json")
         var secrets = WorkspaceSecrets.from(workspace: workspace)
         secrets.providerCredentials = providerCredentials
         if !secrets.isEmpty {
             try? SecretStore.save(secrets, userId: userId)
+        }
+    }
+
+    /// The one moment a workspace can be lost is the save that replaces it. If the file on disk is one this
+    /// build cannot read, or it holds bots and the new state holds none, the old file is copied aside first
+    /// (`workspace.json.kept-<time>`). If that copy cannot be made the save is skipped, so the original
+    /// stays exactly as it was. Returns whether the save may go ahead.
+    func preserveBeforeOverwrite(replacingWith workspace: UserWorkspace) -> Bool {
+        let url = root.appendingPathComponent("workspace.json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return true }
+        let existing = (try? Data(contentsOf: url)).flatMap { try? Self.decoder.decode(UserWorkspace.self, from: $0) }
+        let atRisk = existing == nil || (!(existing?.bots.isEmpty ?? true) && workspace.bots.isEmpty)
+        guard atRisk else { return true }
+        let stamp = ISO8601DateFormatter().string(from: .now).replacingOccurrences(of: ":", with: "")
+        let aside = root.appendingPathComponent("workspace.json.kept-\(stamp)")
+        if FileManager.default.fileExists(atPath: aside.path) { return true }
+        do {
+            try FileManager.default.copyItem(at: url, to: aside)
+            return true
+        } catch {
+            return false
         }
     }
 
