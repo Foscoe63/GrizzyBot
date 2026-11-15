@@ -333,6 +333,8 @@ public final class AppStore {
     }
 
     public init(dataDirectory: URL? = nil, delayScale: Double = 1.0) {
+        // Only the real app, which passes no directory, may use the person's Keychain.
+        if dataDirectory != nil { AccountCredentialStore.useInMemoryStorage() }
         let root = dataDirectory ?? Persistence.defaultGlobalRoot()
         self.globalRoot = root
         AccountMigration.migrateIfNeeded(globalRoot: root)

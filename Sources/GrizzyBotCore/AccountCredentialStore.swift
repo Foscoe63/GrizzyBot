@@ -2,10 +2,36 @@ import Foundation
 import Security
 
 /// Password hashes live in Keychain — never in users.json on disk.
+///
+/// A store that was given its own data directory (tests, snapshots, UI-test launches) keeps them in
+/// memory instead, so a throwaway account never lands in the person's real login Keychain. Every
+/// such sign-up used to leave an item behind for good, and each insert gets slower as the Keychain
+/// grows, which stalled the main thread and made unrelated tests time out.
 public enum AccountCredentialStore {
     private static let service = "com.grizzybot.app.credentials"
 
+    private final class Memory: @unchecked Sendable {
+        private let lock = NSLock()
+        private var active = false
+        private var hashes: [String: String] = [:]
+
+        var isActive: Bool { lock.lock(); defer { lock.unlock() }; return active }
+        func activate() { lock.lock(); active = true; lock.unlock() }
+        func set(_ id: String, _ hash: String) { lock.lock(); hashes[id] = hash; lock.unlock() }
+        func get(_ id: String) -> String? { lock.lock(); defer { lock.unlock() }; return hashes[id] }
+        func remove(_ id: String) { lock.lock(); hashes[id] = nil; lock.unlock() }
+    }
+
+    private static let memory = Memory()
+
+    /// From now on this process keeps credentials in memory and never touches the Keychain. One way on
+    /// purpose: a process that ever ran a throwaway store must not write to the real one afterwards.
+    public static func useInMemoryStorage() { memory.activate() }
+
+    public static var usesInMemoryStorage: Bool { memory.isActive }
+
     public static func save(userId: String, passwordHash: String) throws {
+        if memory.isActive { memory.set(userId, passwordHash); return }
         let data = Data(passwordHash.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -32,6 +58,7 @@ public enum AccountCredentialStore {
     }
 
     public static func load(userId: String) -> String? {
+        if memory.isActive { return memory.get(userId) }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -46,6 +73,7 @@ public enum AccountCredentialStore {
     }
 
     public static func delete(userId: String) {
+        if memory.isActive { memory.remove(userId); return }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
