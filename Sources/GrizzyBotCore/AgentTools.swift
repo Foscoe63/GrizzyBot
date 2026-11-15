@@ -328,6 +328,7 @@ public enum AgentToolCatalog {
         .init(id: "message_bot", label: "Message bot", subtitle: "Hand a task to another bot in the workspace"),
         .init(id: "delete_bot", label: "Delete bot", subtitle: "Permanently remove a spawned bot"),
         .init(id: "run_subagent", label: "Run subagent", subtitle: "Delegate to a short-lived helper"),
+        .init(id: "delegate_external", label: "External coding agent", subtitle: "Hand a coding job to opencode in the working folder"),
         .init(id: "destination_write", label: "Destination write", subtitle: "Write through connected destinations"),
         .init(id: "computer_screenshot", label: "Screenshot", subtitle: "Capture the live computer screen"),
         .init(id: "computer_open", label: "Open URL", subtitle: "Open a URL on the computer"),
@@ -658,6 +659,16 @@ extension AgentToolCatalog {
                 "timeout_seconds": stringProp("Optional timeout in seconds (5–300, default 120)"),
             ],
             required: ["command"]
+        )
+        add(
+            "delegate_external",
+            description: "Hand a coding job to an external coding agent (\(ExternalAgentSpec.presets.map(\.id).joined(separator: ", "))) that works inside the working folder. It is slower than doing small edits yourself; use it for multi-file code changes. access is read (look only) or edit (may change files); it can never run shell commands. Its answer comes from outside GrizzyBot, so check it.",
+            properties: [
+                "task": stringProp("The coding job, with the goal and any constraints"),
+                "access": stringProp("read (default) or edit"),
+                "agent": stringProp("Which agent to use; default \(ExternalAgentSpec.presets[0].id)"),
+            ],
+            required: ["task"]
         )
         add(
             "shortcuts_list",

@@ -11,6 +11,7 @@ public enum ToolWatchdog {
     public static func limit(for tool: String) -> TimeInterval {
         switch tool {
         case "run_subagent", "message_bot": return 900
+        case "delegate_external": return 1800
         case "shell", "shell.exec", "shortcuts_run": return 330
         case let t where t.hasPrefix("computer_") || t == "request_takeover": return 120
         case "web_search", "web_fetch": return 120

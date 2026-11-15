@@ -1402,6 +1402,17 @@ extension AppStore {
                 blocks: [.childBot(botId: id, name: n, title: nil, status: .deleted)]
             )
 
+        case "delegate_external":
+            return await runExternalAgent(
+                bot: bot,
+                task: s("task", "prompt"),
+                access: s("access"),
+                agent: s("agent"),
+                argumentsJSON: argumentsJSON,
+                approved: approved,
+                taint: taint
+            )
+
         case "run_subagent":
             let helperName = s("name").isEmpty ? "helper" : s("name")
             let task = s("task")
