@@ -10,6 +10,7 @@ struct ExternalAgentsBlock: View {
     @State private var problem: String?
     @State private var testing: Set<String> = []
     @State private var results: [String: TestResult] = [:]
+    @State private var lmModels: [LMStudioModels.Loaded] = []
 
     private struct TestResult {
         var ok: Bool
@@ -43,6 +44,7 @@ struct ExternalAgentsBlock: View {
 
             if adding { form.padding(.top, 10) }
         }
+        .task { lmModels = await LMStudioModels.loaded() }
     }
 
     private func row(_ spec: ExternalAgentSpec) -> some View {
@@ -79,6 +81,18 @@ struct ExternalAgentsBlock: View {
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(Theme.textSecondary)
                 .textSelection(.enabled)
+            if let note = ExternalAgentSetup.note(for: spec) {
+                Text(note)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.orange)
+            }
+            if spec.id == "opencode" {
+                Text(lmModels.isEmpty
+                    ? "Models: opencode's own default. Load a model in LM Studio to pin it as lmstudio/<model>."
+                    : "Models: opencode's default, or pin " + lmModels.map { LMStudioModels.openCodeValue($0) }.joined(separator: ", "))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.textMuted)
+            }
             if let result = results[spec.id] {
                 Text(result.text)
                     .font(.system(size: 12))

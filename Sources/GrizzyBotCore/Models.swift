@@ -39,6 +39,9 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var speakReplies: Bool
     public var notifications: Bool
     public var chiefOfStaff: Bool
+    /// Departments (besides its own) a Chief of Staff is in charge of: it may stop and delete the bots in them.
+    /// "" is General. Only the person edits this; inert while the bot is not the Chief.
+    public var managedDepartments: [String]
     public var computerMode: ComputerMode
     public var modelProvider: String?
     public var modelId: String?
@@ -100,6 +103,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         speakReplies: Bool = false,
         notifications: Bool = true,
         chiefOfStaff: Bool = false,
+        managedDepartments: [String] = [],
         computerMode: ComputerMode = .auto,
         modelProvider: String? = nil,
         modelId: String? = nil,
@@ -138,6 +142,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.speakReplies = speakReplies
         self.notifications = notifications
         self.chiefOfStaff = chiefOfStaff
+        self.managedDepartments = managedDepartments
         self.computerMode = computerMode
         self.modelProvider = modelProvider
         self.modelId = modelId
@@ -160,7 +165,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case avatarShape, avatarImageRev
         case id, name, title, description, instructions, color, notifyOnFinish, parentBotId
         case threadId, preview, status, updatedAt, createdAt
-        case pinned, hidden, unread, autoApprove, shellNetwork, speakReplies, notifications, chiefOfStaff
+        case pinned, hidden, unread, autoApprove, shellNetwork, speakReplies, notifications, chiefOfStaff, managedDepartments
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
         case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, goal
         case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable, toolSelection
@@ -189,6 +194,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         speakReplies = try c.decodeIfPresent(Bool.self, forKey: .speakReplies) ?? false
         notifications = try c.decodeIfPresent(Bool.self, forKey: .notifications) ?? true
         chiefOfStaff = try c.decodeIfPresent(Bool.self, forKey: .chiefOfStaff) ?? false
+        managedDepartments = try c.decodeIfPresent([String].self, forKey: .managedDepartments) ?? []
         computerMode = try c.decodeIfPresent(ComputerMode.self, forKey: .computerMode) ?? .auto
         modelProvider = try c.decodeIfPresent(String.self, forKey: .modelProvider)
         modelId = try c.decodeIfPresent(String.self, forKey: .modelId)
@@ -285,6 +291,9 @@ public enum MessageBlock: Codable, Sendable, Hashable {
     /// the content is read live from the artifact store, so an artifact edited
     /// later does not leave a stale copy in the transcript.
     case artifact(id: String, title: String, kind: ArtifactKind, summary: String, deleted: Bool)
+    /// A card for a team note a bot proposed. Only the identity is stored; the note's text and whether it is
+    /// still waiting, accepted, rejected or undone are read live, so the card never goes stale.
+    case teamNote(department: String, factId: String)
 }
 
 public enum ApprovalStatus: String, Codable, Sendable {
@@ -753,6 +762,9 @@ public struct UsageRecord: Codable, Sendable, Hashable, Identifiable {
     public var createdAt: Date
     /// Estimated tokens kept out of the prompt by output compression and compaction. Nil on older records.
     public var tokensSaved: Int?
+    /// The bot's department when the run was booked, so moving a bot later never rewrites its history.
+    /// "" is General. Nil on records saved before departments were tracked.
+    public var department: String?
 
     public init(
         id: String,
@@ -764,8 +776,10 @@ public struct UsageRecord: Codable, Sendable, Hashable, Identifiable {
         inputTokens: Int,
         outputTokens: Int,
         createdAt: Date = .now,
-        tokensSaved: Int? = nil
+        tokensSaved: Int? = nil,
+        department: String? = nil
     ) {
+        self.department = department
         self.tokensSaved = tokensSaved
         self.id = id
         self.botId = botId

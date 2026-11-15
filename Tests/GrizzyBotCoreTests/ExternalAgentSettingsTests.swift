@@ -131,4 +131,14 @@ struct ExternalAgentSettingsTests {
         second.setAllDefaultTools(enabled: true)
         #expect(second.appConfig.defaultEnabledTools.contains("delegate_external"))
     }
+
+    @Test("LM Studio's model list keeps only loaded llm/vlm models")
+    func lmStudioParsing() {
+        let json = #"{"data":[{"id":"a","state":"loaded","type":"llm","loaded_context_length":8192,"max_context_length":32768},{"id":"b","state":"not-loaded","type":"llm"},{"id":"e","state":"loaded","type":"embeddings"},{"id":"v","state":"loaded","type":"vlm","max_context_length":4096}]}"#
+        let m = LMStudioModels.parse(Data(json.utf8))
+        #expect(m.map(\.id) == ["a", "v"])
+        #expect(m.map(\.contextLength) == [8192, 4096])
+        #expect(LMStudioModels.openCodeValue(m[0]) == "lmstudio/a")
+        #expect(LMStudioModels.parse(Data("nope".utf8)).isEmpty)
+    }
 }

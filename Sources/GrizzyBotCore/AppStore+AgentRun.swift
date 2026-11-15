@@ -507,6 +507,9 @@ extension AppStore {
                 goal: bot.goal ?? ""
             )
             loopRequest.fallbacks = fallbacks
+            loopRequest.departmentInstructions = departmentInstructionsPrompt(forBot: botId)
+            loopRequest.authorityNote = authorityNote(forBot: botId)
+            loopRequest.departmentMemory = departmentMemoryPrompt(forBot: botId)
             loopRequest.deferredTools = deferredTools
             loopRequest.secretNames = botSecretNames(botId: botId)
             let execute: @Sendable (String, String) async -> AgentToolCallResult = { [weak self] name, arguments in
@@ -592,7 +595,7 @@ extension AppStore {
             blocks.append(contentsOf: result.blocks.filter { block in
                 // Live tool messages already show status cards; keep interactive blocks only.
                 switch block {
-                case .card: return false
+                case .card, .teamNote: return false
                 case .ask, .approval, .choice, .connect, .component, .computer: return true
                 default: return true
                 }
@@ -743,7 +746,8 @@ extension AppStore {
                 promptTokens: promptTokens > 0 ? promptTokens : nil,
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
-                tokensSaved: tokensSaved > 0 ? tokensSaved : nil
+                tokensSaved: tokensSaved > 0 ? tokensSaved : nil,
+                department: department(of: botId)
             )
         )
         save()
@@ -873,7 +877,8 @@ extension AppStore {
                 model: modelId ?? ModelCatalog.defaultModelId,
                 promptTokens: 12,
                 inputTokens: 12,
-                outputTokens: 40
+                outputTokens: 40,
+                department: department(of: botId)
             )
         )
         save()

@@ -664,6 +664,37 @@ extension AppStore {
                 blocks: [.card(lines: hits.prefix(8).map { CardLine(k: $0.path, v: $0.snippet) })]
             )
 
+        case "propose_team_memory":
+            if depth > 0 { return AgentToolCallResult(output: "Helpers cannot propose team notes. Report the fact back instead.") }
+            guard let kind = DepartmentFactKind(rawValue: s("kind").lowercased()) else {
+                return AgentToolCallResult(output: "kind must be one of: person, place, decision, term.")
+            }
+            let aliases = s("aliases").split(separator: ",").map { String($0) }
+            do {
+                let fact = try proposeDepartmentFact(
+                    botId: botId,
+                    DepartmentFactInput(kind: kind, name: s("name"), detail: s("detail"), aliases: aliases, key: s("key").isEmpty ? nil : s("key"))
+                )
+                let note = fact.replaces.isEmpty ? "" : " It would replace the current note with this key."
+                return AgentToolCallResult(
+                    output: "Proposed “\(fact.name)”. The person reviews it before it is shared with the department.\(note)",
+                    blocks: [.teamNote(department: department(of: botId), factId: fact.id)]
+                )
+            } catch {
+                return AgentToolCallResult(output: error.localizedDescription)
+            }
+
+        case "search_team_memory":
+            let query = s("query", "q")
+            guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
+            let hits = searchDepartmentFacts(botId: botId, query: query)
+            if hits.isEmpty { return AgentToolCallResult(output: "No team notes match “\(query)”.") }
+            let text = hits.map { f -> String in
+                let also = f.aliases.isEmpty ? "" : " (also: \(f.aliases.joined(separator: ", ")))"
+                return "• [\(f.kind.rawValue)] \(f.name)\(also): \(f.detail)"
+            }.joined(separator: "\n")
+            return AgentToolCallResult(output: text, blocks: [.card(lines: hits.prefix(8).map { CardLine(k: $0.name, v: $0.detail) })])
+
         case "search_sessions":
             let query = s("query", "q")
             guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
@@ -1205,6 +1236,9 @@ extension AppStore {
                 parentBotId: botId
             )
             activeBotId = previousSelection
+            // A bot a bot creates is filed where its creator is, so authority and instructions follow it there.
+            let creatorDepartment = department(of: botId)
+            if !creatorDepartment.isEmpty { moveBot(child.id, toDepartment: creatorDepartment) }
             if !firstPrompt.isEmpty {
                 send(botId: child.id, text: firstPrompt)
             }
@@ -1388,7 +1422,10 @@ extension AppStore {
             if target.id == botId {
                 return AgentToolCallResult(output: "You cannot delete yourself.")
             }
-            if target.parentBotId != botId {
+            if target.parentBotId != botId && !hasAuthority(botId, over: target.id) {
+                if let chief = bots.first(where: { $0.id == botId }), chief.chiefOfStaff {
+                    return AgentToolCallResult(output: "You can only delete bots you spawned. " + authorityRefusal(chief: chief, target: target))
+                }
                 return AgentToolCallResult(output: "You can only delete bots you spawned.")
             }
             if !confirm.isEmpty, target.name.caseInsensitiveCompare(confirm) != .orderedSame {
@@ -1408,6 +1445,7 @@ extension AppStore {
                 task: s("task", "prompt"),
                 access: s("access"),
                 agent: s("agent"),
+                model: s("model"),
                 argumentsJSON: argumentsJSON,
                 approved: approved,
                 taint: taint
@@ -1437,9 +1475,7 @@ extension AppStore {
                 }
                 let provider = endpoint.provider
                 let helperTaint = RunTaint()
-                let nested = try await AgentLoop.run(
-                    client: client,
-                    request: AgentLoopRequest(
+                var nestedRequest = AgentLoopRequest(
                         endpoint: endpoint,
                         botName: helperName,
                         botTitle: "helper",
@@ -1465,6 +1501,11 @@ extension AppStore {
                         ].filter { !$0.isEmpty }.joined(separator: "\n\n"),
                         stallMs: max(0, appConfig.agentStallTimeoutMs)
                     )
+                nestedRequest.departmentInstructions = departmentInstructionsPrompt(forBot: botId)
+                nestedRequest.departmentMemory = departmentMemoryPrompt(forBot: botId)
+                let nested = try await AgentLoop.run(
+                    client: client,
+                    request: nestedRequest
                 ) { [weak self] nestedName, nestedArgs in
                     guard let self else {
                         return AgentToolCallResult(output: "store released")

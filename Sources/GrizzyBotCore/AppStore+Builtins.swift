@@ -90,6 +90,7 @@ extension AppStore {
             entries: [
                 .init(label: "System prompt", chars: systemChars),
                 .init(label: "Instructions", chars: bot.instructions.count + (bot.goal?.count ?? 0)),
+                .init(label: "Department", chars: departmentInstructionsPrompt(forBot: bot.id).count + departmentMemoryPrompt(forBot: bot.id).count),
                 .init(label: "Memory", chars: memoryChars),
                 .init(label: "Skills", chars: skillChars),
                 .init(label: "Tools (\(tools.count))", chars: toolChars),

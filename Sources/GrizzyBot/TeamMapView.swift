@@ -15,15 +15,20 @@ struct TeamMapView: View {
     @State private var botDrag: (bot: Bot, location: CGPoint)?
     @State private var pendingMove: (bot: Bot, dept: String)?
     @State private var showComputers = false
+    @State private var showUsage = false
+    @State private var usageDays = 7
     @State private var creating = false
     @State private var newName = ""
     @State private var renaming: String?
     @State private var renameText = ""
     @State private var deleting: String?
+    @State private var editingInstructions: Named?
+    @State private var editingMemory: Named?
     @State private var draft = ""
     @State private var sentTo: (ids: [String], chief: String?)?
     @State private var flash: Set<String> = []
     @State private var announcement = ""
+    @State private var sheetError = ""
     @State private var canvasSize = CGSize(width: 800, height: 500)
 
     private let space = "teamMapCanvas"
@@ -51,12 +56,18 @@ struct TeamMapView: View {
         }
         .background(Theme.bgMain)
         .sheet(isPresented: $creating) { departmentSheet(title: "New department", text: $newName, confirm: "Create") {
-            if store.createDepartment(newName) { creating = false } else { announcement = "That name is taken or empty." }
+            if store.createDepartment(newName) { creating = false } else { sheetError = "That name is taken or empty." }
         } }
         .sheet(item: Binding(get: { renaming.map { Named(name: $0) } }, set: { renaming = $0?.name })) { item in
             departmentSheet(title: "Rename \(item.name)", text: $renameText, confirm: "Save") {
-                if store.renameDepartment(item.name, to: renameText) { renaming = nil } else { announcement = "That name is taken or empty." }
+                if store.renameDepartment(item.name, to: renameText) { renaming = nil } else { sheetError = "That name is taken or empty." }
             }
+        }
+        .sheet(item: $editingMemory) { item in
+            DepartmentMemorySheet(department: item.name) { editingMemory = nil }
+        }
+        .sheet(item: $editingInstructions) { item in
+            DepartmentInstructionsSheet(department: item.name) { editingInstructions = nil }
         }
         .confirmationDialog(pendingMove.map { "Move \($0.bot.name) to \($0.dept.isEmpty ? "General" : $0.dept)?" } ?? "",
                             isPresented: Binding(get: { pendingMove != nil }, set: { if !$0 { pendingMove = nil } }), titleVisibility: .visible) {
@@ -95,8 +106,12 @@ struct TeamMapView: View {
                 .buttonStyle(.plain).foregroundStyle(Theme.textSecondary).padding(8)
                 .accessibilityLabel("Computers")
                 .popover(isPresented: $showComputers, arrowEdge: .bottom) { computersList }
+            Button { showUsage.toggle() } label: { Image(systemName: "chart.bar").font(.system(size: 14)) }
+                .buttonStyle(.plain).foregroundStyle(Theme.textSecondary).padding(8)
+                .accessibilityLabel("Usage by department")
+                .popover(isPresented: $showUsage, arrowEdge: .bottom) { usageList }
             Menu {
-                Button("New department") { newName = ""; creating = true }
+                Button("New department") { newName = ""; sheetError = ""; creating = true }
             } label: {
                 Label("Add", systemImage: "plus").font(.system(size: 12, weight: .medium))
             }
@@ -105,6 +120,38 @@ struct TeamMapView: View {
             .background(RoundedRectangle(cornerRadius: 9).stroke(Theme.borderInputsDark))
         }
         .padding(.horizontal, 24).padding(.vertical, 14)
+    }
+
+    private var usageList: some View {
+        let rows = store.departmentUsage(days: usageDays)
+        let total = max(1, rows.reduce(0) { $0 + $1.tokens })
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Usage by department").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Picker("", selection: $usageDays) {
+                    Text("7 days").tag(7); Text("30 days").tag(30)
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 150)
+            }
+            ForEach(rows) { row in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack {
+                        Text(row.name).foregroundStyle(row.filed ? Theme.textBright : Theme.textMuted).lineLimit(1)
+                        Spacer(minLength: 12)
+                        Text("\(row.runs) run\(row.runs == 1 ? "" : "s") · \(TokenAccounting.grouped(row.tokens)) tokens")
+                            .foregroundStyle(Theme.textSecondary).monospacedDigit().lineLimit(1).fixedSize()
+                    }
+                    .font(.system(size: 12))
+                    GeometryReader { g in
+                        Capsule().fill(Theme.orange.opacity(0.7)).frame(width: max(row.tokens == 0 ? 0 : 3, g.size.width * CGFloat(row.tokens) / CGFloat(total)))
+                    }.frame(height: 4)
+                }
+            }
+            Text("Counted in the department a bot was in when it ran, so moving a bot never rewrites its past.")
+                .font(.system(size: 11)).foregroundStyle(Theme.textMuted).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14).frame(width: 400)
     }
 
     private var computersList: some View {
@@ -268,11 +315,24 @@ struct TeamMapView: View {
 
     private func panelMenu(_ section: TeamMapSection) -> some View {
         Menu {
-            Button("Rename") { renameText = section.name; renaming = section.key }
+            Button("Shared instructions…") { editingInstructions = Named(name: section.key) }
+            Button(store.pendingFactCount(section.key) > 0 ? "Shared memory… (\(store.pendingFactCount(section.key)) to review)" : "Shared memory…") {
+                editingMemory = Named(name: section.key)
+            }
+            Divider()
+            Button("Rename") { renameText = section.name; sheetError = ""; renaming = section.key }
                 .disabled(section.key.isEmpty)
             Button("Delete department", role: .destructive) { deleting = section.key }
                 .disabled(section.key.isEmpty)
-        } label: { Image(systemName: "ellipsis").font(.system(size: 14)).frame(width: 28, height: 28) }
+        } label: {
+            Image(systemName: "ellipsis").font(.system(size: 14)).frame(width: 28, height: 28)
+                .overlay(alignment: .topTrailing) {
+                    // A bot suggested a note: the person has something to review.
+                    if store.pendingFactCount(section.key) > 0 {
+                        Circle().fill(Theme.orange).frame(width: 7, height: 7).offset(x: -3, y: 4)
+                    }
+                }
+        }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         .foregroundStyle(Theme.textSecondary)
         .accessibilityLabel("Manage \(section.name)")
@@ -490,7 +550,7 @@ struct TeamMapView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(Theme.textBright)
             TextField("Name", text: text).textFieldStyle(.roundedBorder).onSubmit(action)
-            if !announcement.isEmpty { Text(announcement).font(.system(size: 12)).foregroundStyle(Theme.textSecondary) }
+            if !sheetError.isEmpty { Text(sheetError).font(.system(size: 12)).foregroundStyle(Theme.textSecondary) }
             HStack {
                 Spacer()
                 Button("Cancel") { creating = false; renaming = nil }.buttonStyle(.plain).foregroundStyle(Theme.textSecondary)

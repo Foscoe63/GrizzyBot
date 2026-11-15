@@ -163,6 +163,7 @@ extension AppStore {
     public func createDepartment(_ rawName: String, botIds: [String] = []) -> Bool {
         let name = String(rawName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
         guard !name.isEmpty, !departmentExists(name) else { return false }
+        grantNewDepartment(name)
         teamMap.departments.append(name)
         for id in botIds { moveBot(id, toDepartment: name, save: false) }
         save()
@@ -178,6 +179,9 @@ extension AppStore {
         for (id, dept) in teamMap.assignments where dept == old { teamMap.assignments[id] = name }
         if let p = teamMap.positions.removeValue(forKey: old) { teamMap.positions[name] = p }
         if let o = teamMap.botOrders.removeValue(forKey: old) { teamMap.botOrders[name] = o }
+        if let brief = teamMap.instructions.removeValue(forKey: old) { teamMap.instructions[name] = brief }
+        if let notes = teamMap.facts.removeValue(forKey: old) { teamMap.facts[name] = notes }
+        renameManagedDepartment(old, to: name)
         save()
         return true
     }
@@ -189,7 +193,54 @@ extension AppStore {
         teamMap.assignments = teamMap.assignments.filter { $0.value != name }
         teamMap.positions[name] = nil
         teamMap.botOrders[name] = nil
+        teamMap.instructions[name] = nil
+        teamMap.facts[name] = nil
+        dropManagedDepartment(name)
         save()
+    }
+
+    /// Billed tokens per department over the last `days` days.
+    public func departmentUsage(days: Int = 7, now: Date = .now) -> [DepartmentUsage] {
+        TeamMapLogic.usageByDepartment(usage, since: now.addingTimeInterval(-Double(days) * 86_400), sections: teamMapSections)
+    }
+
+    // MARK: Shared instructions
+
+    public enum DepartmentInstructionsResult: Equatable, Sendable {
+        case saved
+        case cleared
+        case tooLong(bytes: Int, limit: Int)
+        case unknownDepartment
+    }
+
+    /// The saved brief for a department ("" is General), or nil when there is none.
+    public func departmentInstructions(_ department: String) -> DepartmentInstructions? {
+        teamMap.instructions[department.trimmingCharacters(in: .whitespaces)]
+    }
+
+    /// Saves, replaces or (for blank text) clears a department's shared instructions. Refuses text over the
+    /// byte limit without touching what is saved, and a department that does not exist.
+    @discardableResult
+    public func setDepartmentInstructions(_ department: String, text: String, now: Date = .now) -> DepartmentInstructionsResult {
+        let key = department.trimmingCharacters(in: .whitespaces)
+        if !key.isEmpty, !teamMapSections.contains(where: { $0.key == key }) { return .unknownDepartment }
+        let bytes = DepartmentInstructions.byteCount(text)
+        guard bytes <= DepartmentInstructions.maxBytes else { return .tooLong(bytes: bytes, limit: DepartmentInstructions.maxBytes) }
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let had = teamMap.instructions.removeValue(forKey: key) != nil
+            if had { save() }
+            return .cleared
+        }
+        teamMap.instructions[key] = DepartmentInstructions(text: text, updatedAt: now)
+        save()
+        return .saved
+    }
+
+    /// The block that goes into this bot's system prompt: its own department's brief, or "".
+    public func departmentInstructionsPrompt(forBot botId: String) -> String {
+        let dept = department(of: botId)
+        guard let brief = teamMap.instructions[dept] else { return "" }
+        return TeamMapLogic.instructionsPrompt(department: dept, text: brief.text)
     }
 
     /// Moves a bot to a department ("" is General); it lands at the end of its lane.

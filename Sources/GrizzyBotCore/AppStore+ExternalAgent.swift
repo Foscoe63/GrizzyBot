@@ -23,6 +23,7 @@ extension AppStore {
         task: String,
         access rawAccess: String,
         agent agentId: String,
+        model rawModel: String = "",
         argumentsJSON: String,
         approved: Bool,
         taint: RunTaint?
@@ -58,10 +59,19 @@ extension AppStore {
         do {
             client = try AcpClient(command: spec.command, cwd: folder)
         } catch {
-            return AgentToolCallResult(output: "\(spec.name) could not start: \(error.localizedDescription)")
+            let hint = ExternalAgentSetup.note(for: spec).map { "\n" + $0 } ?? ""
+            return AgentToolCallResult(output: "\(spec.name) could not start: \(error.localizedDescription)\(hint)")
         }
         do {
             try await client.start(cwd: folder)
+            // "default" or empty keeps the agent's own configured model; anything else pins it for this job.
+            let model = rawModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !model.isEmpty, model.lowercased() != "default" {
+                do { try await client.setConfigOption("model", value: model) } catch {
+                    await client.close()
+                    return AgentToolCallResult(output: "\(spec.name) would not switch to \(model): \(error.localizedDescription)")
+                }
+            }
             let result = try await client.prompt(
                 task,
                 onUpdate: { update in
@@ -93,6 +103,7 @@ extension AppStore {
                         CardLine(k: "agent", v: spec.name),
                         CardLine(k: "folder", v: folder),
                         CardLine(k: "access", v: access.rawValue),
+                        CardLine(k: "model", v: model.isEmpty ? "default" : model),
                         CardLine(k: "tools", v: "\(seen.tools.count)"),
                         CardLine(k: "stop", v: result.stopReason),
                     ]),
