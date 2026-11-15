@@ -595,7 +595,7 @@ extension AppStore {
             blocks.append(contentsOf: result.blocks.filter { block in
                 // Live tool messages already show status cards; keep interactive blocks only.
                 switch block {
-                case .card: return false
+                case .card, .teamNote: return false
                 case .ask, .approval, .choice, .connect, .component, .computer: return true
                 default: return true
                 }
