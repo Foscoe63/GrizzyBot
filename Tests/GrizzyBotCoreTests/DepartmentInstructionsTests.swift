@@ -132,3 +132,54 @@ struct DepartmentInstructionsTests {
         #expect(Set(decoded.instructions.keys) == ["Fine"])
     }
 }
+
+@Suite("Department usage")
+@MainActor
+struct DepartmentUsageTests {
+    private func makeStore() -> AppStore {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = AppStore(dataDirectory: dir, delayScale: 0.01)
+        store.pluginClient = AlwaysAllowPlugins()
+        store.appConfig.enableFolderWatchers = false
+        return store
+    }
+
+    private func record(_ dept: String?, _ input: Int, _ output: Int, daysAgo: Double = 0) -> UsageRecord {
+        UsageRecord(id: Ids.new(), provider: "p", model: "m", inputTokens: input, outputTokens: output,
+                    createdAt: Date.now.addingTimeInterval(-daysAgo * 86_400), department: dept)
+    }
+
+    @Test("tokens add up per department, biggest first, empty departments listed, old records in their own bucket")
+    func rollup() {
+        let store = makeStore()
+        store.createDepartment("Research")
+        store.createDepartment("Quiet")
+        store.usage = [record("Research", 100, 50), record("Research", 10, 5), record("", 20, 10), record(nil, 7, 3)]
+        let rows = store.departmentUsage()
+        #expect(rows.map(\.name) == ["Research", "General", "Quiet", "Before departments were tracked"])
+        #expect(rows[0].tokens == 165 && rows[0].runs == 2)
+        #expect(rows[1].tokens == 30)
+        #expect(rows[2].tokens == 0 && rows[2].runs == 0)
+        #expect(rows[3].filed == false && rows[3].tokens == 10)
+    }
+
+    @Test("the window cuts old records, and a deleted department keeps its history under its old name")
+    func windowAndDeleted() {
+        let store = makeStore()
+        store.createDepartment("Gone")
+        store.usage = [record("Gone", 5, 5, daysAgo: 2), record("Gone", 500, 500, daysAgo: 20)]
+        store.deleteDepartment("Gone")
+        #expect(store.departmentUsage(days: 7).first(where: { $0.key == "Gone" })?.tokens == 10)
+        #expect(store.departmentUsage(days: 30).first(where: { $0.key == "Gone" })?.tokens == 1_010)
+    }
+
+    @Test("a department's records stay with it after a bot moves, and old files without the field still decode")
+    func historyAndDecode() throws {
+        let old = #"{"id":"u1","provider":"p","model":"m","inputTokens":1,"outputTokens":2,"createdAt":0}"#
+        let decoded = try JSONDecoder().decode(UsageRecord.self, from: Data(old.utf8))
+        #expect(decoded.department == nil)
+        let general = record("", 1, 1)
+        #expect(try JSONDecoder().decode(UsageRecord.self, from: JSONEncoder().encode(general)).department == "")
+    }
+}

@@ -194,6 +194,11 @@ extension AppStore {
         save()
     }
 
+    /// Billed tokens per department over the last `days` days.
+    public func departmentUsage(days: Int = 7, now: Date = .now) -> [DepartmentUsage] {
+        TeamMapLogic.usageByDepartment(usage, since: now.addingTimeInterval(-Double(days) * 86_400), sections: teamMapSections)
+    }
+
     // MARK: Shared instructions
 
     public enum DepartmentInstructionsResult: Equatable, Sendable {

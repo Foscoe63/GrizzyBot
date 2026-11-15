@@ -103,7 +103,45 @@ public struct TeamMapTargets: Equatable, Sendable {
     public var hasEveryone: Bool { tags.contains(.everyone) }
 }
 
+/// One department's billed tokens over a window. `key` "" is General; `filed` is false for the
+/// bucket of records saved before departments were tracked.
+public struct DepartmentUsage: Equatable, Sendable, Identifiable {
+    public var key: String
+    public var name: String
+    public var filed: Bool
+    public var inputTokens: Int
+    public var outputTokens: Int
+    public var runs: Int
+    public var id: String { filed ? "d:" + key : "earlier" }
+    public var tokens: Int { inputTokens + outputTokens }
+}
+
 public enum TeamMapLogic {
+    // MARK: Usage
+
+    /// Billed usage per department over the records since `since`, biggest first. Departments that
+    /// exist but spent nothing are listed last (so the list shows every panel); one that was deleted
+    /// keeps its history under its old name. Records with no department land in an "Earlier" bucket.
+    public static func usageByDepartment(_ records: [UsageRecord], since: Date, sections: [TeamMapSection]) -> [DepartmentUsage] {
+        var rows: [String: DepartmentUsage] = [:]
+        var earlier = DepartmentUsage(key: "", name: "Before departments were tracked", filed: false, inputTokens: 0, outputTokens: 0, runs: 0)
+        for section in sections {
+            rows[section.key] = DepartmentUsage(key: section.key, name: section.name, filed: true, inputTokens: 0, outputTokens: 0, runs: 0)
+        }
+        for record in records where record.createdAt >= since {
+            guard let dept = record.department else {
+                earlier.inputTokens += record.inputTokens; earlier.outputTokens += record.outputTokens; earlier.runs += 1
+                continue
+            }
+            var row = rows[dept] ?? DepartmentUsage(key: dept, name: dept.isEmpty ? "General" : dept, filed: true, inputTokens: 0, outputTokens: 0, runs: 0)
+            row.inputTokens += record.inputTokens; row.outputTokens += record.outputTokens; row.runs += 1
+            rows[dept] = row
+        }
+        var list = rows.values.sorted { ($0.tokens, $1.name) > ($1.tokens, $0.name) }
+        if earlier.runs > 0 { list.append(earlier) }
+        return list
+    }
+
     // MARK: Shared instructions
 
     private static let beginMarker = "--- BEGIN SHARED DEPARTMENT INSTRUCTIONS"

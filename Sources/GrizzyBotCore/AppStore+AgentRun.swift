@@ -744,7 +744,8 @@ extension AppStore {
                 promptTokens: promptTokens > 0 ? promptTokens : nil,
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
-                tokensSaved: tokensSaved > 0 ? tokensSaved : nil
+                tokensSaved: tokensSaved > 0 ? tokensSaved : nil,
+                department: department(of: botId)
             )
         )
         save()
@@ -874,7 +875,8 @@ extension AppStore {
                 model: modelId ?? ModelCatalog.defaultModelId,
                 promptTokens: 12,
                 inputTokens: 12,
-                outputTokens: 40
+                outputTokens: 40,
+                department: department(of: botId)
             )
         )
         save()

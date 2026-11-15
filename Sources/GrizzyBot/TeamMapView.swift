@@ -15,6 +15,8 @@ struct TeamMapView: View {
     @State private var botDrag: (bot: Bot, location: CGPoint)?
     @State private var pendingMove: (bot: Bot, dept: String)?
     @State private var showComputers = false
+    @State private var showUsage = false
+    @State private var usageDays = 7
     @State private var creating = false
     @State private var newName = ""
     @State private var renaming: String?
@@ -100,6 +102,10 @@ struct TeamMapView: View {
                 .buttonStyle(.plain).foregroundStyle(Theme.textSecondary).padding(8)
                 .accessibilityLabel("Computers")
                 .popover(isPresented: $showComputers, arrowEdge: .bottom) { computersList }
+            Button { showUsage.toggle() } label: { Image(systemName: "chart.bar").font(.system(size: 14)) }
+                .buttonStyle(.plain).foregroundStyle(Theme.textSecondary).padding(8)
+                .accessibilityLabel("Usage by department")
+                .popover(isPresented: $showUsage, arrowEdge: .bottom) { usageList }
             Menu {
                 Button("New department") { newName = ""; sheetError = ""; creating = true }
             } label: {
@@ -110,6 +116,38 @@ struct TeamMapView: View {
             .background(RoundedRectangle(cornerRadius: 9).stroke(Theme.borderInputsDark))
         }
         .padding(.horizontal, 24).padding(.vertical, 14)
+    }
+
+    private var usageList: some View {
+        let rows = store.departmentUsage(days: usageDays)
+        let total = max(1, rows.reduce(0) { $0 + $1.tokens })
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Usage by department").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Picker("", selection: $usageDays) {
+                    Text("7 days").tag(7); Text("30 days").tag(30)
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 150)
+            }
+            ForEach(rows) { row in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack {
+                        Text(row.name).foregroundStyle(row.filed ? Theme.textBright : Theme.textMuted)
+                        Spacer()
+                        Text("\(row.runs) run\(row.runs == 1 ? "" : "s") · \(TokenAccounting.grouped(row.tokens)) tokens")
+                            .foregroundStyle(Theme.textSecondary).monospacedDigit()
+                    }
+                    .font(.system(size: 12))
+                    GeometryReader { g in
+                        Capsule().fill(Theme.orange.opacity(0.7)).frame(width: max(row.tokens == 0 ? 0 : 3, g.size.width * CGFloat(row.tokens) / CGFloat(total)))
+                    }.frame(height: 4)
+                }
+            }
+            Text("Counted in the department a bot was in when it ran, so moving a bot never rewrites its past.")
+                .font(.system(size: 11)).foregroundStyle(Theme.textMuted).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14).frame(width: 340)
     }
 
     private var computersList: some View {

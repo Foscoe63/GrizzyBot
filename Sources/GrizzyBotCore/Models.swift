@@ -753,6 +753,9 @@ public struct UsageRecord: Codable, Sendable, Hashable, Identifiable {
     public var createdAt: Date
     /// Estimated tokens kept out of the prompt by output compression and compaction. Nil on older records.
     public var tokensSaved: Int?
+    /// The bot's department when the run was booked, so moving a bot later never rewrites its history.
+    /// "" is General. Nil on records saved before departments were tracked.
+    public var department: String?
 
     public init(
         id: String,
@@ -764,8 +767,10 @@ public struct UsageRecord: Codable, Sendable, Hashable, Identifiable {
         inputTokens: Int,
         outputTokens: Int,
         createdAt: Date = .now,
-        tokensSaved: Int? = nil
+        tokensSaved: Int? = nil,
+        department: String? = nil
     ) {
+        self.department = department
         self.tokensSaved = tokensSaved
         self.id = id
         self.botId = botId
