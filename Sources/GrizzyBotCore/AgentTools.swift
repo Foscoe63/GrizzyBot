@@ -362,10 +362,12 @@ public enum AgentToolCatalog {
         .init(id: "todo", label: "Todo", subtitle: "Write a multi-step checklist for this turn"),
         .init(id: "complete", label: "Complete", subtitle: "Finish the task with a short summary"),
         .init(id: "clarify", label: "Clarify", subtitle: "Pause and ask the user a question"),
+        .init(id: "propose_team_memory", label: "Propose team note", subtitle: "Suggest a fact for the department's shared memory (you approve it)"),
+        .init(id: "search_team_memory", label: "Search team notes", subtitle: "Look up the department's shared notes"),
     ]
 
     /// Always available, whatever is toggled: the loop cannot work without them, so they get no switch.
-    public static let alwaysOnIds: Set<String> = ["capabilities_discover", "capabilities_load", "todo", "complete", "clarify"]
+    public static let alwaysOnIds: Set<String> = ["capabilities_discover", "capabilities_load", "todo", "complete", "clarify", "propose_team_memory", "search_team_memory"]
 
     /// Tools that have no switch in the profile editor.
     public static var unswitchedIds: Set<String> {
@@ -994,6 +996,24 @@ extension AgentToolCatalog {
             description: "Pause and ask the user a clarifying question before continuing.",
             properties: ["question": stringProp("Question for the user")],
             required: ["question"]
+        )
+        add(
+            "propose_team_memory",
+            description: "Suggest a durable fact for your department's shared team memory: a person, place, decision or term every bot in it should know. The person reviews it; nothing is shared until they accept. Reuse an existing note's key to correct it. Never include secrets.",
+            properties: [
+                "kind": stringProp("person, place, decision, or term"),
+                "name": stringProp("Short title, e.g. a person's name or a decision's subject"),
+                "detail": stringProp("The fact, its context and why it matters (about 600 characters at most)"),
+                "aliases": stringProp("Other names for it, comma separated"),
+                "key": stringProp("Optional stable key, to correct an existing note whose title changed"),
+            ],
+            required: ["kind", "name", "detail"]
+        )
+        add(
+            "search_team_memory",
+            description: "Search your department's accepted team notes, including ones the prompt did not have room for. Every word of the query must match.",
+            properties: ["query": stringProp("Words to find")],
+            required: ["query"]
         )
         if !skills.isEmpty {
             let ids = skills.map(\.id).joined(separator: ", ")

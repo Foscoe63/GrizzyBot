@@ -180,6 +180,7 @@ extension AppStore {
         if let p = teamMap.positions.removeValue(forKey: old) { teamMap.positions[name] = p }
         if let o = teamMap.botOrders.removeValue(forKey: old) { teamMap.botOrders[name] = o }
         if let brief = teamMap.instructions.removeValue(forKey: old) { teamMap.instructions[name] = brief }
+        if let notes = teamMap.facts.removeValue(forKey: old) { teamMap.facts[name] = notes }
         renameManagedDepartment(old, to: name)
         save()
         return true
@@ -193,6 +194,7 @@ extension AppStore {
         teamMap.positions[name] = nil
         teamMap.botOrders[name] = nil
         teamMap.instructions[name] = nil
+        teamMap.facts[name] = nil
         dropManagedDepartment(name)
         save()
     }

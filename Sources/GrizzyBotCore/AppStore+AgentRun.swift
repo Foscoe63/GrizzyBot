@@ -509,6 +509,7 @@ extension AppStore {
             loopRequest.fallbacks = fallbacks
             loopRequest.departmentInstructions = departmentInstructionsPrompt(forBot: botId)
             loopRequest.authorityNote = authorityNote(forBot: botId)
+            loopRequest.departmentMemory = departmentMemoryPrompt(forBot: botId)
             loopRequest.deferredTools = deferredTools
             loopRequest.secretNames = botSecretNames(botId: botId)
             let execute: @Sendable (String, String) async -> AgentToolCallResult = { [weak self] name, arguments in

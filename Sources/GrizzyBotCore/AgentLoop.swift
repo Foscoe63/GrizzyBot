@@ -83,6 +83,8 @@ public struct AgentLoopRequest: Sendable {
     public var deferredTools: [ChatTool] = []
     /// The ready-made shared-instructions block for this bot's department ("" when it has none).
     public var departmentInstructions: String = ""
+    /// The ready-made team-memory block for this bot's department ("" when it has no accepted notes).
+    public var departmentMemory: String = ""
     /// What a Chief of Staff is in charge of (empty for every other bot).
     public var authorityNote: String = ""
 
@@ -723,6 +725,10 @@ public enum AgentLoop {
         let department = request.departmentInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
         if !department.isEmpty {
             lines.append(department)
+        }
+        let teamMemory = request.departmentMemory.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !teamMemory.isEmpty {
+            lines.append(teamMemory)
         }
         let instructions = request.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         if !instructions.isEmpty {

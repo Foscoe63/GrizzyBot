@@ -16,10 +16,13 @@ public struct TeamMapState: Codable, Sendable, Equatable {
     /// Department name → the shared instructions every bot in it sees at the start of each turn.
     /// "" is General. Only the person writes these; no agent tool touches them.
     public var instructions: [String: DepartmentInstructions]
+    /// Department name → its shared notes (accepted, proposed, and the dead ones kept for history).
+    public var facts: [String: [DepartmentFact]]
 
     public init(departments: [String] = [], assignments: [String: String] = [:], positions: [String: CanvasPoint] = [:],
                 botOrders: [String: [String]] = [:], showScreens: Bool = false,
-                instructions: [String: DepartmentInstructions] = [:]) {
+                instructions: [String: DepartmentInstructions] = [:], facts: [String: [DepartmentFact]] = [:]) {
+        self.facts = facts
         self.departments = departments
         self.assignments = assignments
         self.positions = positions
@@ -28,7 +31,7 @@ public struct TeamMapState: Codable, Sendable, Equatable {
         self.instructions = instructions
     }
 
-    enum CodingKeys: String, CodingKey { case departments, assignments, positions, botOrders, showScreens, instructions }
+    enum CodingKeys: String, CodingKey { case departments, assignments, positions, botOrders, showScreens, instructions, facts }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -40,6 +43,14 @@ public struct TeamMapState: Codable, Sendable, Equatable {
         // Each entry is revalidated: one over the cap or blank (a hand-edited file) is dropped, not fatal.
         let raw = try c.decodeIfPresent([String: DepartmentInstructions].self, forKey: .instructions) ?? [:]
         instructions = raw.filter { DepartmentInstructions.isValid($0.value.text) }
+        // Same for notes: a hand-edited entry with no name or past a limit is dropped, the rest load.
+        let rawFacts = try c.decodeIfPresent([String: [DepartmentFact]].self, forKey: .facts) ?? [:]
+        facts = rawFacts.mapValues { list in
+            list.filter { f in
+                !f.name.isEmpty && f.name.count <= DepartmentMemory.nameMax && f.detail.count <= DepartmentMemory.detailMax
+                    && f.aliases.count <= DepartmentMemory.aliasesMax && f.key.count <= DepartmentMemory.keyMax
+            }
+        }.filter { !$0.value.isEmpty }
     }
 }
 

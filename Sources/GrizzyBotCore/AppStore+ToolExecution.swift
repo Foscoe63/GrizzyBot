@@ -664,6 +664,34 @@ extension AppStore {
                 blocks: [.card(lines: hits.prefix(8).map { CardLine(k: $0.path, v: $0.snippet) })]
             )
 
+        case "propose_team_memory":
+            if depth > 0 { return AgentToolCallResult(output: "Helpers cannot propose team notes. Report the fact back instead.") }
+            guard let kind = DepartmentFactKind(rawValue: s("kind").lowercased()) else {
+                return AgentToolCallResult(output: "kind must be one of: person, place, decision, term.")
+            }
+            let aliases = s("aliases").split(separator: ",").map { String($0) }
+            do {
+                let fact = try proposeDepartmentFact(
+                    botId: botId,
+                    DepartmentFactInput(kind: kind, name: s("name"), detail: s("detail"), aliases: aliases, key: s("key").isEmpty ? nil : s("key"))
+                )
+                let note = fact.replaces.isEmpty ? "" : " It would replace the current note with this key."
+                return AgentToolCallResult(output: "Proposed “\(fact.name)”. The person reviews it before it is shared with the department.\(note)")
+            } catch {
+                return AgentToolCallResult(output: error.localizedDescription)
+            }
+
+        case "search_team_memory":
+            let query = s("query", "q")
+            guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
+            let hits = searchDepartmentFacts(botId: botId, query: query)
+            if hits.isEmpty { return AgentToolCallResult(output: "No team notes match “\(query)”.") }
+            let text = hits.map { f -> String in
+                let also = f.aliases.isEmpty ? "" : " (also: \(f.aliases.joined(separator: ", ")))"
+                return "• [\(f.kind.rawValue)] \(f.name)\(also): \(f.detail)"
+            }.joined(separator: "\n")
+            return AgentToolCallResult(output: text, blocks: [.card(lines: hits.prefix(8).map { CardLine(k: $0.name, v: $0.detail) })])
+
         case "search_sessions":
             let query = s("query", "q")
             guard !query.isEmpty else { return AgentToolCallResult(output: "query is required") }
@@ -1471,6 +1499,7 @@ extension AppStore {
                         stallMs: max(0, appConfig.agentStallTimeoutMs)
                     )
                 nestedRequest.departmentInstructions = departmentInstructionsPrompt(forBot: botId)
+                nestedRequest.departmentMemory = departmentMemoryPrompt(forBot: botId)
                 let nested = try await AgentLoop.run(
                     client: client,
                     request: nestedRequest

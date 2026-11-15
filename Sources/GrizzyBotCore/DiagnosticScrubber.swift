@@ -11,6 +11,11 @@ public enum DiagnosticScrubber {
         options: []
     )
 
+    /// Masks keys and tokens only, leaving paths alone (for notes people want to keep readable).
+    public static func redactSecrets(_ text: String) -> String {
+        replace(keyPattern, in: text, with: "[redacted]")
+    }
+
     public static func redact(_ text: String) -> String {
         var out = text
         out = replace(keyPattern, in: out, with: "[redacted]")

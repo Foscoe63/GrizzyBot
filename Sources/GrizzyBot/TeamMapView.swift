@@ -23,6 +23,7 @@ struct TeamMapView: View {
     @State private var renameText = ""
     @State private var deleting: String?
     @State private var editingInstructions: Named?
+    @State private var editingMemory: Named?
     @State private var draft = ""
     @State private var sentTo: (ids: [String], chief: String?)?
     @State private var flash: Set<String> = []
@@ -61,6 +62,9 @@ struct TeamMapView: View {
             departmentSheet(title: "Rename \(item.name)", text: $renameText, confirm: "Save") {
                 if store.renameDepartment(item.name, to: renameText) { renaming = nil } else { sheetError = "That name is taken or empty." }
             }
+        }
+        .sheet(item: $editingMemory) { item in
+            DepartmentMemorySheet(department: item.name) { editingMemory = nil }
         }
         .sheet(item: $editingInstructions) { item in
             DepartmentInstructionsSheet(department: item.name) { editingInstructions = nil }
@@ -312,12 +316,23 @@ struct TeamMapView: View {
     private func panelMenu(_ section: TeamMapSection) -> some View {
         Menu {
             Button("Shared instructions…") { editingInstructions = Named(name: section.key) }
+            Button(store.pendingFactCount(section.key) > 0 ? "Shared memory… (\(store.pendingFactCount(section.key)) to review)" : "Shared memory…") {
+                editingMemory = Named(name: section.key)
+            }
             Divider()
             Button("Rename") { renameText = section.name; sheetError = ""; renaming = section.key }
                 .disabled(section.key.isEmpty)
             Button("Delete department", role: .destructive) { deleting = section.key }
                 .disabled(section.key.isEmpty)
-        } label: { Image(systemName: "ellipsis").font(.system(size: 14)).frame(width: 28, height: 28) }
+        } label: {
+            Image(systemName: "ellipsis").font(.system(size: 14)).frame(width: 28, height: 28)
+                .overlay(alignment: .topTrailing) {
+                    // A bot suggested a note: the person has something to review.
+                    if store.pendingFactCount(section.key) > 0 {
+                        Circle().fill(Theme.orange).frame(width: 7, height: 7).offset(x: -3, y: 4)
+                    }
+                }
+        }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         .foregroundStyle(Theme.textSecondary)
         .accessibilityLabel("Manage \(section.name)")
