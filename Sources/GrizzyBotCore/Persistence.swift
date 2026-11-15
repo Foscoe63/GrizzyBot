@@ -32,6 +32,7 @@ public struct UserWorkspace: Codable, Sendable {
     public var mcpAdvertisedTools: [String: [String]]
     public var botChat: [BotChatEntry]
     public var grantedFolders: [GrantedFolder]
+    public var teamMap: TeamMapState
 
     public init(
         bots: [Bot] = [],
@@ -61,7 +62,8 @@ public struct UserWorkspace: Codable, Sendable {
         sandboxComponents: [SandboxComponent] = [],
         mcpAdvertisedTools: [String: [String]] = [:],
         botChat: [BotChatEntry] = [],
-        grantedFolders: [GrantedFolder] = []
+        grantedFolders: [GrantedFolder] = [],
+        teamMap: TeamMapState = TeamMapState()
     ) {
         self.bots = bots
         self.threads = threads
@@ -91,13 +93,14 @@ public struct UserWorkspace: Codable, Sendable {
         self.mcpAdvertisedTools = mcpAdvertisedTools
         self.botChat = botChat
         self.grantedFolders = grantedFolders
+        self.teamMap = teamMap
     }
 
     enum CodingKeys: String, CodingKey {
         case bots, threads, routines, computers, connections, usage, memory, files
         case deployment, modelProvider, modelId, apiKey, modelBaseUrl, fetchedModels, providerProfiles
         case groups, appConfig, customTools, mcpServers, oauthJSON, connectionSecrets
-        case actionPolicy, knowledgeSources, pluginGrants, sandboxComponents, mcpAdvertisedTools, botChat, grantedFolders
+        case actionPolicy, knowledgeSources, pluginGrants, sandboxComponents, mcpAdvertisedTools, botChat, grantedFolders, teamMap
     }
 
     public init(from decoder: Decoder) throws {
@@ -130,6 +133,7 @@ public struct UserWorkspace: Codable, Sendable {
         mcpAdvertisedTools = try c.decodeIfPresent([String: [String]].self, forKey: .mcpAdvertisedTools) ?? [:]
         botChat = try c.decodeIfPresent([BotChatEntry].self, forKey: .botChat) ?? []
         grantedFolders = try c.decodeIfPresent([GrantedFolder].self, forKey: .grantedFolders) ?? []
+        teamMap = try c.decodeIfPresent(TeamMapState.self, forKey: .teamMap) ?? TeamMapState()
     }
 }
 

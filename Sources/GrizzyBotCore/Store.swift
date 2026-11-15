@@ -57,6 +57,7 @@ public final class AppStore {
     public var knowledgeStats: [String: KnowledgeIndexStats] = [:]
     @ObservationIgnored let knowledgeIndexer = KnowledgeIndexer()
     public var grantedFolders: [GrantedFolder] = []
+    public var teamMap = TeamMapState()
     public var pluginGrants: [PluginGrant] = []
     public var sandboxComponents: [SandboxComponent] = []
     public var mcpAdvertisedTools: [String: [String]] = [:]
@@ -455,6 +456,7 @@ public final class AppStore {
         mcpServers = []
         folderWatchers = []
         grantedFolders = []
+        teamMap = TeamMapState()
         actionPolicy = .openDefault
         knowledgeSources = []
         pluginGrants = []
@@ -498,6 +500,7 @@ public final class AppStore {
         groups = ws.groups
         botChat = ws.botChat
         grantedFolders = ws.grantedFolders
+        teamMap = ws.teamMap
         appConfig = ws.appConfig
         customTools = ws.customTools
         mcpServers = ws.mcpServers.map { server in
@@ -586,7 +589,8 @@ public final class AppStore {
             sandboxComponents: sandboxComponents,
             mcpAdvertisedTools: mcpAdvertisedTools,
             botChat: botChat,
-            grantedFolders: grantedFolders
+            grantedFolders: grantedFolders,
+            teamMap: teamMap
         )
     }
 

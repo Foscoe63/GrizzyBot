@@ -179,6 +179,10 @@ struct SidebarView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 2)
 
+            teamMapButton
+                .padding(.horizontal, 12)
+                .padding(.bottom, 2)
+
             pluginsButton
                 .padding(.horizontal, 12)
                 .padding(.bottom, 2)
@@ -397,6 +401,32 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private var teamMapButton: some View {
+        Button {
+            store.showTeamMapPage()
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle().fill(Theme.bgCard).frame(width: 30, height: 30)
+                    Image(systemName: "person.3")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(store.mainView == .teamMap ? Theme.orange : Theme.textLetter)
+                }
+                Text("Team map")
+                    .font(.system(size: 14.5))
+                    .foregroundStyle(Theme.textGhost)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(store.mainView == .teamMap ? Theme.bgHoverRow : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("sidebar.teamMap")
     }
 
     private var botChatButton: some View {

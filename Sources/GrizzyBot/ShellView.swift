@@ -30,6 +30,8 @@ struct ShellView: View {
                 Group {
                     if store.mainView == .routines {
                         RoutinesPageView()
+                    } else if store.mainView == .teamMap {
+                        TeamMapView()
                     } else if store.mainView == .botChat {
                         BotChatView()
                     } else {

@@ -143,3 +143,94 @@ extension AppStore {
         return "\(wanted) \(n)"
     }
 }
+
+// MARK: - Team map
+
+extension AppStore {
+    public func department(of botId: String) -> String {
+        (teamMap.assignments[botId] ?? "").trimmingCharacters(in: .whitespaces)
+    }
+
+    public var teamMapSections: [TeamMapSection] { TeamMapLogic.sections(bots: bots, state: teamMap) }
+
+    private func departmentExists(_ name: String) -> Bool {
+        let all = teamMap.departments + teamMap.assignments.values
+        return all.contains { $0.caseInsensitiveCompare(name) == .orderedSame } || name.caseInsensitiveCompare("General") == .orderedSame
+    }
+
+    /// Makes a department, optionally moving bots into it. False when the name is empty or taken.
+    @discardableResult
+    public func createDepartment(_ rawName: String, botIds: [String] = []) -> Bool {
+        let name = String(rawName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
+        guard !name.isEmpty, !departmentExists(name) else { return false }
+        teamMap.departments.append(name)
+        for id in botIds { moveBot(id, toDepartment: name, save: false) }
+        save()
+        return true
+    }
+
+    @discardableResult
+    public func renameDepartment(_ old: String, to rawName: String) -> Bool {
+        let name = String(rawName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
+        guard !old.isEmpty, !name.isEmpty, name != old, !departmentExists(name) else { return false }
+        teamMap.departments = teamMap.departments.map { $0 == old ? name : $0 }
+        if !teamMap.departments.contains(name) { teamMap.departments.append(name) }
+        for (id, dept) in teamMap.assignments where dept == old { teamMap.assignments[id] = name }
+        if let p = teamMap.positions.removeValue(forKey: old) { teamMap.positions[name] = p }
+        if let o = teamMap.botOrders.removeValue(forKey: old) { teamMap.botOrders[name] = o }
+        save()
+        return true
+    }
+
+    /// Removes the department; its bots go back to General and are kept.
+    public func deleteDepartment(_ name: String) {
+        guard !name.isEmpty else { return }
+        teamMap.departments.removeAll { $0 == name }
+        teamMap.assignments = teamMap.assignments.filter { $0.value != name }
+        teamMap.positions[name] = nil
+        teamMap.botOrders[name] = nil
+        save()
+    }
+
+    /// Moves a bot to a department ("" is General); it lands at the end of its lane.
+    public func moveBot(_ botId: String, toDepartment dept: String, save persist: Bool = true) {
+        guard bots.contains(where: { $0.id == botId }) else { return }
+        if dept.isEmpty { teamMap.assignments[botId] = nil } else { teamMap.assignments[botId] = dept }
+        for key in Array(teamMap.botOrders.keys) { teamMap.botOrders[key]?.removeAll { $0 == botId } }
+        if persist { save() }
+    }
+
+    /// Puts `botId` at `index` among the bots of its own kind (Chiefs or members) in its department.
+    public func arrangeBot(_ botId: String, toIndex index: Int) {
+        guard let bot = bots.first(where: { $0.id == botId }) else { return }
+        let dept = department(of: botId)
+        guard let section = teamMapSections.first(where: { $0.key == dept }) else { return }
+        let lane = (bot.chiefOfStaff ? section.chiefs : section.members).map(\.id)
+        let other = (bot.chiefOfStaff ? section.members : section.chiefs).map(\.id)
+        teamMap.botOrders[dept] = TeamMapLogic.reorder(lane, moving: botId, to: index) + other
+        save()
+    }
+
+    public func setDepartmentPosition(_ dept: String, _ point: CanvasPoint) {
+        guard point.x.isFinite, point.y.isFinite, abs(point.x) < 100_000, abs(point.y) < 100_000 else { return }
+        teamMap.positions[dept] = point
+        save()
+    }
+
+    public func setShowScreens(_ on: Bool) {
+        teamMap.showScreens = on
+        save()
+    }
+
+    /// Sends what was typed on the map. Each addressed bot gets it as a normal message in its own chat;
+    /// `@everyone` goes to the Chief of Staff, which passes it on. Returns who got it.
+    @discardableResult
+    public func sendFromTeamMap(_ text: String) -> (botIds: [String], chief: Bot?) {
+        let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targets = TeamMapLogic.targets(text: message, bots: bots, state: teamMap)
+        guard !message.isEmpty, !targets.botIds.isEmpty else { return ([], nil) }
+        let delivery = TeamMapLogic.delivery(for: targets, bots: bots, state: teamMap)
+        for id in delivery.botIds { send(botId: id, text: message) }
+        return delivery
+    }
+}
