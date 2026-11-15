@@ -2,6 +2,10 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## Unreleased
+
+- **OpenCode model pinning.** The external coding agent tool takes an optional `model` (`lmstudio/<id>` for a model loaded in LM Studio, or any `provider/model` OpenCode knows); GrizzyBot sets it over ACP for that job and refuses clearly if OpenCode will not switch. Settings → Tools → External coding agents shows an install note when `opencode` is missing and lists the models LM Studio has loaded. `~/.opencode/bin` is on the agent's PATH.
+
 ## 0.14.0 — incident reports, day watch, CLI, voice calls
 
 - **Tool selection.** A bot's settings gain a Tool selection section for small-context local models: an allow list and an exclude list (`read_file`, `builtin:*`, `mcp:*`, `mcp:gmail:*`, `mcp:gmail:send`; exclude wins) and *lean turns*, which send only the tools a turn looks like it needs while the rest stay one `capabilities_load` away. The loop's own tools are never removed, and unknown selectors are flagged.

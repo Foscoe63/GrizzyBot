@@ -84,7 +84,7 @@ public actor AcpClient {
         process.executableURL = URL(fileURLWithPath: first.hasPrefix("/") ? first : "/usr/bin/env")
         process.arguments = first.hasPrefix("/") ? Array(command.dropFirst()) : command
         var env = ProcessInfo.processInfo.environment
-        let extra = "/opt/homebrew/bin:/usr/local/bin"
+        let extra = "/opt/homebrew/bin:/usr/local/bin:" + NSHomeDirectory() + "/.opencode/bin"
         env["PATH"] = extra + ":" + (env["PATH"] ?? "/usr/bin:/bin")
         for (k, v) in environment { env[k] = v }
         process.environment = env

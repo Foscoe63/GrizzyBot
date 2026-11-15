@@ -1408,6 +1408,7 @@ extension AppStore {
                 task: s("task", "prompt"),
                 access: s("access"),
                 agent: s("agent"),
+                model: s("model"),
                 argumentsJSON: argumentsJSON,
                 approved: approved,
                 taint: taint

@@ -671,6 +671,7 @@ extension AgentToolCatalog {
                 "task": stringProp("The coding job, with the goal and any constraints"),
                 "access": stringProp("read (default) or edit"),
                 "agent": stringProp("Which agent to use; default \(ExternalAgentSpec.presets[0].id)"),
+                "model": stringProp("Optional model for opencode as provider/model, e.g. lmstudio/<id> for a model loaded in LM Studio; default uses opencode's own configured model"),
             ],
             required: ["task"]
         )

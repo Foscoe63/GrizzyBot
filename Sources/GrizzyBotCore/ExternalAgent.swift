@@ -109,3 +109,53 @@ public enum AcpPermissionPolicy {
             ?? request.options.first(where: { $0.kind == "reject_always" })?.id
     }
 }
+
+/// What the person needs to do when an agent's program is missing.
+public enum ExternalAgentSetup {
+    public static let opencodeNote = "OpenCode is not installed. Install it with `brew install sst/tap/opencode` or `npm i -g opencode-ai`, then run `opencode auth login`."
+
+    /// True when the agent's program can be found (absolute path, or on PATH plus the usual install folders).
+    public static func isInstalled(_ spec: ExternalAgentSpec) -> Bool {
+        guard let first = spec.command.first, !first.isEmpty else { return false }
+        let fm = FileManager.default
+        if first.hasPrefix("/") { return fm.isExecutableFile(atPath: first) }
+        let dirs = ["/opt/homebrew/bin", "/usr/local/bin", NSHomeDirectory() + "/.opencode/bin"]
+            + (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        return dirs.contains { fm.isExecutableFile(atPath: $0 + "/" + first) }
+    }
+
+    /// A setup note for a built-in agent whose program is missing, else nil.
+    public static func note(for spec: ExternalAgentSpec) -> String? {
+        spec.id == "opencode" && !isInstalled(spec) ? opencodeNote : nil
+    }
+}
+
+/// Models LM Studio has loaded right now. OpenCode finds LM Studio on its own and names them `lmstudio/<id>`.
+public enum LMStudioModels {
+    public struct Loaded: Sendable, Equatable { public var id: String; public var contextLength: Int }
+
+    public static func parse(_ data: Data) -> [Loaded] {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let list = root["data"] as? [[String: Any]] else { return [] }
+        return list.compactMap { item in
+            guard let id = item["id"] as? String, (item["state"] as? String) == "loaded" else { return nil }
+            let type = item["type"] as? String
+            guard type == nil || type == "llm" || type == "vlm" else { return nil }
+            let ctx = (item["loaded_context_length"] as? Int) ?? (item["max_context_length"] as? Int) ?? 0
+            return Loaded(id: id, contextLength: ctx)
+        }
+    }
+
+    /// Empty when LM Studio is not running (2 second timeout).
+    public static func loaded(base: String = "http://localhost:1234") async -> [Loaded] {
+        guard let url = URL(string: base.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/v0/models") else { return [] }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+        return parse(data)
+    }
+
+    /// The OpenCode model value for a loaded model.
+    public static func openCodeValue(_ m: Loaded) -> String { "lmstudio/" + m.id }
+}
