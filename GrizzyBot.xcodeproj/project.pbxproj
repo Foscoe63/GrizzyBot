@@ -30,6 +30,7 @@
 		0A259FA4A3E45EAA680EC0E0 /* SecretPlaceholders.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1C9E861D9307DC47AA01FB /* SecretPlaceholders.swift */; };
 		0B20615FD556B9E82CE7A172 /* TeamPackageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7892725815011FB23F13CCFD /* TeamPackageTests.swift */; };
 		0BA68B92867B90BB863A5C61 /* SkillScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60B2714C0764648C11CD1750 /* SkillScannerTests.swift */; };
+		0BC05A7167BA697729E45600 /* DepartmentInstructionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E08659B502CF1C4BE81862 /* DepartmentInstructionsTests.swift */; };
 		0CA65551A62764537C76DE00 /* GovernanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC9E403F9F39A06B18F1000B /* GovernanceModels.swift */; };
 		0CAD997F01B7DBA5C5F1EF93 /* OpenMausFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FDF1CBE020860BCC818C84 /* OpenMausFeatures.swift */; };
 		0D9E1653365A6EFF37896D05 /* BotMesh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FB6C6A9C3F6B29A303F3F7E /* BotMesh.swift */; };
@@ -204,6 +205,7 @@
 		86AE2CDE67C125F053AF183A /* GrizzyBotMLX.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A85334AF1F9675C5C0A168E /* GrizzyBotMLX.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		8793B6760E4EE579E96E330E /* SentryScrubber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EF076311B1E85DE972687A2 /* SentryScrubber.swift */; };
 		895F38093E4BB53FC1A991A0 /* SlashCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857ECAEC8EC2637B412B065C /* SlashCommandTests.swift */; };
+		8A3A8F81C0DF6128FEB55EE1 /* DepartmentInstructionsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 343DBCC090D1E5934D3521AC /* DepartmentInstructionsSheet.swift */; };
 		8ABB3A13219B3D5D73205E6D /* McpClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EAA172FAC1AB99A08E6AC55 /* McpClient.swift */; };
 		8B10E40FA3E5FF11EDAC454E /* ToolsSettingsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24A71253A7A751E5B2927D5B /* ToolsSettingsViews.swift */; };
 		8B7FBB9CCDAADA44552BE96B /* AppStore+ToolExecution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0BBB5508D56592B33C50BE /* AppStore+ToolExecution.swift */; };
@@ -541,6 +543,7 @@
 		32C7A06CBDC1D29ACCC068D4 /* AnthropicWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicWire.swift; sourceTree = "<group>"; };
 		33B4E8CFE654510B95E20164 /* AppStore+Builtins.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore+Builtins.swift"; sourceTree = "<group>"; };
 		33CF45217EF15990999EBA75 /* Cron.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cron.swift; sourceTree = "<group>"; };
+		343DBCC090D1E5934D3521AC /* DepartmentInstructionsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepartmentInstructionsSheet.swift; sourceTree = "<group>"; };
 		35C59708C4ED9A6CE729E538 /* AppSettingsOverlayView+Privacy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppSettingsOverlayView+Privacy.swift"; sourceTree = "<group>"; };
 		3663AB1DD93CB6BC326D16A3 /* SnapshotDiffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotDiffTests.swift; sourceTree = "<group>"; };
 		38404F696EB8978F298A22AA /* McpCatalogPromoteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpCatalogPromoteTests.swift; sourceTree = "<group>"; };
@@ -741,6 +744,7 @@
 		C76BC46A728C0880A1FF645F /* RequestOriginGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestOriginGuardTests.swift; sourceTree = "<group>"; };
 		C86513A0D56FAC863F0CD793 /* ArtifactFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactFrameTests.swift; sourceTree = "<group>"; };
 		C89B8521C224228C18E3DCE5 /* AppStore+Leaks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore+Leaks.swift"; sourceTree = "<group>"; };
+		C8E08659B502CF1C4BE81862 /* DepartmentInstructionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepartmentInstructionsTests.swift; sourceTree = "<group>"; };
 		C8E1E3CD05442D5987EEC737 /* AppStore+Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore+Secrets.swift"; sourceTree = "<group>"; };
 		C9639CA89776B1C3FBD06A81 /* SyntaxHighlighterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighterTests.swift; sourceTree = "<group>"; };
 		C9A422AE0345B5E77B84BA2E /* GrizzyBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrizzyBotApp.swift; sourceTree = "<group>"; };
@@ -899,6 +903,7 @@
 				FB44D631A1BFEC6A49332CEF /* CronTests.swift */,
 				ED2BF5CF4EEB1D953AC4F01C /* CuratorTests.swift */,
 				927071F559976711DA7619F8 /* DelegateFixTests.swift */,
+				C8E08659B502CF1C4BE81862 /* DepartmentInstructionsTests.swift */,
 				9F2AA01E9F4A7724E17463C0 /* DispatchTests.swift */,
 				F6F2260201D22CD21702494B /* ExternalAgentLiveTests.swift */,
 				E2E8DAF837A3C9B45151DECA /* ExternalAgentSettingsTests.swift */,
@@ -1085,6 +1090,7 @@
 				E3DAE95AF568C793F1B0F4A1 /* ComputerDesktopView.swift */,
 				977A76A0FDF8165D787040E5 /* Controls.swift */,
 				54109B48A948CCE11C2134C9 /* CrashReporting.swift */,
+				343DBCC090D1E5934D3521AC /* DepartmentInstructionsSheet.swift */,
 				A3325E78847A06174B8F6CB1 /* ExternalAgentsSettingsView.swift */,
 				D2BF796ED6CF876F292D34F7 /* FoldersSettingsView.swift */,
 				C5B914DF8F85E011F107015E /* FolderWatchersSettingsBlock.swift */,
@@ -1801,6 +1807,7 @@
 				31C604F87009674137794FC5 /* CronTests.swift in Sources */,
 				482A15F83672AC4E394458B4 /* CuratorTests.swift in Sources */,
 				F5DE0452F13EFF840252DA18 /* DelegateFixTests.swift in Sources */,
+				0BC05A7167BA697729E45600 /* DepartmentInstructionsTests.swift in Sources */,
 				97CA2B09C3C07ED59C182BE7 /* DispatchTests.swift in Sources */,
 				A53CF392B5D1EF9379A8AF0D /* ExternalAgentLiveTests.swift in Sources */,
 				E547C2D95F0869802079702D /* ExternalAgentSettingsTests.swift in Sources */,
@@ -1879,6 +1886,7 @@
 				D0F6D007526E6E538FF5439F /* ComputerDesktopView.swift in Sources */,
 				CCFE3A5F1F471C899C72C0C0 /* Controls.swift in Sources */,
 				19E4F803C82D8ECB96EEA58F /* CrashReporting.swift in Sources */,
+				8A3A8F81C0DF6128FEB55EE1 /* DepartmentInstructionsSheet.swift in Sources */,
 				AAFE2F7444EC6500F48125C3 /* ExternalAgentsSettingsView.swift in Sources */,
 				F4B355E63C87E8948F4321D3 /* FolderWatchersSettingsBlock.swift in Sources */,
 				8E6504AE29631E4E8D8AAF2B /* FoldersSettingsView.swift in Sources */,

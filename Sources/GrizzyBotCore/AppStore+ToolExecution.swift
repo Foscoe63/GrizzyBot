@@ -1438,9 +1438,7 @@ extension AppStore {
                 }
                 let provider = endpoint.provider
                 let helperTaint = RunTaint()
-                let nested = try await AgentLoop.run(
-                    client: client,
-                    request: AgentLoopRequest(
+                var nestedRequest = AgentLoopRequest(
                         endpoint: endpoint,
                         botName: helperName,
                         botTitle: "helper",
@@ -1466,6 +1464,10 @@ extension AppStore {
                         ].filter { !$0.isEmpty }.joined(separator: "\n\n"),
                         stallMs: max(0, appConfig.agentStallTimeoutMs)
                     )
+                nestedRequest.departmentInstructions = departmentInstructionsPrompt(forBot: botId)
+                let nested = try await AgentLoop.run(
+                    client: client,
+                    request: nestedRequest
                 ) { [weak self] nestedName, nestedArgs in
                     guard let self else {
                         return AgentToolCallResult(output: "store released")

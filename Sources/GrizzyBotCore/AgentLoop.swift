@@ -78,6 +78,8 @@ public struct AgentLoopRequest: Sendable {
     public var pinnedFacts: [String] = []
     /// Tools the bot may use that this turn left out to save context. `capabilities_load` brings one back.
     public var deferredTools: [ChatTool] = []
+    /// The ready-made shared-instructions block for this bot's department ("" when it has none).
+    public var departmentInstructions: String = ""
 
     public init(
         endpoint: ModelEndpoint,
@@ -710,6 +712,10 @@ public enum AgentLoop {
         )
         if !request.botTitle.isEmpty {
             lines.append("Role: \(request.botTitle)")
+        }
+        let department = request.departmentInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !department.isEmpty {
+            lines.append(department)
         }
         let instructions = request.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         if !instructions.isEmpty {

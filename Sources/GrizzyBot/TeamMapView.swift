@@ -20,6 +20,7 @@ struct TeamMapView: View {
     @State private var renaming: String?
     @State private var renameText = ""
     @State private var deleting: String?
+    @State private var editingInstructions: Named?
     @State private var draft = ""
     @State private var sentTo: (ids: [String], chief: String?)?
     @State private var flash: Set<String> = []
@@ -58,6 +59,9 @@ struct TeamMapView: View {
             departmentSheet(title: "Rename \(item.name)", text: $renameText, confirm: "Save") {
                 if store.renameDepartment(item.name, to: renameText) { renaming = nil } else { sheetError = "That name is taken or empty." }
             }
+        }
+        .sheet(item: $editingInstructions) { item in
+            DepartmentInstructionsSheet(department: item.name) { editingInstructions = nil }
         }
         .confirmationDialog(pendingMove.map { "Move \($0.bot.name) to \($0.dept.isEmpty ? "General" : $0.dept)?" } ?? "",
                             isPresented: Binding(get: { pendingMove != nil }, set: { if !$0 { pendingMove = nil } }), titleVisibility: .visible) {
@@ -269,6 +273,8 @@ struct TeamMapView: View {
 
     private func panelMenu(_ section: TeamMapSection) -> some View {
         Menu {
+            Button("Shared instructions…") { editingInstructions = Named(name: section.key) }
+            Divider()
             Button("Rename") { renameText = section.name; sheetError = ""; renaming = section.key }
                 .disabled(section.key.isEmpty)
             Button("Delete department", role: .destructive) { deleting = section.key }
