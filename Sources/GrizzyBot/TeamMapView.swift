@@ -298,6 +298,10 @@ struct TeamMapView: View {
                         panelDrag = nil
                     })
                 Text("\(section.count)").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.textSecondary)
+                if !(store.departmentInstructions(section.key)?.text.isEmpty ?? true) {
+                    Image(systemName: "text.alignleft").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+                        .help("This department has shared instructions")
+                }
                 panelMenu(section)
             }
             .padding(.horizontal, 20)
@@ -315,7 +319,7 @@ struct TeamMapView: View {
 
     private func panelMenu(_ section: TeamMapSection) -> some View {
         Menu {
-            Button("Shared instructions…") { editingInstructions = Named(name: section.key) }
+            Button((store.departmentInstructions(section.key)?.text.isEmpty ?? true) ? "Shared instructions…" : "Shared instructions… (set)") { editingInstructions = Named(name: section.key) }
             Button(store.pendingFactCount(section.key) > 0 ? "Shared memory… (\(store.pendingFactCount(section.key)) to review)" : "Shared memory…") {
                 editingMemory = Named(name: section.key)
             }

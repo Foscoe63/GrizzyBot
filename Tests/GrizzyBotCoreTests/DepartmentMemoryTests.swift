@@ -229,4 +229,15 @@ struct DepartmentMemoryTests {
             client: ByBotClient([:]), taint: RunTaint())
         #expect(r.blocks.contains { if case .teamNote = $0 { true } else { false } })
     }
+
+    @Test("accepted team notes turn up in a bot's past-chat search; proposed ones do not")
+    func inSessionSearch() throws {
+        let store = makeStore()
+        let bot = add(store, "Ada", in: "Ops")
+        _ = try store.addDepartmentFact("Ops", input("Zephyr", "the staging box"))
+        _ = try store.proposeDepartmentFact(botId: bot.id, input("Quasar", "not yet"))
+        let docs = store.sessionDocs(for: bot.id)
+        #expect(docs.contains { $0.thread == "team notes (Ops)" && $0.text.contains("Zephyr") })
+        #expect(!docs.contains { $0.text.contains("Quasar") })
+    }
 }

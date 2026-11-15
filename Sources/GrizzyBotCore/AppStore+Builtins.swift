@@ -147,6 +147,14 @@ extension AppStore {
                 docs.append(.init(thread: label, role: message.role, date: message.createdAt, text: text))
             }
         }
+        // The department's accepted shared notes are searchable here too, so a bot looking for what the team
+        // already settled finds it next to what was said in chat.
+        let dept = department(of: botId)
+        for fact in departmentFacts(dept) where fact.status == .accepted {
+            let also = fact.aliases.isEmpty ? "" : " (also: \(fact.aliases.joined(separator: ", ")))"
+            docs.append(.init(thread: "team notes (\(dept.isEmpty ? "General" : dept))", role: .bot, date: fact.updatedAt,
+                              text: "\(fact.name)\(also): \(fact.detail)"))
+        }
         return docs
     }
 }
