@@ -138,6 +138,9 @@ struct MessageView: View {
         case .childBot(let childId, let name, let title, let status):
             childBotCard(botId: childId, name: name, title: title, status: status)
 
+        case .teamNote(let department, let factId):
+            TeamNoteCard(department: department, factId: factId)
+
         case .text(let text):
             if message.role == .user {
                 if editing {

@@ -219,6 +219,9 @@ extension AppStore {
                 return deleted
                     ? "[artifact deleted] \(title) (\(id))"
                     : "[artifact \(kind.rawValue)] \(title) (\(id)) — \(summary)"
+            case .teamNote(let department, let factId):
+                guard let fact = departmentFact(department, id: factId) else { return "[team note] no longer available" }
+                return "[team note \(fact.status.rawValue)] \(fact.name): \(fact.detail)"
             }
         }.joined(separator: "\n")
     }

@@ -35,6 +35,9 @@ public struct DepartmentFact: Codable, Sendable, Equatable, Identifiable {
     public var replaces: [Replaced]
     public var supersededBy: String?
     public var history: [Version]
+    /// The revision this note had the moment it was accepted. While `revision` still equals it, nothing has
+    /// touched the note since, so the accept can be undone. Nil on notes saved before undo existed.
+    public var acceptedRevision: Int?
 
     public var isActive: Bool { status == .accepted || status == .proposed }
 }
@@ -164,7 +167,7 @@ public enum DepartmentMemory {
         let fact = DepartmentFact(
             id: Ids.new(), key: n.key, kind: n.kind, name: n.name, detail: n.detail, aliases: n.aliases, status: .proposed,
             pinned: false, revision: 1, sourceBotId: sourceBotId, sourceName: sourceName, proposedAt: now, updatedAt: now,
-            replaces: replaced, supersededBy: nil, history: []
+            replaces: replaced, supersededBy: nil, history: [], acceptedRevision: nil
         )
         facts.append(fact)
         return fact
@@ -214,6 +217,7 @@ public enum DepartmentMemory {
         facts[i].status = .accepted
         facts[i].updatedAt = now
         facts[i].revision += 1
+        facts[i].acceptedRevision = facts[i].revision
         for old in replaced {
             guard let j = facts.firstIndex(where: { $0.id == old.id }) else { continue }
             remember(&facts[j], now: now)
@@ -265,6 +269,32 @@ public enum DepartmentMemory {
         facts[i].status = .deleted
         facts[i].updatedAt = now
         facts[i].revision += 1
+        prune(&facts)
+    }
+
+    /// True while the accept of `fact` can still be undone: accepted, and untouched since.
+    public static func canUndo(_ fact: DepartmentFact) -> Bool {
+        fact.status == .accepted && fact.acceptedRevision != nil && fact.acceptedRevision == fact.revision
+    }
+
+    /// Takes back an accept: the note is removed and any note it replaced is accepted again. Refused if the
+    /// note changed since it was accepted, or if putting the old note back would collide with another one.
+    public static func undoAccept(_ facts: inout [DepartmentFact], id: String, now: Date = .now) throws {
+        guard let i = facts.firstIndex(where: { $0.id == id }) else { throw DepartmentMemoryError.notFound }
+        guard canUndo(facts[i]) else { throw DepartmentMemoryError.stale }
+        let restored = facts.indices.filter { facts[$0].status == .superseded && facts[$0].supersededBy == id }
+        for j in restored where facts.contains(where: { $0.id != id && $0.status == .accepted && keyOf($0) == keyOf(facts[j]) }) {
+            throw DepartmentMemoryError.conflict("Another note now has this key, so the earlier one cannot be put back.")
+        }
+        facts[i].status = .deleted
+        facts[i].updatedAt = now
+        facts[i].revision += 1
+        for j in restored {
+            facts[j].status = .accepted
+            facts[j].supersededBy = nil
+            facts[j].updatedAt = now
+            facts[j].revision += 1
+        }
         prune(&facts)
     }
 

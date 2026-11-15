@@ -101,6 +101,9 @@ struct DepartmentMemorySheet: View {
                 } else {
                     Button("Edit") { openForm(fact) }
                     Button(fact.pinned ? "Unpin" : "Pin") { run { try store.updateDepartmentFact(department, id: fact.id, patch: .init(pinned: !fact.pinned), expectedRevision: fact.revision) } }
+                    if DepartmentMemory.canUndo(fact) {
+                        Button("Undo accept") { run { try store.undoDepartmentFactAccept(department, id: fact.id) } }
+                    }
                     Button("Delete", role: .destructive) { run { try store.removeDepartmentFact(department, id: fact.id, expectedRevision: fact.revision) } }
                 }
             }

@@ -676,7 +676,10 @@ extension AppStore {
                     DepartmentFactInput(kind: kind, name: s("name"), detail: s("detail"), aliases: aliases, key: s("key").isEmpty ? nil : s("key"))
                 )
                 let note = fact.replaces.isEmpty ? "" : " It would replace the current note with this key."
-                return AgentToolCallResult(output: "Proposed “\(fact.name)”. The person reviews it before it is shared with the department.\(note)")
+                return AgentToolCallResult(
+                    output: "Proposed “\(fact.name)”. The person reviews it before it is shared with the department.\(note)",
+                    blocks: [.teamNote(department: department(of: botId), factId: fact.id)]
+                )
             } catch {
                 return AgentToolCallResult(output: error.localizedDescription)
             }

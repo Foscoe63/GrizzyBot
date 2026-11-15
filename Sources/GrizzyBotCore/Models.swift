@@ -291,6 +291,9 @@ public enum MessageBlock: Codable, Sendable, Hashable {
     /// the content is read live from the artifact store, so an artifact edited
     /// later does not leave a stale copy in the transcript.
     case artifact(id: String, title: String, kind: ArtifactKind, summary: String, deleted: Bool)
+    /// A card for a team note a bot proposed. Only the identity is stored; the note's text and whether it is
+    /// still waiting, accepted, rejected or undone are read live, so the card never goes stale.
+    case teamNote(department: String, factId: String)
 }
 
 public enum ApprovalStatus: String, Codable, Sendable {

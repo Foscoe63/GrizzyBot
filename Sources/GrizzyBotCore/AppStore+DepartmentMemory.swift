@@ -75,6 +75,16 @@ extension AppStore {
         return made!
     }
 
+    /// One note in any state (a chat card shows accepted, rejected and replaced notes too).
+    public func departmentFact(_ department: String, id: String) -> DepartmentFact? {
+        (teamMap.facts[factsKey(department)] ?? []).first { $0.id == id }
+    }
+
+    /// Takes back an accept (see `DepartmentMemory.undoAccept`).
+    public func undoDepartmentFactAccept(_ department: String, id: String) throws {
+        try mutate(department) { try DepartmentMemory.undoAccept(&$0, id: id) }
+    }
+
     public func removeDepartmentFact(_ department: String, id: String, expectedRevision: Int? = nil) throws {
         try mutate(department) { try DepartmentMemory.remove(&$0, id: id, expectedRevision: expectedRevision) }
     }

@@ -196,4 +196,37 @@ struct DepartmentMemoryTests {
         let decoded = try JSONDecoder().decode(TeamMapState.self, from: JSONEncoder().encode(bad))
         #expect(decoded.facts[""]?.count == 1)
     }
+
+    @Test("undo restores the note an accept replaced, and is refused once the note changed")
+    func undoAccept() throws {
+        var facts: [DepartmentFact] = []
+        let old = try DepartmentMemory.add(&facts, input("Deploy", "old", key: "k"))
+        let p = try DepartmentMemory.propose(&facts, input("Deploy", "new", key: "k"), sourceBotId: "b", sourceName: "B")
+        _ = try DepartmentMemory.resolve(&facts, id: p.id, accept: true, expectedRevision: p.revision)
+        let accepted = facts.first { $0.id == p.id }!
+        #expect(DepartmentMemory.canUndo(accepted))
+        try DepartmentMemory.undoAccept(&facts, id: p.id)
+        #expect(facts.first { $0.id == old.id }?.status == .accepted)
+        #expect(facts.first { $0.id == p.id }?.status != .accepted)
+        // A later edit closes the window.
+        let q = try DepartmentMemory.propose(&facts, input("Other", "x"), sourceBotId: "b", sourceName: "B")
+        _ = try DepartmentMemory.resolve(&facts, id: q.id, accept: true, expectedRevision: q.revision)
+        let cur = facts.first { $0.id == q.id }!
+        _ = try DepartmentMemory.update(&facts, id: q.id, patch: .init(pinned: true), expectedRevision: cur.revision)
+        #expect(!DepartmentMemory.canUndo(facts.first { $0.id == q.id }!))
+        #expect(throws: (any Error).self) { try DepartmentMemory.undoAccept(&facts, id: q.id) }
+    }
+
+    @Test("a proposed note comes back with a chat card block, which survives encoding")
+    func cardBlock() async throws {
+        let store = makeStore()
+        let bot = add(store, "Ada")
+        let block = MessageBlock.teamNote(department: "", factId: "f1")
+        #expect(try JSONDecoder().decode(MessageBlock.self, from: JSONEncoder().encode(block)) == block)
+        let r = await store.executeAgentTool(
+            name: "propose_team_memory", argumentsJSON: #"{"kind":"term","name":"Zed","detail":"d"}"#, botId: bot.id, depth: 0,
+            endpoint: ModelEndpoint(provider: "p", model: "m", baseURL: "https://localhost", apiKey: ""),
+            client: ByBotClient([:]), taint: RunTaint())
+        #expect(r.blocks.contains { if case .teamNote = $0 { true } else { false } })
+    }
 }
