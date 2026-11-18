@@ -138,7 +138,7 @@ struct ConfigHistoryBlock: View {
             ForEach(entries) { entry in
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.summary).font(.system(size: 12.5)).foregroundStyle(Theme.textBright).lineLimit(2)
+                        Text(entry.readable).font(.system(size: 12.5)).foregroundStyle(Theme.textBright).lineLimit(2)
                         Text("\(entry.at.formatted(date: .abbreviated, time: .shortened)) · \(entry.source)")
                             .font(.system(size: 11)).foregroundStyle(Theme.textMuted)
                     }
@@ -210,27 +210,60 @@ struct HandsFreePhraseBlock: View {
     }
 }
 
-/// The workflows saved in this account, read from the workflows folder.
+/// The workflows saved in this account, each with inputs and a Run button that uses the active bot.
 struct WorkflowsListBlock: View {
     @Environment(AppStore.self) private var store
 
     var body: some View {
         let flows = store.workflows()
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 14) {
             if flows.isEmpty {
                 Text("None yet. A workflow is a JSON file in the workflows folder of your GrizzyBot folder; ask a bot to draft one.")
                     .font(.system(size: 12.5)).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             }
-            ForEach(flows) { flow in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(flow.name).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.textBright)
-                    Text("\(flow.nodes.count) steps · " + (flow.inputs.isEmpty ? "no input" : "needs " + flow.inputs.keys.sorted().joined(separator: ", ")))
-                        .font(.system(size: 11.5)).foregroundStyle(Theme.textMuted)
-                    if !flow.summary.isEmpty {
-                        Text(flow.summary).font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
-                    }
-                }
+            ForEach(flows) { flow in WorkflowRow(flow: flow) }
+        }
+    }
+}
+
+private struct WorkflowRow: View {
+    @Environment(AppStore.self) private var store
+    let flow: WorkflowDefinition
+    @State private var values: [String: String] = [:]
+    @State private var running = false
+    @State private var result: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(flow.name).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.textBright)
+            Text("\(flow.nodes.count) steps" + (flow.summary.isEmpty ? "" : " · " + flow.summary))
+                .font(.system(size: 11.5)).foregroundStyle(Theme.textMuted)
+            ForEach(flow.inputs.keys.sorted(), id: \.self) { key in
+                GrizzyField(label: key, placeholder: flow.inputs[key] ?? "", text: Binding(
+                    get: { values[key] ?? flow.defaults[key] ?? "" },
+                    set: { values[key] = $0 }
+                ))
             }
+            HStack {
+                GrizzyButton(title: running ? "Running…" : "Run as \(store.activeBot?.name ?? "a bot")", variant: .cream, size: .sm) { run() }
+                    .disabled(running || store.activeBot == nil)
+            }
+            if let result {
+                Text(result).font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func run() {
+        guard let bot = store.activeBot else { return }
+        running = true
+        var input = flow.defaults
+        for (k, v) in values where !v.isEmpty { input[k] = v }
+        Task {
+            let text = await store.runWorkflow(id: flow.id, input: input, botId: bot.id)
+            result = text
+            running = false
         }
     }
 }

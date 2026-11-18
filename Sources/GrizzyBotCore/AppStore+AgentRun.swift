@@ -558,6 +558,7 @@ extension AppStore {
                         let shown = streamUnscrub.feed(delta)
                         guard !shown.isEmpty else { return }
                         Task { @MainActor in
+                            self?.gatewayObservers[threadKey]?.onDelta(shown)
                             self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: shown)
                         }
                     },
@@ -577,6 +578,7 @@ extension AppStore {
                         let shown = streamUnscrub.feed(delta)
                         guard !shown.isEmpty else { return }
                         Task { @MainActor in
+                            self?.gatewayObservers[threadKey]?.onDelta(shown)
                             self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: shown)
                         }
                     },
@@ -656,6 +658,7 @@ extension AppStore {
             Task { await exporter.record(span) }
         }
         guard !Task.isCancelled else {
+            gatewayObservers.removeValue(forKey: threadKey)?.onFinish("The run was cancelled.")
             finishCancelled(botId: botId, threadKey: threadKey, runId: runId)
             runTasks.removeValue(forKey: runId)
             return
@@ -663,6 +666,7 @@ extension AppStore {
         guard var thread2 = threads[threadKey], thread2.run?.id == runId else { return }
         thread2.messages.removeAll { $0.id == progressMsg.id }
 
+        gatewayObservers.removeValue(forKey: threadKey)?.onFinish(replyText.isEmpty ? "done." : replyText)
         if groups.contains(where: { $0.id == threadKey }) {
             replyText = "**\(bot.name):** \(replyText)"
         }

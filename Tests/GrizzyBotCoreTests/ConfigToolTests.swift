@@ -51,3 +51,16 @@ struct ConfigToolTests {
         #expect(store.appConfig.queueMode == before)
     }
 }
+
+@Suite("Config history labels")
+struct ConfigHistoryLabelTests {
+    @Test("a nested toggle reads as words with before and after")
+    func nested() {
+        var old = AppConfig(); var new = old
+        new.privacyFilter.reviewBeforeSend = true
+        let change = ConfigHistory.diff(old: old, new: new)
+        #expect(change?.readable == "Review before send: off → on")
+        old.queueMode = .steer; new = old; new.queueMode = .collect
+        #expect(ConfigHistory.diff(old: old, new: new)?.readable.hasSuffix("steer → collect") == true)
+    }
+}

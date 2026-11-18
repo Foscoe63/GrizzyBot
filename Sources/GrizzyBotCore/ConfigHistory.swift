@@ -18,6 +18,43 @@ public struct ConfigChange: Codable, Sendable, Equatable, Identifiable {
     public var summary: String {
         items.map { $0.secret ? "\($0.key) (secret)" : $0.key }.joined(separator: ", ")
     }
+    /// Plain-words description for the settings screen: "Review before sending: off → on".
+    public var readable: String {
+        items.flatMap { item -> [String] in
+            if item.secret { return ["\(Self.words(item.key)) changed"] }
+            if case .object(let before)? = item.before, case .object(let after)? = item.after {
+                return Set(before.keys).union(after.keys).sorted().compactMap { key in
+                    before[key] == after[key] ? nil : Self.line(Self.words(key), before[key], after[key])
+                }
+            }
+            return [Self.line(Self.words(item.key), item.before, item.after)]
+        }.joined(separator: "; ")
+    }
+
+    /// "reviewBeforeSend" → "Review before send".
+    static func words(_ key: String) -> String {
+        var out = ""
+        for ch in key {
+            if ch.isUppercase, !out.isEmpty { out += " " + ch.lowercased() } else { out += String(ch) }
+        }
+        return out.prefix(1).uppercased() + out.dropFirst()
+    }
+
+    private static func shown(_ value: JSONValue?) -> String {
+        switch value {
+        case .bool(let b)?: return b ? "on" : "off"
+        case .string(let s)?: return s.isEmpty ? "empty" : (s.count > 30 ? String(s.prefix(30)) + "…" : s)
+        case .number(let n)?: return n == n.rounded() ? String(Int(n)) : String(n)
+        case .array(let a)?: return a.isEmpty ? "none" : "\(a.count) item\(a.count == 1 ? "" : "s")"
+        case .object?: return "set"
+        case .null?, nil: return "unset"
+        }
+    }
+
+    private static func line(_ name: String, _ before: JSONValue?, _ after: JSONValue?) -> String {
+        "\(name): \(shown(before)) → \(shown(after))"
+    }
+
     /// A change that only touched secrets has nothing to undo.
     public var revertible: Bool { items.contains { !$0.secret } }
 }
