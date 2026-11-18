@@ -110,6 +110,7 @@ public actor CompanionServer {
     private var listener: NWListener?
     private var api: CompanionAPI?
     private var token = ""
+    private var loopbackOnly = true
     private var failures = 0
     private var lockedUntil = Date.distantPast
     public private(set) var port = 8802
@@ -128,6 +129,7 @@ public actor CompanionServer {
         let listener = allowNetwork ? try NWListener(using: parameters, on: nwPort) : try NWListener(using: parameters)
         self.api = CompanionAPI(backend: backend)
         self.token = token
+        self.loopbackOnly = !allowNetwork
         self.port = port
         listener.newConnectionHandler = { [weak self] connection in
             guard let self else { connection.cancel(); return }
@@ -184,6 +186,9 @@ public actor CompanionServer {
 
     public func route(_ request: HTTPRequestParser.Request) async -> CompanionAPI.Reply {
         guard let api else { return .init(status: 503, contentType: "application/json", body: Data("{\"error\":\"stopped\"}".utf8)) }
+        guard RequestOriginGuard.allows(headers: request.headers, loopbackOnly: loopbackOnly) else {
+            return .init(status: 403, contentType: "application/json", body: Data("{\"error\":\"forbidden origin\"}".utf8))
+        }
         var authorized = false
         if request.path.hasPrefix("/api/") {
             if Date() < lockedUntil {

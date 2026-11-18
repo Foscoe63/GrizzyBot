@@ -167,7 +167,7 @@ enum MacAccessibility {
         if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
            let axValue = rangeRef {
             var cfRange = CFRange()
-            if AXValueGetValue(axValue as! AXValue, .cfRange, &cfRange) {
+            if let value = Self.axValue(axValue), AXValueGetValue(value, .cfRange, &cfRange) {
                 insertAt = max(0, min(existing.utf16.count, cfRange.location))
             }
         }
@@ -282,7 +282,8 @@ enum MacAccessibility {
         guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
               let childrenRef
         else { return }
-        let cfArray = childrenRef as! CFArray
+        guard CFGetTypeID(childrenRef) == CFArrayGetTypeID() else { return }
+        let cfArray = unsafeBitCast(childrenRef, to: CFArray.self)
         let count = CFArrayGetCount(cfArray)
         for i in 0..<count {
             guard lines.count < ComputerOutline.maxLines, visited < 400 else { return }
@@ -350,11 +351,17 @@ enum MacAccessibility {
         return (value as? String) ?? ""
     }
 
+    /// The attribute as an `AXValue`, or nil if the target app returned some other CF type.
+    private static func axValue(_ ref: CFTypeRef) -> AXValue? {
+        guard CFGetTypeID(ref) == AXValueGetTypeID() else { return nil }
+        return unsafeBitCast(ref, to: AXValue.self)
+    }
+
     private static func axPoint(_ element: AXUIElement, _ attr: String) -> CGPoint? {
         var ref: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attr as CFString, &ref) == .success, let ref else { return nil }
         var point = CGPoint.zero
-        guard AXValueGetValue(ref as! AXValue, .cgPoint, &point) else { return nil }
+        guard let value = axValue(ref), AXValueGetValue(value, .cgPoint, &point) else { return nil }
         return point
     }
 
@@ -362,7 +369,7 @@ enum MacAccessibility {
         var ref: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attr as CFString, &ref) == .success, let ref else { return nil }
         var size = CGSize.zero
-        guard AXValueGetValue(ref as! AXValue, .cgSize, &size) else { return nil }
+        guard let value = axValue(ref), AXValueGetValue(value, .cgSize, &size) else { return nil }
         return size
     }
 

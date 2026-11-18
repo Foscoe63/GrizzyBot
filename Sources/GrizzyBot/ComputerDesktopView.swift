@@ -6,7 +6,7 @@ import SwiftUI
 import WebKit
 
 @MainActor
-final class AppComputerRuntime: ComputerRuntime, @unchecked Sendable {
+final class AppComputerRuntime: ComputerRuntime {
     static let shared = AppComputerRuntime()
 
     private var webs: [String: WKWebView] = [:]

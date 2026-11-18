@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Overlay pixel snapshots only pass on the machine that recorded them, so CI skips them. Run them
+# here, but only when a staged change could alter how a view renders.
+# Skip once with SKIP_SNAPSHOTS=1 git commit ...
+set -euo pipefail
+[ "${SKIP_SNAPSHOTS:-}" = "1" ] && exit 0
+
+if ! git diff --cached --name-only | grep -qE '^(Sources/GrizzyBot/|Tests/GrizzyBotAppTests/)'; then
+  exit 0
+fi
+
+echo "pre-commit: UI files changed, running overlay snapshot tests (SKIP_SNAPSHOTS=1 to skip)…"
+if ! xcodebuild -project GrizzyBot.xcodeproj -scheme GrizzyBot -destination 'platform=macOS' \
+    -configuration Debug CODE_SIGNING_ALLOWED=NO -skipMacroValidation -skipPackagePluginValidation \
+    -only-testing:GrizzyBotAppTests/OverlaySnapshotTests test >/tmp/grizzybot-snapshots.log 2>&1; then
+  echo "Overlay snapshots failed. See /tmp/grizzybot-snapshots.log and .snapshot-failures/."
+  echo "If the change is intended: UPDATE_SNAPSHOTS=1 xcodebuild test -only-testing:GrizzyBotAppTests, then re-stage the goldens."
+  exit 1
+fi

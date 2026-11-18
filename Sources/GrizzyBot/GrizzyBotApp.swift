@@ -111,7 +111,21 @@ struct GrizzyBotApp: App {
                 MacBridge.indexBots(store.bots)
             }
             .onOpenURL { url in
-                handleDeepLink(url)
+                if url.isFileURL {
+                    TeamFileOpener.open(url, store: store)
+                } else {
+                    handleDeepLink(url)
+                }
+            }
+            .sheet(isPresented: Binding(
+                get: { store.pendingTeamPackage != nil },
+                set: { if !$0 { store.dismissPendingTeam() } }
+            )) {
+                if let package = store.pendingTeamPackage {
+                    ThemePaletteProvider { TeamReviewSheet(package: package) }
+                        .environment(store)
+                        .environment(themeManager)
+                }
             }
             .onContinueUserActivity(CSSearchableItemActionType) { activity in
                 if let id = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String {

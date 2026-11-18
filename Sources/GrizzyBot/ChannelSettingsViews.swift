@@ -1,6 +1,7 @@
 import AppKit
 import GrizzyBotCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Settings body for the Telegram link. Pairing is two-sided on purpose: a stranger who finds the
 /// bot gets a code, and only someone at this Mac can turn that code into access.
@@ -266,13 +267,18 @@ struct TeamsSettingsBody: View {
     @Environment(AppStore.self) private var store
     @State private var teamName = ""
     @State private var notice: String?
+    @State private var showExport = false
+    @State private var showLibrary = false
+    @State private var dropTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             GrizzyField(label: "Team name", placeholder: "My team", text: $teamName)
             HStack(spacing: 10) {
-                GrizzyButton(title: "Export team…", variant: .cream, size: .sm) { export() }
+                GrizzyButton(title: "Browse teams…", variant: .cream, size: .sm) { showLibrary = true }
+                GrizzyButton(title: "Export team…", variant: .cream, size: .sm) { showExport = true }
                 GrizzyButton(title: "Import team…", variant: .cream, size: .sm) { importTeam() }
+                GrizzyButton(title: "Import from link…", variant: .cream, size: .sm) { importTeamFromLink() }
                 GrizzyButton(title: "Import agent folder…", variant: .cream, size: .sm) { importAgentFolder() }
                 GrizzyButton(title: "Import recipe…", variant: .cream, size: .sm) { importRecipe() }
             }
@@ -281,25 +287,25 @@ struct TeamsSettingsBody: View {
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.textSecondary)
             }
-            Text("The file lists your bots, rooms, and routines. It never includes keys, chats, memory, or computer access, and anything that looks like a secret is removed. Imported routines start paused and imported bots ask before they act.")
+            Text("The file lists your bots, rooms, routines, the departments you choose, and the accounts worth connecting. It never includes keys, chats, memory, or computer access, and anything that looks like a secret is removed. Imported routines start paused and imported bots ask before they act. You can also drop a team file here, or open one from Finder.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.textMuted)
         }
+        .padding(8)
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(Theme.orange.opacity(dropTargeted ? 0.9 : 0), style: StrokeStyle(lineWidth: 1.5, dash: [5])))
+        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in handleDrop(providers) }
+        .sheet(isPresented: $showExport) { TeamExportSheet(name: teamName) }
+        .sheet(isPresented: $showLibrary) { TeamLibrarySheet() }
     }
 
-    private func export() {
-        let name = teamName.trimmingCharacters(in: .whitespaces).isEmpty ? "My team" : teamName
-        let markdown = store.exportTeamPackage(name: name).markdown()
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = name.replacingOccurrences(of: "/", with: "-") + ".team.md"
-        panel.allowedContentTypes = [.plainText]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try markdown.write(to: url, atomically: true, encoding: .utf8)
-            notice = "Saved \(url.lastPathComponent)."
-        } catch {
-            notice = "Couldn't save: \(error.localizedDescription)"
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else { return false }
+        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+            guard let url else { return }
+            Task { @MainActor in TeamFileOpener.open(url, store: store) }
         }
+        return true
     }
 
     /// An OpenClaw/Hermes-style workspace: SOUL.md, AGENTS.md, MEMORY.md, HEARTBEAT.md, skills/.
@@ -348,17 +354,32 @@ struct TeamsSettingsBody: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let text = try String(contentsOf: url, encoding: .utf8)
-            let package = try TeamPackage.parse(markdown: text)
-            let alert = NSAlert()
-            alert.messageText = "Import “\(package.name)”?"
-            alert.informativeText = package.preview()
-            alert.addButton(withTitle: "Import")
-            alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-            let created = store.importTeamPackage(package)
-            notice = "Added \(created.count) bot\(created.count == 1 ? "" : "s")."
+            store.proposeTeam(try TeamPackage.parse(markdown: text))
         } catch {
             notice = error.localizedDescription
+        }
+    }
+
+    private func importTeamFromLink() {
+        let alert = NSAlert()
+        alert.messageText = "Import a team from a link"
+        alert.informativeText = "Paste an https link to a team file. You'll see what it adds before anything is created."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
+        field.placeholderString = "https://example.com/newsroom.team.md"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Fetch")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn,
+              let url = URL(string: field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+        else { return }
+        notice = "Fetching…"
+        Task { @MainActor in
+            do {
+                store.proposeTeam(try await TeamPackage.fetch(url: url))
+                notice = nil
+            } catch {
+                notice = error.localizedDescription
+            }
         }
     }
 }

@@ -79,7 +79,8 @@ final class VoiceMemo {
     }
 
     private final class Delegate: NSObject, AVSpeechSynthesizerDelegate {
-        weak var owner: VoiceMemo?
+        // Set once before speech starts; read only to hop onto the main actor.
+        nonisolated(unsafe) weak var owner: VoiceMemo?
 
         func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
             Task { @MainActor in self.owner?.spoke(range: characterRange) }

@@ -18,6 +18,16 @@ extension AppStore {
             return nil
         case .recipe:
             return recipeReply(argument: argument, bot: bot)
+        case .meeting:
+            let text = argument.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard bot.isToolEnabled("meeting_notes") else {
+                return "Turn on the **Meeting notes** tool in this bot's tool list (its settings) first."
+            }
+            if text.isEmpty {
+                return "Usage: `/meeting <transcript text>` or `/meeting <path to a .vtt, .srt or .txt transcript>`. I write the summary, decisions and action items. I can't join a call myself."
+            }
+            if text.count < 400, let link = MeetingLink.detect(in: text) { return link.explanation }
+            return nil
         case .plan:
             let task = argument.trimmingCharacters(in: .whitespacesAndNewlines)
             return task.isEmpty ? "Usage: `/plan <task>` — I'll write a plan without carrying it out." : nil
@@ -37,6 +47,19 @@ extension AppStore {
             save()
             return nil
         }
+    }
+
+    /// A path the `meeting_notes` tool can read: the one the person gave, or the pasted text saved to the bot's home.
+    func meetingTranscriptPath(_ argument: String, botId: String) -> String {
+        let text = argument.trimmingCharacters(in: .whitespacesAndNewlines)
+        let looksLikePath = !text.contains("\n") && text.count < 400
+            && (text.hasPrefix("/") || text.hasPrefix("~") || text.hasPrefix("./")
+                || [".vtt", ".srt", ".txt", ".md"].contains { text.lowercased().hasSuffix($0) })
+        if looksLikePath { return text }
+        let stamp = Int(Date().timeIntervalSince1970)
+        let path = "meetings/transcript-\(stamp).txt"
+        writeBotFile(botId: botId, path: path, content: text)
+        return path
     }
 
     func contextBreakdown(for bot: Bot) -> ContextBreakdown {
@@ -67,6 +90,7 @@ extension AppStore {
             entries: [
                 .init(label: "System prompt", chars: systemChars),
                 .init(label: "Instructions", chars: bot.instructions.count + (bot.goal?.count ?? 0)),
+                .init(label: "Department", chars: departmentInstructionsPrompt(forBot: bot.id).count + departmentMemoryPrompt(forBot: bot.id).count),
                 .init(label: "Memory", chars: memoryChars),
                 .init(label: "Skills", chars: skillChars),
                 .init(label: "Tools (\(tools.count))", chars: toolChars),
@@ -122,6 +146,14 @@ extension AppStore {
                 guard !text.isEmpty else { continue }
                 docs.append(.init(thread: label, role: message.role, date: message.createdAt, text: text))
             }
+        }
+        // The department's accepted shared notes are searchable here too, so a bot looking for what the team
+        // already settled finds it next to what was said in chat.
+        let dept = department(of: botId)
+        for fact in departmentFacts(dept) where fact.status == .accepted {
+            let also = fact.aliases.isEmpty ? "" : " (also: \(fact.aliases.joined(separator: ", ")))"
+            docs.append(.init(thread: "team notes (\(dept.isEmpty ? "General" : dept))", role: .bot, date: fact.updatedAt,
+                              text: "\(fact.name)\(also): \(fact.detail)"))
         }
         return docs
     }

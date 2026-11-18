@@ -26,8 +26,11 @@ public struct BotRosterEntry: Sendable, Equatable {
     public var isChiefOfStaff: Bool
     /// What the bot can actually do ("web, files, shell"), from the tools switched on for it.
     public var abilities: String
+    /// Where the bot is filed ("" is General). Shown only when the roster spans more than one department.
+    public var department: String
 
-    public init(name: String, title: String = "", isChild: Bool = false, isChiefOfStaff: Bool = false, abilities: String = "") {
+    public init(name: String, title: String = "", isChild: Bool = false, isChiefOfStaff: Bool = false, abilities: String = "", department: String = "") {
+        self.department = department
         self.abilities = abilities
         self.name = name
         self.title = title
@@ -76,6 +79,14 @@ public struct AgentLoopRequest: Sendable {
     public var contextSavings: Bool = true
     /// Notes that must survive compaction for the whole run.
     public var pinnedFacts: [String] = []
+    /// Tools the bot may use that this turn left out to save context. `capabilities_load` brings one back.
+    public var deferredTools: [ChatTool] = []
+    /// The ready-made shared-instructions block for this bot's department ("" when it has none).
+    public var departmentInstructions: String = ""
+    /// The ready-made team-memory block for this bot's department ("" when it has no accepted notes).
+    public var departmentMemory: String = ""
+    /// What a Chief of Staff is in charge of (empty for every other bot).
+    public var authorityNote: String = ""
 
     public init(
         endpoint: ModelEndpoint,
@@ -155,6 +166,8 @@ public struct AgentToolCallResult: Sendable {
     /// Tokens spent by work this tool ran (a helper's own model calls).
     public var extraInputTokens: Int
     public var extraOutputTokens: Int
+    /// Built-in tools asked for via capabilities_load; the loop adds any that were held back.
+    public var activatedToolNames: [String] = []
 
     public init(
         output: String,
@@ -165,8 +178,10 @@ public struct AgentToolCallResult: Sendable {
         loadedSkillBodies: [(id: String, body: String)] = [],
         endTurn: Bool = false,
         extraInputTokens: Int = 0,
-        extraOutputTokens: Int = 0
+        extraOutputTokens: Int = 0,
+        activatedToolNames: [String] = []
     ) {
+        self.activatedToolNames = activatedToolNames
         self.extraInputTokens = extraInputTokens
         self.extraOutputTokens = extraOutputTokens
         self.output = output
@@ -636,8 +651,10 @@ public enum AgentLoop {
                     ? "You are the chief of staff for this workspace. No other bots exist yet — spawn_bot when a job deserves its own standing bot."
                     : nil
             }
+            let spansDepartments = Set(entries.map(\.department)).count > 1
             let lines = entries.map { entry -> String in
                 var tags: [String] = []
+                if spansDepartments { tags.append("department: \(entry.department.isEmpty ? "General" : entry.department)") }
                 if entry.isChiefOfStaff { tags.append("chief of staff") }
                 if entry.isChild { tags.append("you created it") }
                 let role = entry.title.isEmpty ? "" : " — \(entry.title)"
@@ -686,8 +703,11 @@ public enum AgentLoop {
             AppConfig.keysHelp,
             PromptSection.computer(request.computerNote),
         ]
-        if let builtinNote = PromptSection.builtinAvailability(tools: request.tools) {
+        if let builtinNote = PromptSection.builtinAvailability(tools: request.tools + request.deferredTools) {
             lines.append(builtinNote)
+        }
+        if let deferredNote = ToolSelection.deferredNote(request.deferredTools) {
+            lines.append(deferredNote)
         }
         if !request.homePath.isEmpty {
             lines.append("Home path: \(request.homePath)")
@@ -701,6 +721,14 @@ public enum AgentLoop {
         )
         if !request.botTitle.isEmpty {
             lines.append("Role: \(request.botTitle)")
+        }
+        let department = request.departmentInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !department.isEmpty {
+            lines.append(department)
+        }
+        let teamMemory = request.departmentMemory.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !teamMemory.isEmpty {
+            lines.append(teamMemory)
         }
         let instructions = request.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         if !instructions.isEmpty {
@@ -718,6 +746,10 @@ public enum AgentLoop {
             canMessage: request.tools.contains(where: { $0.function.name == "message_bot" })
         ) {
             lines.append(roster)
+        }
+        let authority = request.authorityNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !authority.isEmpty {
+            lines.append(authority)
         }
         let memory = request.memory.trimmingCharacters(in: .whitespacesAndNewlines)
         if !memory.isEmpty {
@@ -871,6 +903,7 @@ public enum AgentLoop {
         var compacted = false
         let maxSteps = max(1, request.maxSteps)
         var tools = request.tools
+        var deferredPool = request.deferredTools
         if savingsOn {
             for tool in ContextTools.definitions where !tools.contains(where: { $0.function.name == tool.function.name }) {
                 tools.append(tool)
@@ -1182,6 +1215,16 @@ public enum AgentLoop {
                         stepNotes.append(.user(
                             "First-class MCP tools are now available this turn: \(names). Call them directly by name with their arguments — do not wrap in mcp_call, toolport_call_tool, or call_tool_by_name."
                         ))
+                    }
+                }
+                if !result.activatedToolNames.isEmpty {
+                    let wanted = Set(result.activatedToolNames)
+                    let arriving = deferredPool.filter { wanted.contains($0.function.name) }
+                    if !arriving.isEmpty {
+                        deferredPool.removeAll { wanted.contains($0.function.name) }
+                        tools.append(contentsOf: arriving)
+                        let names = arriving.map(\.function.name).joined(separator: ", ")
+                        stepNotes.append(.user("Tools now available: \(names). Call them directly."))
                     }
                 }
                 if !result.loadedSkillBodies.isEmpty {

@@ -11,6 +11,7 @@ struct RightPanelView: View {
     @State var createTitle = ""
     @State var createDescription = ""
 
+    @State var allowRulesOpen = true
     @State var settingsName = ""
     @State var settingsTitle = ""
     @State var settingsDescription = ""

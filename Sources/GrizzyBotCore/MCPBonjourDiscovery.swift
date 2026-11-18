@@ -40,6 +40,7 @@ public enum MCPBonjourDiscovery {
         }
     }
 
+    // @unchecked Sendable: `entries` is guarded by `lock`; `browser` is only touched from the thread that started the session.
     private final class BrowseSession: NSObject, NetServiceBrowserDelegate, NetServiceDelegate, @unchecked Sendable {
         private var browser: NetServiceBrowser?
         private let lock = NSLock()

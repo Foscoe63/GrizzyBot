@@ -11,6 +11,7 @@ public enum ToolWatchdog {
     public static func limit(for tool: String) -> TimeInterval {
         switch tool {
         case "run_subagent", "message_bot": return 900
+        case "delegate_external": return 1800
         case "shell", "shell.exec", "shortcuts_run": return 330
         case let t where t.hasPrefix("computer_") || t == "request_takeover": return 120
         case "web_search", "web_fetch": return 120
@@ -62,6 +63,7 @@ public enum ToolWatchdog {
     }
 
     /// Resumes the continuation exactly once, whichever of work, timer, or Stop gets there first.
+    // @unchecked Sendable: all mutable state is guarded by `lock`, except the two callbacks, which are set before the gate is shared.
     private final class Gate: @unchecked Sendable {
         // Guarded by `lock`.
         private let lock = NSLock()

@@ -32,6 +32,8 @@ public struct UserWorkspace: Codable, Sendable {
     public var mcpAdvertisedTools: [String: [String]]
     public var botChat: [BotChatEntry]
     public var grantedFolders: [GrantedFolder]
+    public var externalAgents: [ExternalAgentSpec]
+    public var teamMap: TeamMapState
 
     public init(
         bots: [Bot] = [],
@@ -61,7 +63,9 @@ public struct UserWorkspace: Codable, Sendable {
         sandboxComponents: [SandboxComponent] = [],
         mcpAdvertisedTools: [String: [String]] = [:],
         botChat: [BotChatEntry] = [],
-        grantedFolders: [GrantedFolder] = []
+        grantedFolders: [GrantedFolder] = [],
+        externalAgents: [ExternalAgentSpec] = [],
+        teamMap: TeamMapState = TeamMapState()
     ) {
         self.bots = bots
         self.threads = threads
@@ -91,13 +95,15 @@ public struct UserWorkspace: Codable, Sendable {
         self.mcpAdvertisedTools = mcpAdvertisedTools
         self.botChat = botChat
         self.grantedFolders = grantedFolders
+        self.externalAgents = externalAgents
+        self.teamMap = teamMap
     }
 
     enum CodingKeys: String, CodingKey {
         case bots, threads, routines, computers, connections, usage, memory, files
         case deployment, modelProvider, modelId, apiKey, modelBaseUrl, fetchedModels, providerProfiles
         case groups, appConfig, customTools, mcpServers, oauthJSON, connectionSecrets
-        case actionPolicy, knowledgeSources, pluginGrants, sandboxComponents, mcpAdvertisedTools, botChat, grantedFolders
+        case actionPolicy, knowledgeSources, pluginGrants, sandboxComponents, mcpAdvertisedTools, botChat, grantedFolders, externalAgents, teamMap
     }
 
     public init(from decoder: Decoder) throws {
@@ -130,6 +136,8 @@ public struct UserWorkspace: Codable, Sendable {
         mcpAdvertisedTools = try c.decodeIfPresent([String: [String]].self, forKey: .mcpAdvertisedTools) ?? [:]
         botChat = try c.decodeIfPresent([BotChatEntry].self, forKey: .botChat) ?? []
         grantedFolders = try c.decodeIfPresent([GrantedFolder].self, forKey: .grantedFolders) ?? []
+        externalAgents = try c.decodeIfPresent([ExternalAgentSpec].self, forKey: .externalAgents) ?? []
+        teamMap = try c.decodeIfPresent(TeamMapState.self, forKey: .teamMap) ?? TeamMapState()
     }
 }
 
@@ -234,11 +242,33 @@ public struct Persistence: Sendable {
 
     public func saveWorkspace(_ workspace: UserWorkspace, userId: String, providerCredentials: [String: ProviderCredential] = [:]) {
         let disk = WorkspaceSecrets.from(workspace: workspace).stripped(from: workspace)
+        guard preserveBeforeOverwrite(replacingWith: workspace) else { return }
         save(disk, to: "workspace.json")
         var secrets = WorkspaceSecrets.from(workspace: workspace)
         secrets.providerCredentials = providerCredentials
         if !secrets.isEmpty {
             try? SecretStore.save(secrets, userId: userId)
+        }
+    }
+
+    /// The one moment a workspace can be lost is the save that replaces it. If the file on disk is one this
+    /// build cannot read, or it holds bots and the new state holds none, the old file is copied aside first
+    /// (`workspace.json.kept-<time>`). If that copy cannot be made the save is skipped, so the original
+    /// stays exactly as it was. Returns whether the save may go ahead.
+    func preserveBeforeOverwrite(replacingWith workspace: UserWorkspace) -> Bool {
+        let url = root.appendingPathComponent("workspace.json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return true }
+        let existing = (try? Data(contentsOf: url)).flatMap { try? Self.decoder.decode(UserWorkspace.self, from: $0) }
+        let atRisk = existing == nil || (!(existing?.bots.isEmpty ?? true) && workspace.bots.isEmpty)
+        guard atRisk else { return true }
+        let stamp = ISO8601DateFormatter().string(from: .now).replacingOccurrences(of: ":", with: "")
+        let aside = root.appendingPathComponent("workspace.json.kept-\(stamp)")
+        if FileManager.default.fileExists(atPath: aside.path) { return true }
+        do {
+            try FileManager.default.copyItem(at: url, to: aside)
+            return true
+        } catch {
+            return false
         }
     }
 

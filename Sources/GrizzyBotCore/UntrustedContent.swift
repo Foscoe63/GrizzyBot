@@ -20,7 +20,7 @@ public enum UntrustedContent {
     /// Tools that put outside content in front of the model without being fenced (a browser page is
     /// seen through screenshots) but still count as having read the outside world.
     public static func taints(tool name: String) -> Bool {
-        isExternal(tool: name) || name.hasPrefix("computer_") || name == "shortcuts_run"
+        isExternal(tool: name) || name.hasPrefix("computer_") || name == "shortcuts_run" || name == "meeting_notes"
     }
 
     public static let openMarker = "<<<EXTERNAL_CONTENT"

@@ -40,7 +40,9 @@ public enum ActionGateway {
         case "list_files", "list_files.host":
             return .listFiles
         case "web_search", "web_fetch", "search_memory", "search_knowledge", "search_sessions",
-             "mcp_list_tools", "read_skill", "plugin_call_read", "check_bot", "list_delegations":
+             "mcp_list_tools", "read_skill", "plugin_call_read", "check_bot", "list_delegations",
+             // A proposal changes nothing until the person accepts it, so it is no side effect.
+             "search_team_memory", "propose_team_memory":
             return .read
         case "shell", "shell.exec", "remember", "forget", "import_skills", "skill_propose", "routine_manage", "config_manage", "workflow_run",
              "plugin_call", "spawn_bot", "message_bot", "delete_bot":

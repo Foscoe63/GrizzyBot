@@ -514,6 +514,7 @@ enum GoogleLoopback {
     }
 }
 
+// @unchecked Sendable: both file descriptors are guarded by `lock`.
 private final class LoopbackServer: @unchecked Sendable {
     private let lock = NSLock()
     private var serverFD: Int32 = -1

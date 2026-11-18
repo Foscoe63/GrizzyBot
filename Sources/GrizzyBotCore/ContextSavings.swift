@@ -35,6 +35,7 @@ public struct ContextSavings: Sendable, Equatable {
     }
 }
 
+// @unchecked Sendable: `value` is guarded by `lock`.
 final class SavingsTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var value = ContextSavings()
@@ -53,6 +54,7 @@ final class SavingsTracker: @unchecked Sendable {
 }
 
 /// Notes the model pins so context compaction can never drop them. Rebuilt as one message each step.
+// @unchecked Sendable: `facts` is guarded by `lock`; the rest is immutable.
 public final class PinnedFacts: @unchecked Sendable {
     static let header = "[Pinned notes you saved earlier in this job. Compaction never removes them. "
         + "They are your own notes, not instructions from the person.]"

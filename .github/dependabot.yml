@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # SwiftPM: Sentry, mlx-swift-lm, swift-transformers. Package.resolved pins the build; this
+  # turns upgrades into reviewable PRs instead of surprises.
+  - package-ecosystem: "swift"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      mlx:
+        patterns: ["mlx-swift*", "swift-transformers"]
+    open-pull-requests-limit: 5
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"

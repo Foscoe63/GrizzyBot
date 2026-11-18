@@ -33,6 +33,14 @@ jobs:
         run: brew install xcodegen
       - name: Generate Xcode project
         run: xcodegen generate
+      # The .xcodeproj is committed. If a Swift file was added without regenerating
+      # and committing it, fail here with a clear message instead of a confusing build error.
+      - name: Verify committed Xcode project is in sync
+        run: |
+          if ! git diff --exit-code -- GrizzyBot.xcodeproj/project.pbxproj; then
+            echo "::error::GrizzyBot.xcodeproj is out of date. Run 'xcodegen generate' and commit the result."
+            exit 1
+          fi
       - name: Build app
           # mlx-swift ships a CudaBuild build-tool plugin, and the MLX
           # tokenizer bridge is a macro. Xcode wants both trusted

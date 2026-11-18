@@ -328,6 +328,7 @@ public enum AgentToolCatalog {
         .init(id: "message_bot", label: "Message bot", subtitle: "Hand a task to another bot in the workspace"),
         .init(id: "delete_bot", label: "Delete bot", subtitle: "Permanently remove a spawned bot"),
         .init(id: "run_subagent", label: "Run subagent", subtitle: "Delegate to a short-lived helper"),
+        .init(id: "delegate_external", label: "External coding agent", subtitle: "Hand a coding job to opencode in the working folder"),
         .init(id: "destination_write", label: "Destination write", subtitle: "Write through connected destinations"),
         .init(id: "computer_screenshot", label: "Screenshot", subtitle: "Capture the live computer screen"),
         .init(id: "computer_open", label: "Open URL", subtitle: "Open a URL on the computer"),
@@ -358,15 +359,18 @@ public enum AgentToolCatalog {
         .init(id: "artifact_list", label: "Artifact list", subtitle: "List shared artifacts on this Mac"),
         .init(id: "artifact_read", label: "Artifact read", subtitle: "Read an artifact's contents"),
         .init(id: "artifact_delete", label: "Artifact delete", subtitle: "Delete a shared artifact"),
+        .init(id: "meeting_notes", label: "Meeting notes", subtitle: "Turn a transcript into a summary, decisions and action items"),
         .init(id: "capabilities_discover", label: "Discover capabilities", subtitle: "Search skills and MCP tools on demand"),
         .init(id: "capabilities_load", label: "Load capabilities", subtitle: "Activate discovered skills or MCP tools"),
         .init(id: "todo", label: "Todo", subtitle: "Write a multi-step checklist for this turn"),
         .init(id: "complete", label: "Complete", subtitle: "Finish the task with a short summary"),
         .init(id: "clarify", label: "Clarify", subtitle: "Pause and ask the user a question"),
+        .init(id: "propose_team_memory", label: "Propose team note", subtitle: "Suggest a fact for the department's shared memory (you approve it)"),
+        .init(id: "search_team_memory", label: "Search team notes", subtitle: "Look up the department's shared notes"),
     ]
 
     /// Always available, whatever is toggled: the loop cannot work without them, so they get no switch.
-    public static let alwaysOnIds: Set<String> = ["capabilities_discover", "capabilities_load", "todo", "complete", "clarify"]
+    public static let alwaysOnIds: Set<String> = ["capabilities_discover", "capabilities_load", "todo", "complete", "clarify", "propose_team_memory", "search_team_memory"]
 
     /// Tools that have no switch in the profile editor.
     public static var unswitchedIds: Set<String> {
@@ -405,8 +409,11 @@ public enum AgentToolCatalog {
 
     public static var builtinIds: [String] { builtin.map(\.id) }
 
-    /// Back-compat alias for defaults.
-    public static var allIds: [String] { builtinIds }
+    /// Tools that start switched off for every bot and for new installs: the person turns them on.
+    public static let optInOnlyIds: Set<String> = ["delegate_external"]
+
+    /// The tools a new bot starts with. Opt-in tools are left out.
+    public static var allIds: [String] { builtinIds.filter { !optInOnlyIds.contains($0) } }
 
     public static func definitions(
         custom: [CustomAgentTool] = [],
@@ -547,7 +554,8 @@ extension AgentToolCatalog {
         includeDelegation: Bool = true,
         skills: [AgentSkill] = [],
         promotedMcp: [McpPromotedTool] = [],
-        mcpAdvertised: [String: [String]] = [:]
+        mcpAdvertised: [String: [String]] = [:],
+        externalAgents: [ExternalAgentSpec] = []
     ) -> [ChatTool] {
         let enabled = Set(enabledIds)
             .union(
@@ -622,6 +630,16 @@ extension AgentToolCatalog {
             required: []
         )
         add(
+            "meeting_notes",
+            description: "Write meeting notes (summary, decisions, action items with owners, open questions, attendees) from a transcript: pass the transcript text, or the path of a .vtt/.srt/.txt transcript file. Long transcripts are handled in parts. This does not join meetings; it only works from a transcript the person provides.",
+            properties: [
+                "transcript": stringProp("The transcript text. Omit when giving a path."),
+                "path": stringProp("Path to a transcript file (.vtt, .srt, .txt, .md)"),
+                "title": stringProp("Meeting title, if known"),
+            ],
+            required: []
+        )
+        add(
             "web_search",
             description: "Search the public web. Use this for current facts, docs, and links.",
             properties: ["query": stringProp("Search query")],
@@ -650,6 +668,17 @@ extension AgentToolCatalog {
                 "timeout_seconds": stringProp("Optional timeout in seconds (5–300, default 120)"),
             ],
             required: ["command"]
+        )
+        add(
+            "delegate_external",
+            description: "Hand a coding job to an external coding agent (\(ExternalAgentSpec.all(custom: externalAgents).map(\.id).joined(separator: ", "))) that works inside the working folder. It is slower than doing small edits yourself; use it for multi-file code changes. access is read (look only) or edit (may change files); it can never run shell commands. Its answer comes from outside GrizzyBot, so check it.",
+            properties: [
+                "task": stringProp("The coding job, with the goal and any constraints"),
+                "access": stringProp("read (default) or edit"),
+                "agent": stringProp("Which agent to use; default \(ExternalAgentSpec.presets[0].id)"),
+                "model": stringProp("Optional model for opencode as provider/model, e.g. lmstudio/<id> for a model loaded in LM Studio; default uses opencode's own configured model"),
+            ],
+            required: ["task"]
         )
         add(
             "shortcuts_list",
@@ -1001,6 +1030,24 @@ extension AgentToolCatalog {
             description: "Pause and ask the user a clarifying question before continuing.",
             properties: ["question": stringProp("Question for the user")],
             required: ["question"]
+        )
+        add(
+            "propose_team_memory",
+            description: "Suggest a durable fact for your department's shared team memory: a person, place, decision or term every bot in it should know. The person reviews it; nothing is shared until they accept. Reuse an existing note's key to correct it. Never include secrets.",
+            properties: [
+                "kind": stringProp("person, place, decision, or term"),
+                "name": stringProp("Short title, e.g. a person's name or a decision's subject"),
+                "detail": stringProp("The fact, its context and why it matters (about 600 characters at most)"),
+                "aliases": stringProp("Other names for it, comma separated"),
+                "key": stringProp("Optional stable key, to correct an existing note whose title changed"),
+            ],
+            required: ["kind", "name", "detail"]
+        )
+        add(
+            "search_team_memory",
+            description: "Search your department's accepted team notes, including ones the prompt did not have room for. Every word of the query must match.",
+            properties: ["query": stringProp("Words to find")],
+            required: ["query"]
         )
         if !skills.isEmpty {
             let ids = skills.map(\.id).joined(separator: ", ")
