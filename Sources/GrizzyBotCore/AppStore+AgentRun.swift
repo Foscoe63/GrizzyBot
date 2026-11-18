@@ -471,6 +471,7 @@ extension AppStore {
         var transcript: [ChatMessage] = []
         let runStartedAt = Date()
         let taint = RunTaint()
+        let progress = RunProgress()
         for inherited in inheritedTaint.removeValue(forKey: botId) ?? [] { taint.mark(tool: inherited) }
 
         do {
@@ -519,6 +520,7 @@ extension AppStore {
                 guard let self else {
                     return AgentToolCallResult(output: "store released")
                 }
+                progress.toolStarted(name)
                 let result = await self.guardedExecute(name: name, arguments: arguments, botId: botId, runId: runId) { finalArguments in
                     await self.executeAgentTool(
                         name: name,
@@ -531,6 +533,7 @@ extension AppStore {
                     )
                 }
                 if UntrustedContent.taints(tool: name) { taint.mark(tool: name) }
+                progress.toolFinished(name, output: result.output)
                 return result
             }
             let result: AgentLoopResult
@@ -572,10 +575,11 @@ extension AppStore {
                 )
             } else {
                 let frozenRequest = loopRequest
-                result = try await Self.withRunDeadline(seconds: 45 * 60) { try await AgentLoop.run(
+                result = try await Self.withRunWatchdog(seconds: 45 * 60, progress: progress) { try await AgentLoop.run(
                     client: client,
                     request: frozenRequest,
                     onDelta: { [weak self] delta in
+                        progress.touch()
                         let shown = streamUnscrub.feed(delta)
                         guard !shown.isEmpty else { return }
                         Task { @MainActor in
@@ -584,6 +588,7 @@ extension AppStore {
                         }
                     },
                     onStep: { [weak self] step, max in
+                        progress.touch()
                         Task { @MainActor in
                             self?.setThinkingProgress(
                                 threadKey: threadKey,
@@ -639,7 +644,11 @@ extension AppStore {
             return
         } catch {
             failed = true
-            replyText = "I couldn't complete that: \(error.localizedDescription)"
+            if error is RunDeadlineError || error is RunStalledError {
+                replyText = Self.stoppedRunMessage(error, progress: progress)
+            } else {
+                replyText = "I couldn't complete that: \(error.localizedDescription)"
+            }
             appendRunLog(botId: botId, kind: "error", text: error.localizedDescription)
         }
 
@@ -965,23 +974,5 @@ extension AppStore {
 struct RunDeadlineError: LocalizedError {
     let seconds: Int
     var errorDescription: String? { "The run took longer than \(seconds / 60) minutes and was stopped." }
-}
-
-extension AppStore {
-    /// Ends a run that has produced no result within `seconds`, so a hang cannot hold the bot busy forever.
-    static func withRunDeadline<T: Sendable>(
-        seconds: Int,
-        _ work: @escaping @Sendable () async throws -> T
-    ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await work() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
-                throw RunDeadlineError(seconds: seconds)
-            }
-            defer { group.cancelAll() }
-            return try await group.next()!
-        }
-    }
 }
 
