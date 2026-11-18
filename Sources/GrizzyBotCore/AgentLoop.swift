@@ -55,6 +55,8 @@ public struct AgentLoopRequest: Sendable {
     public var promptImageJPEGBase64: String?
     public var tools: [ChatTool]
     public var maxSteps: Int
+    /// How long to wait before retry number `attempt` after a transient model error. Tests shorten it.
+    public var retryBackoffNanoseconds: @Sendable (Int) -> UInt64 = ModelRequestRetry.backoffNanoseconds
     public var depth: Int
     public var charBudget: Int
     /// Honest computer status for the system prompt (browser cookies, this Mac, or none).
@@ -972,7 +974,7 @@ public enum AgentLoop {
             var retryBudget = charBudget
             for attempt in 0..<ModelRequestRetry.maxAttempts {
                 if attempt > 0 {
-                    try await Task.sleep(nanoseconds: ModelRequestRetry.backoffNanoseconds(attempt: attempt - 1))
+                    try await Task.sleep(nanoseconds: request.retryBackoffNanoseconds(attempt - 1))
                     if let lastError, ModelRequestRetry.shouldCompactOnRetry(lastError) {
                         retryBudget = max(8_000, retryBudget * 3 / 4)
                         messages.removeAll(where: PinnedFacts.isPinMessage)

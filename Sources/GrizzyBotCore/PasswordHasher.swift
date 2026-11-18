@@ -6,7 +6,12 @@ import Security
 /// PBKDF2-HMAC-SHA256 password storage. Legacy unsalted SHA-256 hex hashes are verified once then upgraded.
 public enum PasswordHasher {
     public static let iterations: Int = {
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+        // Test runs hash thousands of throwaway passwords. XCTest sets the variable; Swift Testing does not,
+        // but runs inside one of these two host processes, which the app itself never is.
+        let info = ProcessInfo.processInfo
+        if info.environment["XCTestConfigurationFilePath"] != nil
+            || info.processName == "swiftpm-testing-helper"
+            || info.processName == "xctest" {
             return 2_000
         }
         return 600_000

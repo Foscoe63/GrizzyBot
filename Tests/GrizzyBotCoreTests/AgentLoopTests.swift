@@ -355,15 +355,14 @@ struct AgentLoopTests {
             baseURL: "https://example.com/v1",
             apiKey: "k"
         )
-        let result = try await AgentLoop.run(
-            client: client,
-            request: AgentLoopRequest(
-                endpoint: endpoint,
-                botName: "Researcher",
-                prompt: "summarize",
-                tools: []
-            )
-        ) { _, _ in
+        var request = AgentLoopRequest(
+            endpoint: endpoint,
+            botName: "Researcher",
+            prompt: "summarize",
+            tools: []
+        )
+        request.retryBackoffNanoseconds = { _ in 1_000_000 }
+        let result = try await AgentLoop.run(client: client, request: request) { _, _ in
             AgentToolCallResult(output: "unused")
         }
         #expect(result.text == "recovered")
@@ -380,16 +379,15 @@ struct AgentLoopTests {
             baseURL: "https://example.com/v1",
             apiKey: "k"
         )
-        let result = try await AgentLoop.run(
-            client: client,
-            request: AgentLoopRequest(
-                endpoint: endpoint,
-                botName: "Researcher",
-                prompt: "find repos",
-                tools: AgentToolCatalog.chatTools(enabledIds: ["web_search"]),
-                maxSteps: 4
-            )
-        ) { _, _ in
+        var request = AgentLoopRequest(
+            endpoint: endpoint,
+            botName: "Researcher",
+            prompt: "find repos",
+            tools: AgentToolCatalog.chatTools(enabledIds: ["web_search"]),
+            maxSteps: 4
+        )
+        request.retryBackoffNanoseconds = { _ in 1_000_000 }
+        let result = try await AgentLoop.run(client: client, request: request) { _, _ in
             AgentToolCallResult(
                 output: "https://github.com/example/repo",
                 blocks: [.card(lines: [CardLine(k: "found", v: "repo")])]
