@@ -990,6 +990,13 @@ extension AppStore {
     func appendLiveTool(threadKey: String, runId: String, name: String, result: AgentToolCallResult) {
         guard var thread = threads[threadKey], thread.run?.id == runId else { return }
         var blocks = result.blocks
+        // A pause ends the run in the same breath, and the run's closing message carries the approval card
+        // along with the pending tool it resumes. A second card here would be answerable before that tool
+        // is recorded, and would be left waiting after the first was answered.
+        if result.pause != nil {
+            blocks.removeAll { if case .approval(_, _, .pending) = $0 { return true }; return false }
+            if blocks.isEmpty { return }
+        }
         if blocks.isEmpty {
             let preview: String
             if name == "plugin_call" {

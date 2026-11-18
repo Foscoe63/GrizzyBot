@@ -19,16 +19,11 @@ struct RunProgressTests {
     }
 
     @Test("activity keeps a long run alive")
-    func activityResets() async throws {
-        let progress = RunProgress(modelIdleLimit: 3, toolSlack: 0)
-        let value = try await AppStore.withRunWatchdog(seconds: 60, progress: progress, pollSeconds: 0.05) {
-            for _ in 0..<8 {
-                try await Task.sleep(nanoseconds: 100_000_000)
-                progress.touch()
-            }
-            return 7
-        }
-        #expect(value == 7)
+    func activityResets() {
+        let progress = RunProgress(modelIdleLimit: 100, toolSlack: 0)
+        #expect(progress.stall(now: Date().addingTimeInterval(150)) != nil)
+        progress.touch()
+        #expect(progress.stall(now: Date().addingTimeInterval(50)) == nil)
     }
 
     @Test("a running tool gets its own limit instead of the model's")
