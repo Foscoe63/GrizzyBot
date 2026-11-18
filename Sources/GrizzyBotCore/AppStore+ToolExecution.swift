@@ -659,6 +659,14 @@ extension AppStore {
                 return AgentToolCallResult(output: "No memory hits for \(query).")
             }
             let text = hits.map { "• [\($0.scope)/\($0.path)] \($0.snippet)" }.joined(separator: "\n")
+            let ownFacts = memory.filter { $0.botId == botId && $0.path == "MEMORY.md" }.flatMap { MemoryLedger.parse($0.content).facts }
+            noteMemoryUse(botId: botId, facts: ownFacts.filter { fact in
+                let plain = MemoryLedger.plain(fact).lowercased()
+                return hits.contains { hit in
+                    let snippet = hit.snippet.lowercased()
+                    return snippet.contains(plain) || plain.contains(snippet) || MemoryFactDedupe.jaccard(plain, snippet) >= 0.5
+                }
+            })
             return AgentToolCallResult(
                 output: text,
                 blocks: [.card(lines: hits.prefix(8).map { CardLine(k: $0.path, v: $0.snippet) })]
@@ -991,6 +999,34 @@ extension AppStore {
                 output: skill.body,
                 blocks: [.card(lines: [CardLine(k: "skill", v: skill.id)])]
             )
+
+        case "generate_image":
+            guard ImageGeneration.isAvailable else { return AgentToolCallResult(output: ImageGeneration.Failure.unavailable.localizedDescription) }
+            do {
+                let style = ImageGeneration.Style(rawValue: s("style").lowercased()) ?? .illustration
+                let images = try await ImageGeneration.generate(prompt: s("prompt"), style: style, count: Int(s("count")) ?? 1)
+                var paths: [String] = []
+                for (i, data) in images.enumerated() {
+                    let path = ImageGeneration.fileName(for: s("prompt"), index: i)
+                    let url = try botHome.homeURL(botId: botId).appendingPathComponent(path)
+                    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try data.write(to: url, options: .atomic)
+                    paths.append(path)
+                }
+                refreshFilesMirror(botId: botId)
+                return AgentToolCallResult(
+                    output: "Made \(paths.count) image\(paths.count == 1 ? "" : "s"): \(paths.joined(separator: ", ")) (in the bot home).",
+                    blocks: [.card(lines: paths.map { CardLine(k: "image", v: $0) })]
+                )
+            } catch {
+                return AgentToolCallResult(output: error.localizedDescription)
+            }
+
+        case "config_manage":
+            return configManage(bot: bot, argumentsJSON: argumentsJSON, approved: approved, taint: taint)
+
+        case "workflow_run":
+            return await workflowRun(bot: bot, argumentsJSON: argumentsJSON)
 
         case "routine_manage":
             return routineManage(bot: bot, argumentsJSON: argumentsJSON, approved: approved, taint: taint)

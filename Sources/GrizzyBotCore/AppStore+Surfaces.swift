@@ -37,7 +37,41 @@ extension AppStore {
         appSettingsOpen = false
     }
 
-    public func saveAppConfig(_ config: AppConfig) {
+    // MARK: Config history
+
+    private var configHistoryURL: URL { userPersistence.root.appendingPathComponent("config-history.json") }
+
+    /// Newest last.
+    public func configHistory() -> [ConfigChange] {
+        guard let data = try? Data(contentsOf: configHistoryURL) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode([ConfigChange].self, from: data)) ?? []
+    }
+
+    func recordConfigChange(old: AppConfig, new: AppConfig, source: String) {
+        guard let change = ConfigHistory.diff(old: old, new: new, source: source) else { return }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if let data = try? encoder.encode(ConfigHistory.appending(configHistory(), change)) {
+            try? data.write(to: configHistoryURL, options: .atomic)
+        }
+        recordAudit(type: .configurationChanged, botId: nil, tool: nil, reason: "\(source) changed \(change.summary)", allowed: true, forwarded: false)
+    }
+
+    /// Undo one recorded change. Returns false when it is gone or only touched secrets.
+    @discardableResult
+    public func revertConfigChange(id: String) -> Bool {
+        guard let change = configHistory().first(where: { $0.id == id }), change.revertible,
+              let reverted = ConfigHistory.reverted(change, from: appConfig) else { return false }
+        saveAppConfig(reverted, source: "rollback")
+        return true
+    }
+
+    public func saveAppConfig(_ config: AppConfig) { saveAppConfig(config, source: "settings") }
+
+    func saveAppConfig(_ config: AppConfig, source: String) {
+        recordConfigChange(old: appConfig, new: config, source: source)
         appConfig = config
         if var session {
             if !config.profileName.isEmpty { session.name = config.profileName }
@@ -58,6 +92,7 @@ extension AppStore {
         Task { await self.syncCompanion() }
         Task { await traceExporter.configure(endpoint: appConfig.otlpEndpoint) }
         Task { await self.syncTelegram() }
+        Task { @MainActor in self.consolidateMemoryIfDue() }
     }
 
     public func reloadFolderWatchers() {
@@ -124,6 +159,58 @@ extension AppStore {
         memory[idx].updatedAt = .now
         save()
         return result.removed
+    }
+
+    // MARK: Memory consolidation
+
+    private func memoryStatsURL(botId: String) -> URL {
+        userPersistence.root.appendingPathComponent("memory-stats-\(botId).json")
+    }
+
+    private func loadMemoryStats(botId: String) -> [String: MemoryFactStats] {
+        guard let data = try? Data(contentsOf: memoryStatsURL(botId: botId)) else { return [:] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode([String: MemoryFactStats].self, from: data)) ?? [:]
+    }
+
+    private func saveMemoryStats(_ stats: [String: MemoryFactStats], botId: String) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if let data = try? encoder.encode(stats) { try? data.write(to: memoryStatsURL(botId: botId), options: .atomic) }
+    }
+
+    /// Notes that these facts were shown to the model, so decay counts them as in use.
+    public func noteMemoryUse(botId: String, facts: [String]) {
+        guard !facts.isEmpty else { return }
+        var stats = loadMemoryStats(botId: botId)
+        for fact in facts { MemoryConsolidator.touch(&stats, fact: fact) }
+        saveMemoryStats(stats, botId: botId)
+    }
+
+    /// Merge, decay, promote and evict one bot's memory. Returns what changed.
+    @discardableResult
+    public func consolidateMemory(botId: String, now: Date = .now) -> MemoryConsolidationReport {
+        guard let idx = memory.firstIndex(where: { $0.botId == botId && $0.path == "MEMORY.md" }) else {
+            return MemoryConsolidationReport()
+        }
+        let result = MemoryConsolidator.consolidate(content: memory[idx].content, stats: loadMemoryStats(botId: botId), now: now)
+        saveMemoryStats(result.stats, botId: botId)
+        if result.report.changed {
+            memory[idx].content = result.content
+            memory[idx].updatedAt = now
+            save()
+        }
+        return result.report
+    }
+
+    /// Runs the consolidator for every bot at most once a day.
+    public func consolidateMemoryIfDue(now: Date = .now) {
+        let marker = userPersistence.root.appendingPathComponent("memory-consolidated-at")
+        if let text = try? String(contentsOf: marker, encoding: .utf8), let last = TimeInterval(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+           now.timeIntervalSince1970 - last < 86_400 { return }
+        for bot in bots { consolidateMemory(botId: bot.id, now: now) }
+        try? String(now.timeIntervalSince1970).write(to: marker, atomically: true, encoding: .utf8)
     }
 
     private func syncFolderWatchers() async {
@@ -934,5 +1021,57 @@ extension AppStore {
                 if let tainters = lastRunTaint[botId] { inheritedTaint[id] = tainters }
             }
         }
+    }
+}
+
+// MARK: - Privacy review and storage encryption (used by Settings and the chat composer)
+
+extension AppStore {
+    /// What a message would look like once scrubbed, for the review sheet. Nil when nothing would change.
+    public func privacyPreview(forBot botId: String, text: String) -> RedactionPreview? {
+        guard appConfig.privacyFilter.enabled else { return nil }
+        let preview = RedactionPreview.make(for: text, settings: appConfig.privacyFilter, session: redactionSession(forBot: botId))
+        return preview.segments.contains(where: \.isRedacted) ? preview : nil
+    }
+
+    /// The person reviewed these and chose to send them as written, for the rest of this conversation.
+    public func allowPrivacyItems(forBot botId: String, originals: [String]) {
+        let session = redactionSession(forBot: botId)
+        for original in originals { session.allow(original) }
+    }
+
+    public var storageEncryptionEnabled: Bool { StorageEncryption.marker(in: userPersistence.root).enabled }
+    public var storageNeedsRecovery: Bool {
+        StorageEncryption.needsRecovery(root: userPersistence.root) || StorageEncryption.needsRecovery(root: globalPersistence.root)
+    }
+
+    /// Turn at-rest encryption on or off for this account's files. Returns a message for the person.
+    public func setStorageEncryption(_ on: Bool) -> String {
+        do {
+            save()
+            let roots = [globalPersistence.root, userPersistence.root]
+            var converted = 0
+            for root in roots {
+                // Both folders share one key per folder; each is converted on its own.
+                converted += on ? try StorageEncryption.enable(root: root).converted : try StorageEncryption.disable(root: root).converted
+            }
+            return on ? "Encryption is on (\(converted) files). Save your recovery key somewhere safe." : "Encryption is off (\(converted) files restored)."
+        } catch {
+            return on ? "Couldn't turn encryption on: the key could not be stored in the Keychain. Nothing changed." : "Couldn't turn encryption off: the key is missing. Import your recovery key first."
+        }
+    }
+
+    /// The recovery keys (one per folder), to be kept by the person. Nil when encryption is off.
+    public func storageRecoveryKeys() -> [String: String]? {
+        guard storageEncryptionEnabled else { return nil }
+        var out: [String: String] = [:]
+        for (name, root) in [("account", userPersistence.root), ("global", globalPersistence.root)] {
+            if let key = StorageEncryption.KeyStore.keychain.load(root) { out[name] = StorageEncryption.recoveryString(for: key) }
+        }
+        return out
+    }
+
+    public func recoverStorage(key: String) -> Bool {
+        [globalPersistence.root, userPersistence.root].map { StorageEncryption.recover(root: $0, recovery: key) }.contains(true)
     }
 }

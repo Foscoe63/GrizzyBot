@@ -89,3 +89,26 @@ struct RecipeCommandTests {
         #expect(client.requests.first?.messages.contains { ($0.content ?? "") == "Say hello to Sam." } == true)
     }
 }
+
+@Suite("Recipe requirements and run record")
+struct RecipeRequirementsTests {
+    @Test("needs round-trip and a missing tool or secret is named")
+    func needs() throws {
+        let raw = "---\nname: digest\ndescription: d\nneeds-tools: web_fetch, shell\nneeds-secrets: GITHUB_TOKEN\n---\nDo it."
+        let recipe = try RecipeMarkdown.parse(raw)
+        #expect(recipe.needsTools == ["web_fetch", "shell"] && recipe.needsSecrets == ["GITHUB_TOKEN"])
+        #expect(try RecipeMarkdown.parse(RecipeMarkdown.render(recipe)).needsTools == recipe.needsTools)
+        let missing = RecipeRequirements.missing(recipe, enabledTools: ["web_fetch"], secretNames: [])
+        #expect(missing.count == 2 && missing[0].contains("shell") && missing[1].contains("GITHUB_TOKEN"))
+        #expect(RecipeRequirements.missing(recipe, enabledTools: ["web_fetch", "shell"], secretNames: ["github_token"]).isEmpty)
+    }
+
+    @Test("the run record lists each step with its outcome")
+    func record() {
+        let r = RunRecorder()
+        r.record(run: "x", tool: "read_file", output: "contents", milliseconds: 4)
+        r.record(run: "x", tool: "shell", output: "Error: command failed", milliseconds: 9)
+        #expect(r.steps(for: "x").map(\.ok) == [true, false])
+        #expect(r.summary(for: "x").contains("2 steps, 1 failed"))
+    }
+}

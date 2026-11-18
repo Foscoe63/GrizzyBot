@@ -417,12 +417,15 @@ extension AppStore {
             injected = pinFolderToRun ? [] : SkillMarkdown.matching(botSkills, prompt: prompt)
         }
         let agentPrompt: String
+        let privacySession = redactionSession(forBot: botId)
+        let streamUnscrub = SyncUnscrubber(session: privacySession)
         do {
             agentPrompt = try PrivacyFilter.applyForSend(
                 agentPromptRaw,
                 settings: appConfig.privacyFilter,
                 logDirectory: userPersistence.root,
-                logContext: "bot:\(botId)"
+                logContext: "bot:\(botId)",
+                session: privacySession
             )
         } catch {
             let message = error.localizedDescription
@@ -552,8 +555,10 @@ extension AppStore {
                         stallMs: stallMs
                     ),
                     onDelta: { [weak self] delta in
+                        let shown = streamUnscrub.feed(delta)
+                        guard !shown.isEmpty else { return }
                         Task { @MainActor in
-                            self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: delta)
+                            self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: shown)
                         }
                     },
                     onTool: { [weak self] name, _, toolResult in
@@ -569,8 +574,10 @@ extension AppStore {
                     client: client,
                     request: loopRequest,
                     onDelta: { [weak self] delta in
+                        let shown = streamUnscrub.feed(delta)
+                        guard !shown.isEmpty else { return }
                         Task { @MainActor in
-                            self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: delta)
+                            self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: shown)
                         }
                     },
                     onStep: { [weak self] step, max in
@@ -600,7 +607,7 @@ extension AppStore {
                 default: return true
                 }
             })
-            replyText = result.text
+            replyText = privacySession.unscrub(result.text)
             if let answered = result.answeredBy {
                 routedNote = "answered by \(answered) after \(result.failedOver.joined(separator: ", ")) failed"
                 appendRunLog(botId: botId, kind: "error", text: "Model failover: \(result.failedOver.joined(separator: " → ")) → \(answered)")

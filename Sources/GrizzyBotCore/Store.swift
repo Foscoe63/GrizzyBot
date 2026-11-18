@@ -231,6 +231,9 @@ public final class AppStore {
     var inheritedTaint: [String: [String]] = [:]
     /// What tainted each bot's most recent run, so a room can pass it along when one bot pulls in another.
     var lastRunTaint: [String: [String]] = [:]
+    /// Reversible privacy placeholders, one set per conversation, so a name scrubbed on the way out is put
+    /// back in the reply and in the tool calls that follow.
+    var redactionSessions: [String: RedactionSession] = [:]
     /// The Chief of Staff's in-flight hand-off, so Stop can end it.
     var dispatchTasks: [String: Task<Void, Never>] = [:]
     /// The bot a dispatch is waiting on, per Chief of Staff.
@@ -288,7 +291,8 @@ public final class AppStore {
     /// OpenAI-compatible (or Anthropic) endpoint except Local MLX, which runs
     /// the model in this process.
     static func defaultClient(for provider: String?) -> any ChatCompleting {
-        MLXProvider.isMLX(provider) ? MLXChatClient.shared : OpenAIChatClient.shared
+        if AppleFoundationProvider.isProvider(provider) { return AppleFoundationClient.shared }
+        return MLXProvider.isMLX(provider) ? MLXChatClient.shared : OpenAIChatClient.shared
     }
     public var oauthJSON: String?
     var providerCredentials: [String: ProviderCredential] = [:]

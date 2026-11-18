@@ -1,0 +1,6 @@
+[
+  {"id": "timeout", "output": "shell did not respond within 330s and was abandoned", "kind": "timeout"},
+  {"id": "blocked", "output": "Blocked: this call contained a key", "kind": "blocked"},
+  {"id": "missing-file", "output": "No such file or directory: a.txt", "kind": "not_found"},
+  {"id": "ordinary", "output": "Found 3 matches in notes.md", "kind": null}
+]

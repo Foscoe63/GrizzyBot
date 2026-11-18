@@ -133,9 +133,10 @@ public actor LocalOpenAIGateway {
         }
 
         let auth = lines.first { $0.lowercased().hasPrefix("authorization:") } ?? ""
+        let xKey = lines.first { $0.lowercased().hasPrefix("x-api-key:") } ?? ""
         if !settings.apiKey.isEmpty {
             let expected = "Bearer \(settings.apiKey)"
-            guard auth.contains(expected) else {
+            guard auth.contains(expected) || xKey.hasSuffix(settings.apiKey) else {
                 return Self.httpJSON(status: 401, object: ["error": ["message": "Unauthorized", "type": "auth"]])
             }
         }
@@ -220,7 +221,53 @@ public actor LocalOpenAIGateway {
             }
         }
 
+        if method == "GET", path == "/api/tags" {
+            return Self.httpJSON(status: 200, object: GatewayProtocols.ollamaTags(bots: bots))
+        }
+
+        // Anthropic, Open Responses, Ollama and the autonomous-run endpoint: same bot, other wire formats.
+        let agentRunId = method == "POST" ? GatewayProtocols.agentRunBotId(path: path) : nil
+        if method == "POST", path == "/v1/messages" || path == "/v1/responses" || path == "/api/chat" || agentRunId != nil {
+            guard let handler else {
+                return Self.httpJSON(status: 503, object: ["error": ["message": "Handler not ready"]])
+            }
+            guard let json = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any] else {
+                return Self.httpJSON(status: 400, object: ["error": ["message": "Invalid JSON"]])
+            }
+            let parsed: GatewayProtocols.Parsed
+            switch path {
+            case "/v1/messages": parsed = GatewayProtocols.parseAnthropic(json)
+            case "/v1/responses": parsed = GatewayProtocols.parseResponses(json)
+            case "/api/chat": parsed = GatewayProtocols.parseOllama(json)
+            default: parsed = .init(model: nil, messages: [["role": "user", "content": GatewayProtocols.agentRunPrompt(json)]])
+            }
+            guard parsed.messages.contains(where: { $0["role"] == "user" && !($0["content"] ?? "").isEmpty }) else {
+                return Self.httpJSON(status: 400, object: ["error": ["message": "No user message"]])
+            }
+            let botId = agentRunId ?? Self.botId(fromModel: parsed.model, defaultBotId: settings.defaultBotId)
+            let model = parsed.model ?? "grizzybot"
+            do {
+                let reply = try await handler(botId, parsed.messages, parsed.model)
+                switch path {
+                case "/v1/messages": return Self.httpJSON(status: 200, object: GatewayProtocols.anthropicReply(reply, model: model))
+                case "/v1/responses": return Self.httpJSON(status: 200, object: GatewayProtocols.responsesReply(reply, model: model))
+                case "/api/chat": return Self.httpJSON(status: 200, object: GatewayProtocols.ollamaReply(reply, model: model))
+                default: return Self.httpRaw(status: 200, contentType: "text/event-stream", body: GatewayProtocols.sse(reply: reply))
+                }
+            } catch {
+                return Self.httpJSON(status: 500, object: ["error": ["message": error.localizedDescription]])
+            }
+        }
+
         return Self.httpJSON(status: 404, object: ["error": ["message": "Not found"]])
+    }
+
+    private static func httpRaw(status: Int, contentType: String, body: String) -> Data {
+        let bytes = Data(body.utf8)
+        let header = "HTTP/1.1 \(status) OK\r\nContent-Type: \(contentType)\r\nCache-Control: no-cache\r\nContent-Length: \(bytes.count)\r\nConnection: close\r\n\r\n"
+        var data = Data(header.utf8)
+        data.append(bytes)
+        return data
     }
 
     private static func botId(fromModel model: String?, defaultBotId: String?) -> String? {

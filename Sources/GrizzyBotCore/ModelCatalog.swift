@@ -217,6 +217,7 @@ public enum ModelCatalog {
         )
 
         list.append(MLXProvider.catalogEntry())
+        if AppleFoundationProvider.isAvailable { list.append(AppleFoundationProvider.catalogEntry()) }
         list.append(contentsOf: LocalProviders.catalogEntries())
         list.append(
             CatalogEntry(

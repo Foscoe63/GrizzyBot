@@ -341,6 +341,9 @@ public enum AgentToolCatalog {
         .init(id: "import_skills", label: "Import skills", subtitle: "Copy SKILL.md folders into GrizzyBot"),
         .init(id: "skill_propose", label: "Propose skill", subtitle: "Draft a reusable skill for you to review"),
         .init(id: "routine_manage", label: "Routines", subtitle: "Create, list, pause, or delete this bot's scheduled routines"),
+        .init(id: "config_manage", label: "App settings", subtitle: "Change a few safe app settings for you, after you approve each change"),
+        .init(id: "workflow_run", label: "Workflows", subtitle: "Run saved multi-step workflows"),
+        .init(id: "generate_image", label: "Make images", subtitle: "Create pictures on this Mac with Apple Image Playground"),
         .init(id: "search_knowledge", label: "Search knowledge", subtitle: "Search granted knowledge sources"),
         .init(id: "search_sessions", label: "Search past chats", subtitle: "Find things said in this bot's earlier conversations"),
         .init(id: "present_component", label: "Present component", subtitle: "Show a form, gallery, or audit component"),
@@ -950,6 +953,37 @@ extension AgentToolCatalog {
                 "id": stringProp("Routine id or name (pause, resume, delete)"),
             ],
             required: ["action"]
+        )
+        add(
+            "config_manage",
+            description: "Look up or change a few safe app settings for the person (appearance, menu bar, memory gate, queue mode, stall timeout, on-device privacy detection). Actions: list, get, set, history, revert. Every set or revert stops on an approval card the person must answer; never claim a change happened before they approve. Privacy rules, permissions, secrets and policies cannot be changed here.",
+            properties: [
+                "action": stringProp("list, get, set, history, or revert"),
+                "key": stringProp("Setting key (get, set)"),
+                "value": stringProp("New value (set)"),
+                "id": stringProp("History id (revert)"),
+            ],
+            required: ["action"]
+        )
+        add(
+            "workflow_run",
+            description: "Run a saved workflow: a fixed graph of steps (tool calls, model questions, http requests) with typed inputs. Use action=list to see them, or pass id and input (an object). Steps run unattended and cannot wait for approvals.",
+            properties: [
+                "action": stringProp("list, or omit to run"),
+                "id": stringProp("Workflow id or name"),
+                "input": JSONValue.object(["type": .string("object"), "description": .string("Input values by name")]),
+            ],
+            required: []
+        )
+        add(
+            "generate_image",
+            description: "Create a picture on this Mac with Apple's on-device Image Playground, saved as a PNG in the bot home. Describe the picture in a sentence or two. Style: animation, illustration, or sketch. Nothing is sent off the Mac.",
+            properties: [
+                "prompt": stringProp("What the picture shows"),
+                "style": stringProp("animation, illustration, or sketch"),
+                "count": stringProp("How many variations, 1 to 4"),
+            ],
+            required: ["prompt"]
         )
         add(
             "skill_propose",

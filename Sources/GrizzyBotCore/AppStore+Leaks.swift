@@ -70,6 +70,9 @@ extension AppStore {
                 )
             }
         }
+        // Placeholders from the privacy filter go back to the real values, but only here, on this Mac, after
+        // the leak check; secrets are never made reversible.
+        if let session = redactionSessions[threadKey(for: botId)] { finalArguments = session.unscrub(finalArguments) }
         var result = await run(finalArguments)
         if let runId, !appConfig.otlpEndpoint.isEmpty {
             let failed = result.output.lowercased().hasPrefix("blocked") || result.output.lowercased().contains(" failed")
@@ -94,6 +97,10 @@ extension AppStore {
             let target = ReauthDetector.target(arguments: arguments) ?? name
             result.output += "\n\nThis connection's sign-in has expired and only the person can renew it. A Reconnect card was shown. Do not retry; tell them and wait."
             result.blocks.append(.connect(name: target, initial: String(target.prefix(1)).uppercased(), color: "#B45309", status: .reconnect))
+        }
+        RunRecorder.shared.record(run: runId ?? botId, tool: name, output: result.output, milliseconds: Int(Date().timeIntervalSince(started) * 1000))
+        if let hint = ToolRetryGuard.shared.note(run: runId ?? botId, tool: name, arguments: arguments, output: result.output) {
+            result.output += "\n\n[harness] \(hint)"
         }
         return result
     }
@@ -166,4 +173,19 @@ extension AppStore {
         guard OnePasswordCLI.isReference(stored) else { return stored }
         return try await secretReader.read(stored)
     }
+}
+
+
+extension AppStore {
+    /// The privacy placeholders for this bot's current conversation.
+    func redactionSession(forBot botId: String) -> RedactionSession {
+        let key = threadKey(for: botId)
+        if let existing = redactionSessions[key] { return existing }
+        let made = RedactionSession()
+        redactionSessions[key] = made
+        return made
+    }
+
+    /// Forget a conversation's placeholders (when the chat is cleared).
+    func resetRedactionSession(forBot botId: String) { redactionSessions[threadKey(for: botId)] = nil }
 }

@@ -1,0 +1,10 @@
+{
+  "suites": {
+    "prompt-injection": 1.0,
+    "secret-leak": 1.0,
+    "memory-recall": 0.9,
+    "tool-envelope": 1.0,
+    "judge-calibration": 1.0
+  },
+  "mustPass": []
+}
