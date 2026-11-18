@@ -17,11 +17,13 @@ public enum ImageGeneration {
         case unavailable
         case emptyPrompt
         case nothingCreated
+        case refused(String)
         public var errorDescription: String? {
             switch self {
             case .unavailable: return "On-device image generation isn't available here. It needs macOS 15.4+ with Apple Intelligence turned on."
             case .emptyPrompt: return "prompt is required — describe the picture."
             case .nothingCreated: return "The image generator returned nothing for that prompt. Try rewording it."
+            case .refused(let why): return "Image Playground wouldn't make that: \(why). Check that Apple Intelligence and Image Playground are set up in System Settings, then try again."
             }
         }
     }
@@ -46,7 +48,8 @@ public enum ImageGeneration {
         guard !text.isEmpty else { throw Failure.emptyPrompt }
         #if canImport(ImagePlayground) && canImport(AppKit)
         if #available(macOS 15.4, *), ImagePlaygroundViewController.isAvailable {
-            let creator = try await ImageCreator()
+            let creator: ImageCreator
+            do { creator = try await ImageCreator() } catch { throw Failure.refused(String(describing: error)) }
             let wanted: ImagePlaygroundStyle
             switch style {
             case .animation: wanted = .animation
@@ -55,10 +58,12 @@ public enum ImageGeneration {
             }
             let style = creator.availableStyles.contains(wanted) ? wanted : (creator.availableStyles.first ?? wanted)
             var out: [Data] = []
-            for try await created in creator.images(for: [.text(text)], style: style, limit: max(1, min(count, 4))) {
-                let rep = NSBitmapImageRep(cgImage: created.cgImage)
-                if let png = rep.representation(using: .png, properties: [:]) { out.append(png) }
-            }
+            do {
+                for try await created in creator.images(for: [.text(text)], style: style, limit: max(1, min(count, 4))) {
+                    let rep = NSBitmapImageRep(cgImage: created.cgImage)
+                    if let png = rep.representation(using: .png, properties: [:]) { out.append(png) }
+                }
+            } catch { throw Failure.refused(String(describing: error)) }
             guard !out.isEmpty else { throw Failure.nothingCreated }
             return out
         }

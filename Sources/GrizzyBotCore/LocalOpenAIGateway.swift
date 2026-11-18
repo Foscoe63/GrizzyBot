@@ -21,7 +21,7 @@ public actor LocalOpenAIGateway {
         }
     }
 
-    public typealias ChatHandler = @Sendable (_ botId: String?, _ messages: [[String: String]], _ model: String?) async throws -> String
+    public typealias ChatHandler = @Sendable (_ botId: String?, _ messages: [[String: String]], _ model: String?, _ onDelta: @escaping @Sendable (String) -> Void) async throws -> String
 
     private var listener: NWListener?
     private var settings: Settings = .default
@@ -94,6 +94,10 @@ public actor LocalOpenAIGateway {
                 return
             }
             buffer.append(chunk)
+            if let stream = Self.streamRequest(buffer, settings: settings, bots: bots), let handler {
+                await stream(connection, handler)
+                return
+            }
             guard let response = await handleHTTP(buffer, settings: settings, bots: bots, handler: handler) else {
                 continue
             }
@@ -191,7 +195,7 @@ public actor LocalOpenAIGateway {
                     guard name == "grizzybot_run", !prompt.isEmpty else {
                         return Self.httpJSON(status: 400, object: ["error": ["message": "Expected grizzybot_run with prompt"]])
                     }
-                    reply = try await handler(botId, [["role": "user", "content": prompt]], nil)
+                    reply = try await handler(botId, [["role": "user", "content": prompt]], nil, { _ in })
                     return Self.httpJSON(status: 200, object: ["content": [["type": "text", "text": reply]]])
                 } else {
                     let model = json["model"] as? String
@@ -202,7 +206,7 @@ public actor LocalOpenAIGateway {
                         else { return nil }
                         return ["role": role, "content": content]
                     }
-                    reply = try await handler(botId, messages, model)
+                    reply = try await handler(botId, messages, model, { _ in })
                     let id = "chatcmpl-\(UUID().uuidString.prefix(8))"
                     return Self.httpJSON(status: 200, object: [
                         "id": id,
@@ -247,7 +251,7 @@ public actor LocalOpenAIGateway {
             let botId = agentRunId ?? Self.botId(fromModel: parsed.model, defaultBotId: settings.defaultBotId)
             let model = parsed.model ?? "grizzybot"
             do {
-                let reply = try await handler(botId, parsed.messages, parsed.model)
+                let reply = try await handler(botId, parsed.messages, parsed.model, { _ in })
                 switch path {
                 case "/v1/messages": return Self.httpJSON(status: 200, object: GatewayProtocols.anthropicReply(reply, model: model))
                 case "/v1/responses": return Self.httpJSON(status: 200, object: GatewayProtocols.responsesReply(reply, model: model))
@@ -260,6 +264,98 @@ public actor LocalOpenAIGateway {
         }
 
         return Self.httpJSON(status: 404, object: ["error": ["message": "Not found"]])
+    }
+
+    /// A request for a streamed reply, once it has fully arrived and passed the key check. Returns a closure
+    /// that writes the stream to the connection, or nil for anything else (including an incomplete request).
+    static func streamRequest(
+        _ data: Data,
+        settings: Settings,
+        bots: [(id: String, name: String)]
+    ) -> ((NWConnection, @escaping ChatHandler) async -> Void)? {
+        guard let raw = String(data: data, encoding: .utf8), let headerEnd = raw.range(of: "\r\n\r\n") else { return nil }
+        let lines = String(raw[..<headerEnd.lowerBound]).split(separator: "\r\n", omittingEmptySubsequences: false).map(String.init)
+        let parts = (lines.first ?? "").split(separator: " ")
+        guard parts.count >= 2, parts[0] == "POST" else { return nil }
+        let path = String(parts[1])
+        let body = String(raw[headerEnd.upperBound...])
+        let contentLength = lines.first { $0.lowercased().hasPrefix("content-length:") }
+            .flatMap { Int($0.split(separator: ":").last?.trimmingCharacters(in: .whitespaces) ?? "") } ?? 0
+        if contentLength > 0, body.utf8.count < contentLength { return nil }
+        let agentRunId = GatewayProtocols.agentRunBotId(path: path)
+        let format: GatewayProtocols.StreamFormat
+        switch path {
+        case "/v1/chat/completions": format = .openAI
+        case "/v1/messages": format = .anthropic
+        case "/v1/responses": format = .responses
+        case "/api/chat": format = .ollama
+        default:
+            guard agentRunId != nil else { return nil }
+            format = .agentRun
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any],
+              GatewayProtocols.wantsStream(format, json: json) else { return nil }
+        if !settings.apiKey.isEmpty {
+            let auth = lines.first { $0.lowercased().hasPrefix("authorization:") } ?? ""
+            let xKey = lines.first { $0.lowercased().hasPrefix("x-api-key:") } ?? ""
+            guard auth.contains("Bearer \(settings.apiKey)") || xKey.hasSuffix(settings.apiKey) else { return nil }
+        }
+        let parsed: GatewayProtocols.Parsed
+        switch format {
+        case .openAI:
+            let messages = ((json["messages"] as? [[String: Any]]) ?? []).compactMap { row -> [String: String]? in
+                guard let role = row["role"] as? String, let content = row["content"] as? String else { return nil }
+                return ["role": role, "content": content]
+            }
+            parsed = .init(model: json["model"] as? String, messages: messages)
+        case .anthropic: parsed = GatewayProtocols.parseAnthropic(json)
+        case .responses: parsed = GatewayProtocols.parseResponses(json)
+        case .ollama: parsed = GatewayProtocols.parseOllama(json)
+        case .agentRun: parsed = .init(model: nil, messages: [["role": "user", "content": GatewayProtocols.agentRunPrompt(json)]])
+        }
+        guard parsed.messages.contains(where: { $0["role"] == "user" && !($0["content"] ?? "").isEmpty }) else { return nil }
+        let botId = agentRunId ?? botId(fromModel: parsed.model, defaultBotId: settings.defaultBotId)
+        let model = parsed.model ?? "grizzybot"
+        return { connection, handler in
+            await Self.writeStream(connection: connection, format: format, botId: botId, model: model, parsed: parsed, handler: handler)
+        }
+    }
+
+    private final class StreamState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var sent = false
+        func markSent() { lock.lock(); sent = true; lock.unlock() }
+        var anySent: Bool { lock.lock(); defer { lock.unlock() }; return sent }
+    }
+
+    private static func writeStream(
+        connection: NWConnection,
+        format: GatewayProtocols.StreamFormat,
+        botId: String?,
+        model: String,
+        parsed: GatewayProtocols.Parsed,
+        handler: @escaping ChatHandler
+    ) async {
+        let id = "grizzy-\(UUID().uuidString.prefix(8))"
+        @Sendable func write(_ text: String, final: Bool = false) {
+            guard !text.isEmpty else { if final { connection.cancel() }; return }
+            connection.send(content: Data(text.utf8), completion: .contentProcessed { _ in if final { connection.cancel() } })
+        }
+        let header = "HTTP/1.1 200 OK\r\nContent-Type: \(format.contentType)\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n"
+        write(header + GatewayProtocols.streamStart(format, model: model, id: id))
+        let state = StreamState()
+        do {
+            let full = try await handler(botId, parsed.messages, parsed.model) { piece in
+                state.markSent()
+                write(GatewayProtocols.streamDelta(format, text: piece, model: model, id: id))
+            }
+            // A run that produced its answer without streaming (tool-only, cached) still gets it delivered.
+            if !state.anySent { write(GatewayProtocols.streamDelta(format, text: full, model: model, id: id)) }
+            write(GatewayProtocols.streamEnd(format, model: model, id: id, fullText: full), final: true)
+        } catch {
+            write(GatewayProtocols.streamDelta(format, text: "Error: \(error.localizedDescription)", model: model, id: id))
+            write(GatewayProtocols.streamEnd(format, model: model, id: id, fullText: ""), final: true)
+        }
     }
 
     private static func httpRaw(status: Int, contentType: String, body: String) -> Data {

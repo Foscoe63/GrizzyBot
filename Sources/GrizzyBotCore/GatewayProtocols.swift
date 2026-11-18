@@ -120,4 +120,85 @@ public enum GatewayProtocols {
         }
         return event(["type": "text", "text": reply]) + event(["type": "complete"]) + "data: [DONE]\n\n"
     }
+
+    // MARK: Streaming
+
+    /// Which wire format a streamed reply is written in.
+    public enum StreamFormat: Sendable {
+        case openAI, anthropic, responses, ollama, agentRun
+
+        public var contentType: String { self == .ollama ? "application/x-ndjson" : "text/event-stream" }
+    }
+
+    /// Whether the request asks for a streamed reply. Ollama streams unless told not to; the agent-run
+    /// endpoint always streams; the others only when `"stream": true`.
+    public static func wantsStream(_ format: StreamFormat, json: [String: Any]) -> Bool {
+        switch format {
+        case .agentRun: return true
+        case .ollama: return (json["stream"] as? Bool) ?? true
+        default: return (json["stream"] as? Bool) ?? false
+        }
+    }
+
+    private static func json(_ object: [String: Any]) -> String {
+        (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+    }
+
+    private static func sseEvent(_ name: String?, _ object: [String: Any]) -> String {
+        (name.map { "event: \($0)\n" } ?? "") + "data: \(json(object))\n\n"
+    }
+
+    /// What goes out before the first token.
+    public static func streamStart(_ format: StreamFormat, model: String, id: String) -> String {
+        switch format {
+        case .openAI:
+            return sseEvent(nil, ["id": id, "object": "chat.completion.chunk", "model": model,
+                                  "choices": [["index": 0, "delta": ["role": "assistant"], "finish_reason": NSNull()]]])
+        case .anthropic:
+            return sseEvent("message_start", ["type": "message_start", "message": ["id": id, "type": "message", "role": "assistant", "model": model, "content": [] as [Any], "stop_reason": NSNull()]])
+                + sseEvent("content_block_start", ["type": "content_block_start", "index": 0, "content_block": ["type": "text", "text": ""]])
+        case .responses:
+            return sseEvent("response.created", ["type": "response.created", "response": ["id": id, "object": "response", "model": model, "status": "in_progress"]])
+        case .ollama, .agentRun:
+            return ""
+        }
+    }
+
+    /// One piece of the reply.
+    public static func streamDelta(_ format: StreamFormat, text: String, model: String, id: String) -> String {
+        switch format {
+        case .openAI:
+            return sseEvent(nil, ["id": id, "object": "chat.completion.chunk", "model": model,
+                                  "choices": [["index": 0, "delta": ["content": text], "finish_reason": NSNull()]]])
+        case .anthropic:
+            return sseEvent("content_block_delta", ["type": "content_block_delta", "index": 0, "delta": ["type": "text_delta", "text": text]])
+        case .responses:
+            return sseEvent("response.output_text.delta", ["type": "response.output_text.delta", "output_index": 0, "content_index": 0, "delta": text])
+        case .ollama:
+            return json(["model": model, "message": ["role": "assistant", "content": text], "done": false]) + "\n"
+        case .agentRun:
+            return sseEvent(nil, ["type": "text", "text": text])
+        }
+    }
+
+    /// What closes the stream.
+    public static func streamEnd(_ format: StreamFormat, model: String, id: String, fullText: String) -> String {
+        switch format {
+        case .openAI:
+            return sseEvent(nil, ["id": id, "object": "chat.completion.chunk", "model": model,
+                                  "choices": [["index": 0, "delta": [String: Any](), "finish_reason": "stop"]]]) + "data: [DONE]\n\n"
+        case .anthropic:
+            return sseEvent("content_block_stop", ["type": "content_block_stop", "index": 0])
+                + sseEvent("message_delta", ["type": "message_delta", "delta": ["stop_reason": "end_turn"]])
+                + sseEvent("message_stop", ["type": "message_stop"])
+        case .responses:
+            return sseEvent("response.completed", ["type": "response.completed", "response": ["id": id, "object": "response", "model": model, "status": "completed",
+                "output": [["type": "message", "role": "assistant", "content": [["type": "output_text", "text": fullText]]]]]])
+        case .ollama:
+            return json(["model": model, "message": ["role": "assistant", "content": ""], "done": true]) + "\n"
+        case .agentRun:
+            return sseEvent(nil, ["type": "complete"]) + "data: [DONE]\n\n"
+        }
+    }
 }

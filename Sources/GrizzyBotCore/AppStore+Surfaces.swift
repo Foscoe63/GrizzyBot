@@ -303,24 +303,21 @@ extension AppStore {
         await LocalOpenAIGateway.shared.configure(
             settings: settings,
             bots: botPairs,
-            handler: { [weak self] botId, messages, _ in
+            handler: { [weak self] botId, messages, _, onDelta in
                 guard let self else { throw PrivacyFilterBlockedError.criticalPII([.apiKey]) }
-                return try await MainActor.run {
-                    try self.handleLocalGatewayChat(botId: botId, messages: messages)
-                }
+                return try await self.gatewayRun(botId: botId, messages: messages, onDelta: onDelta)
             }
         )
         await LocalOpenAIGateway.shared.restart()
     }
 
-    private func handleLocalGatewayChat(botId: String?, messages: [[String: String]]) throws -> String {
+    /// Runs a bot for a local-gateway caller and returns its reply, passing each streamed piece to `onDelta`.
+    /// The run is the ordinary one (same tools, approvals and audit); the caller just waits for it.
+    @MainActor
+    public func gatewayRun(botId: String?, messages: [[String: String]], onDelta: @escaping @Sendable (String) -> Void) async throws -> String {
         let target = botId ?? appConfig.localGateway.defaultBotId ?? activeBotId ?? bots.first?.id
         guard let target else {
-            throw NSError(
-                domain: "GrizzyBot",
-                code: 404,
-                userInfo: [NSLocalizedDescriptionKey: "No bot available"]
-            )
+            throw NSError(domain: "GrizzyBot", code: 404, userInfo: [NSLocalizedDescriptionKey: "No bot available"])
         }
         let prompt = messages.reversed().first(where: { $0["role"] == "user" })?["content"]
             ?? messages.last?["content"]
@@ -331,8 +328,20 @@ extension AppStore {
             logDirectory: userPersistence.root,
             logContext: "local_gateway"
         )
-        send(botId: target, text: scrubbed)
-        return "Queued on bot \(target). Open GrizzyBot to follow the run."
+        let key = threadKey(for: target)
+        return await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
+            let observer = GatewayObserver(onDelta: onDelta, onFinish: { cont.resume(returning: $0) })
+            gatewayObservers[key] = observer
+            send(botId: target, text: scrubbed)
+            // A run that never ends (waiting on an approval nobody gives) releases the caller after a while.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(900))
+                if let self, let pending = self.gatewayObservers[key], pending === observer {
+                    self.gatewayObservers.removeValue(forKey: key)
+                    observer.onFinish("The bot is still working or waiting for approval in GrizzyBot. Open the app to continue.")
+                }
+            }
+        }
     }
 
     func applyBoxToken(_ token: String?, persist: Bool) {

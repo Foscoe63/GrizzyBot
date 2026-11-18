@@ -79,3 +79,19 @@ struct PrivacySendPathTests {
         #expect(reply?.contains("ada@example.com") == true)
     }
 }
+
+@MainActor
+@Suite("Local gateway runs a bot")
+struct GatewayRunTests {
+    @Test("the caller gets the bot's real reply, not a queued notice")
+    func realReply() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = AppStore(dataDirectory: dir, delayScale: 0.01)
+        #expect(store.signUp(name: "A", email: "gw@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Agent", title: "helper")
+        store.chatCompleter = QueueChatClient([ChatCompletionResponse(text: "Paris.")])
+        let reply = try await store.gatewayRun(botId: bot.id, messages: [["role": "user", "content": "capital of France?"]], onDelta: { _ in })
+        #expect(reply == "Paris.")
+    }
+}

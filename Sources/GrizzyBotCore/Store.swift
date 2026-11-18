@@ -234,6 +234,8 @@ public final class AppStore {
     /// Reversible privacy placeholders, one set per conversation, so a name scrubbed on the way out is put
     /// back in the reply and in the tool calls that follow.
     var redactionSessions: [String: RedactionSession] = [:]
+    /// Local-gateway callers waiting on a bot's run, by conversation: told each streamed piece and the final reply.
+    var gatewayObservers: [String: GatewayObserver] = [:]
     /// The Chief of Staff's in-flight hand-off, so Stop can end it.
     var dispatchTasks: [String: Task<Void, Never>] = [:]
     /// The bot a dispatch is waiting on, per Chief of Staff.

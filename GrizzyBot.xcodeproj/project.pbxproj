@@ -310,6 +310,7 @@
 		BA27FD0EE10BC474D104566F /* AppleFoundationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 803CF9C00F9360F8362ED1A1 /* AppleFoundationTests.swift */; };
 		BAA83BD3B6F882B9D61D60EA /* MessageViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3759CA0FED3BDA9EF99C2D0 /* MessageViews.swift */; };
 		BB032DD5EEF1FF287A816035 /* BotChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0718490D87771C6FDE67E9D1 /* BotChatView.swift */; };
+		BC401C4548603F4D49F409A6 /* GatewayObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7161F8008E7A7AB3F7381F7 /* GatewayObserver.swift */; };
 		BD000FA49A8E793BD2FEE385 /* AuditLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0DC3ACF3FF857D14BC98A3 /* AuditLog.swift */; };
 		BD2E47ED123F1FB4AB58F96B /* AppStore+McpTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = F50C3016ECAF93C89342463F /* AppStore+McpTools.swift */; };
 		BD7FD21B84E4978A19C4A474 /* LocalMLXView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 123816BD5C1D3CE3C8AB8F50 /* LocalMLXView.swift */; };
@@ -833,6 +834,7 @@
 		D526B98BCA143BD0302A7966 /* CanvasViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasViews.swift; sourceTree = "<group>"; };
 		D5F5BBB7F1FC532399DE8DE2 /* GrizzyBot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GrizzyBot.entitlements; sourceTree = "<group>"; };
 		D61B2EBAB0004EF8B588C64B /* CheckpointTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckpointTests.swift; sourceTree = "<group>"; };
+		D7161F8008E7A7AB3F7381F7 /* GatewayObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayObserver.swift; sourceTree = "<group>"; };
 		D7B635643AD7949F6D4FD303 /* MLXResidencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXResidencyTests.swift; sourceTree = "<group>"; };
 		D87DBE8B0F52E051C297FA2B /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
 		DA525FD184B1F51F3E038F4C /* AiMemoryBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiMemoryBridgeTests.swift; sourceTree = "<group>"; };
@@ -1339,6 +1341,7 @@
 				904560CA14B33862F906E94E /* EvalScoreboard.swift */,
 				A0A65A89D506AFB27F396361 /* ExternalAgent.swift */,
 				723E31172A5A6099197A91AF /* FolderWatchers.swift */,
+				D7161F8008E7A7AB3F7381F7 /* GatewayObserver.swift */,
 				C2210D6428AE07AF8198EA57 /* GatewayProtocols.swift */,
 				26B288C5158B6D6FEC3E71E1 /* GoogleOAuth.swift */,
 				E709F81FAFD62A79D61F83E0 /* GoogleRequests.swift */,
@@ -1810,6 +1813,7 @@
 				EEE3F13B861B0712962E8CC7 /* EvalScoreboard.swift in Sources */,
 				596AD0F9D713145686110501 /* ExternalAgent.swift in Sources */,
 				9C9926F770FB46DB5CEC74EF /* FolderWatchers.swift in Sources */,
+				BC401C4548603F4D49F409A6 /* GatewayObserver.swift in Sources */,
 				CD38DECE504B6DCE3F2852C8 /* GatewayProtocols.swift in Sources */,
 				614D378E4CC0F199D59C6D2D /* GoogleOAuth.swift in Sources */,
 				21390CC60909F7CF03C5DBFE /* GoogleRequests.swift in Sources */,

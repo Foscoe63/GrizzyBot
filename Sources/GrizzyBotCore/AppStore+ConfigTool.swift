@@ -108,6 +108,15 @@ extension AppStore {
         }
     }
 
+    /// Runs a saved workflow as a bot, for the Run button. Uses the same checks and audit as the tool.
+    public func runWorkflow(id: String, input: [String: String], botId: String) async -> String {
+        guard let bot = bots.first(where: { $0.id == botId }) else { return "Pick a bot first." }
+        var args: [String: JSONValue] = ["id": .string(id)]
+        args["input"] = .object(input.mapValues { .string($0) })
+        guard let data = try? JSONEncoder().encode(JSONValue.object(args)), let json = String(data: data, encoding: .utf8) else { return "Couldn't build the request." }
+        return await workflowRun(bot: bot, argumentsJSON: json).output
+    }
+
     func workflowRun(bot: Bot, argumentsJSON: String) async -> AgentToolCallResult {
         let args = JSONValue.object(JSONValue.parseObject(argumentsJSON))
         let all = workflows()
