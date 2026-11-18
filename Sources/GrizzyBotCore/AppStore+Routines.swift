@@ -260,6 +260,12 @@ extension AppStore {
         webhookPayload: String?,
         viaWebhook: Bool
     ) {
+        // Never replace a run that is still going: its result would be dropped and its
+        // task, inbox and routine flag would never be cleaned up.
+        if let active = threads[threadKey(for: botId)]?.run, active.status == .running, runTasks[active.id] != nil {
+            appendRunLog(botId: botId, kind: "routine", text: "Routine '\(routine.name)' not started — the previous run is still going")
+            return
+        }
         // Heartbeats and webhooks run in the background; they must not drag the window around.
         let quiet = routine.heartbeat || viaWebhook
         if !headlessRoutineTick, !quiet {
