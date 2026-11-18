@@ -3,6 +3,9 @@ import Foundation
 // MARK: - Privacy Filter Types (ported from GrizzyClaw)
 
 public enum PIIType: String, Codable, Sendable, CaseIterable {
+    case person = "person"
+    case place = "place"
+    case organization = "organization"
     case email = "email"
     case phone = "phone"
     case creditCard = "credit_card"
@@ -16,6 +19,9 @@ public enum PIIType: String, Codable, Sendable, CaseIterable {
 
     public var displayName: String {
         switch self {
+        case .person: return "Person"
+        case .place: return "Place"
+        case .organization: return "Organization"
         case .email: return "Email"
         case .phone: return "Phone"
         case .creditCard: return "Credit Card"
@@ -35,7 +41,7 @@ public enum PIIType: String, Codable, Sendable, CaseIterable {
             return .critical
         case .email, .phone, .dob:
             return .high
-        case .ipAddress, .address:
+        case .ipAddress, .address, .person, .place, .organization:
             return .medium
         }
     }
@@ -129,6 +135,10 @@ public struct PrivacyFilterSettings: Codable, Sendable, Equatable {
     public var failClosed: Bool
     public var minimumConfidence: Double
     public var enabledTypes: Set<PIIType>
+    /// Strings that are never redacted (a company name the person is happy to share, say).
+    public var neverRedact: [String]
+    /// Also look for people, places and organisations with Apple's on-device language model.
+    public var useOnDeviceNER: Bool
 
     public static let `default` = PrivacyFilterSettings(
         enabled: true,
@@ -143,8 +153,12 @@ public struct PrivacyFilterSettings: Codable, Sendable, Equatable {
         redactBeforeCloudSend: Bool = true,
         failClosed: Bool = true,
         minimumConfidence: Double = 0.80,
-        enabledTypes: Set<PIIType>? = nil
+        enabledTypes: Set<PIIType>? = nil,
+        neverRedact: [String] = [],
+        useOnDeviceNER: Bool = false
     ) {
+        self.neverRedact = neverRedact
+        self.useOnDeviceNER = useOnDeviceNER
         self.enabled = enabled
         self.redactBeforeCloudSend = redactBeforeCloudSend
         self.failClosed = failClosed
@@ -153,7 +167,7 @@ public struct PrivacyFilterSettings: Codable, Sendable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case enabled, redactBeforeCloudSend, failClosed, minimumConfidence, enabledTypes
+        case enabled, redactBeforeCloudSend, failClosed, minimumConfidence, enabledTypes, neverRedact, useOnDeviceNER
     }
 
     public init(from decoder: Decoder) throws {
@@ -168,6 +182,8 @@ public struct PrivacyFilterSettings: Codable, Sendable, Equatable {
         } else {
             enabledTypes = Set(PIIType.allCases)
         }
+        neverRedact = try c.decodeIfPresent([String].self, forKey: .neverRedact) ?? []
+        useOnDeviceNER = try c.decodeIfPresent(Bool.self, forKey: .useOnDeviceNER) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -177,6 +193,8 @@ public struct PrivacyFilterSettings: Codable, Sendable, Equatable {
         try c.encode(failClosed, forKey: .failClosed)
         try c.encode(minimumConfidence, forKey: .minimumConfidence)
         try c.encode(enabledTypes.map(\.rawValue).sorted(), forKey: .enabledTypes)
+        try c.encode(neverRedact, forKey: .neverRedact)
+        try c.encode(useOnDeviceNER, forKey: .useOnDeviceNER)
     }
 }
 
@@ -215,12 +233,21 @@ public enum PrivacyFilter: Sendable {
         if result.wasModified {
             PrivacyFilterLogger.log(result, directory: logDirectory, context: logContext)
         }
+        // Post-scrub invariant: nothing critical may survive redaction. If it does, the send stops.
+        if settings.failClosed {
+            let leftover = Self.survivingCritical(in: result.redactedText, settings: settings)
+            if !leftover.isEmpty {
+                PrivacyFilterLogger.log(result, directory: logDirectory, context: "\(logContext)_invariant")
+                throw PrivacyFilterBlockedError.criticalPII(leftover)
+            }
+        }
         return result.redactedText
     }
 
     public static func redact(
         _ text: String,
-        settings: PrivacyFilterSettings = .default
+        settings: PrivacyFilterSettings = .default,
+        session: RedactionSession? = nil
     ) -> PrivacyFilterResult {
         guard settings.enabled, !text.isEmpty else {
             return PrivacyFilterResult(originalText: text, redactedText: text, detections: [], wasModified: false)
@@ -235,7 +262,24 @@ public enum PrivacyFilter: Sendable {
             detections.append(contentsOf: matches)
         }
 
+        if settings.useOnDeviceNER {
+            detections.append(contentsOf: OnDeviceEntityDetector.detect(in: redacted)
+                .filter { settings.enabledTypes.contains($0.type) && $0.confidence >= settings.minimumConfidence })
+        }
         detections = Self.deduplicate(detections)
+        detections = detections.filter { !RedactionSession.isNeverRedact($0.originalText, list: settings.neverRedact) }
+        if let session {
+            detections = detections.filter { !session.isAllowed($0.originalText) }
+            detections = detections.map { d in
+                PIIDetection(
+                    type: d.type,
+                    originalText: d.originalText,
+                    redactedText: session.placeholder(for: d.originalText, type: d.type),
+                    confidence: d.confidence,
+                    range: d.range
+                )
+            }
+        }
 
         var uniqueReplacements: [(original: String, redacted: String)] = []
         var seenOriginals: Set<String> = []
@@ -258,6 +302,14 @@ public enum PrivacyFilter: Sendable {
             hasCriticalPII: hasCritical,
             wasModified: !detections.isEmpty
         )
+    }
+
+    /// Critical PII still present in text that has already been scrubbed.
+    public static func survivingCritical(in scrubbed: String, settings: PrivacyFilterSettings) -> [PIIType] {
+        var plain = settings
+        plain.useOnDeviceNER = false
+        plain.neverRedact = []
+        return Array(Set(detections(in: scrubbed, settings: plain).filter { $0.type.severity == .critical }.map(\.type)))
     }
 
     public static func containsPII(
@@ -302,6 +354,8 @@ public enum PrivacyFilter: Sendable {
             return findPasswordMatches(in: text)
         case .dob:
             return findDOBMatches(in: text)
+        case .person, .place, .organization:
+            return []  // found by OnDeviceEntityDetector, only when the person turns it on
         }
     }
 

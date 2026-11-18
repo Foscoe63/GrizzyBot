@@ -95,6 +95,10 @@ extension AppStore {
             result.output += "\n\nThis connection's sign-in has expired and only the person can renew it. A Reconnect card was shown. Do not retry; tell them and wait."
             result.blocks.append(.connect(name: target, initial: String(target.prefix(1)).uppercased(), color: "#B45309", status: .reconnect))
         }
+        RunRecorder.shared.record(run: runId ?? botId, tool: name, output: result.output, milliseconds: Int(Date().timeIntervalSince(started) * 1000))
+        if let hint = ToolRetryGuard.shared.note(run: runId ?? botId, tool: name, arguments: arguments, output: result.output) {
+            result.output += "\n\n[harness] \(hint)"
+        }
         return result
     }
 }

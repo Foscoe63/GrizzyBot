@@ -36,3 +36,5 @@ GrizzyBot.xcodeproj/-Xcc/
 # Renders written when an overlay golden fails, plus the re-record trigger
 .snapshot-failures/
 Tests/GrizzyBotAppTests/Goldens/.refresh
+
+Evals/reports/

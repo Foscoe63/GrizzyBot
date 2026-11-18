@@ -143,6 +143,11 @@ public struct MLXChatClient: ChatCompleting {
         // only know a chunk is part of one after the tag opens — so deltas are
         // filtered through the same parser the final text goes through.
         let filter = MLXStreamFilter()
+        let generator = self.generator
+        MLXResidency.shared.unloadHandler = { await generator.unload() }
+        MLXResidency.shared.startMonitoring()
+        MLXResidency.shared.begin()
+        defer { MLXResidency.shared.end() }
         let result = try await generator.generate(generationRequest) { chunk in
             let visible = filter.consume(chunk)
             if !visible.isEmpty { onDelta(visible) }

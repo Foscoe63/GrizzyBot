@@ -123,6 +123,8 @@ struct GrizzyField: View {
     var secure: Bool = false
     var axis: Axis = .horizontal
     var lineLimit: ClosedRange<Int>? = nil
+    /// Return in a single-line field. Lets a setting save without hunting for a button.
+    var onCommit: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -152,6 +154,7 @@ struct GrizzyField: View {
             .font(.system(size: style == .auth ? 17 : 15))
             .foregroundStyle(style == .auth ? Theme.textAuthTitle : Theme.textBright)
             .textFieldStyle(.plain)
+            .onSubmit { onCommit?() }
             .padding(.horizontal, style == .auth ? 18 : 14)
             .padding(.vertical, style == .auth ? 17 : 12)
             .background(style == .auth ? Theme.bgAuthInput : Color.clear)
@@ -235,7 +238,9 @@ struct GrizzySelect<T: Hashable & CustomStringConvertible>: View {
     private var filtered: [T] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard searchable, !q.isEmpty else { return options }
-        return options.filter { title(for: $0).lowercased().contains(q) || "\($0)".lowercased().contains(q) }
+        return options.filter {
+            title(for: $0).localizedCaseInsensitiveContains(q) || $0.description.localizedCaseInsensitiveContains(q)
+        }
     }
 
     var body: some View {
@@ -280,6 +285,7 @@ struct GrizzySelect<T: Hashable & CustomStringConvertible>: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $open) {
+            let filtered = self.filtered
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("Choose model")

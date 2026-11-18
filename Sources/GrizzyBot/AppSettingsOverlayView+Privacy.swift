@@ -8,56 +8,37 @@ extension AppSettingsOverlayView {
     var privacySection: some View {
         settingsCard(
             title: "Privacy on send",
-            subtitle: "Regex PII filter before cloud model calls (GrizzyClaw-style). Critical secrets can fail closed."
+            subtitle: "Regex PII filter before cloud model calls. Critical secrets can fail closed."
         ) {
-            Toggle("Enable privacy filter", isOn: Binding(
+            settingsToggle("Privacy filter", "Scan outgoing prompts for personal data.", isOn: Binding(
                 get: { store.appConfig.privacyFilter.enabled },
-                set: { value in
-                    var config = store.appConfig
-                    config.privacyFilter.enabled = value
-                    store.saveAppConfig(config)
-                }
+                set: { value in updateConfig { $0.privacyFilter.enabled = value } }
             ))
-            .toggleStyle(.switch)
-            Toggle("Redact before cloud send", isOn: Binding(
+            settingsToggle("Redact before cloud send", "Replace matches with placeholders instead of sending them.", isOn: Binding(
                 get: { store.appConfig.privacyFilter.redactBeforeCloudSend },
-                set: { value in
-                    var config = store.appConfig
-                    config.privacyFilter.redactBeforeCloudSend = value
-                    store.saveAppConfig(config)
-                }
+                set: { value in updateConfig { $0.privacyFilter.redactBeforeCloudSend = value } }
             ))
-            .toggleStyle(.switch)
-            .padding(.top, 8)
-            Toggle("Fail closed on critical PII", isOn: Binding(
+            .disabled(!store.appConfig.privacyFilter.enabled)
+            settingsToggle("Fail closed on critical PII", "Block the send entirely when a key or card number is found.", isOn: Binding(
                 get: { store.appConfig.privacyFilter.failClosed },
-                set: { value in
-                    var config = store.appConfig
-                    config.privacyFilter.failClosed = value
-                    store.saveAppConfig(config)
-                }
+                set: { value in updateConfig { $0.privacyFilter.failClosed = value } }
             ))
-            .toggleStyle(.switch)
-            .padding(.top, 8)
+            .disabled(!store.appConfig.privacyFilter.enabled)
         }
 
         settingsCard(
             title: "Lean memory",
             subtitle: "Heuristic mode injects Pin/Facts only when the prompt looks memory-relevant."
         ) {
-            Picker("Memory inject", selection: Binding(
-                get: { store.appConfig.memoryRelevanceMode },
-                set: { value in
-                    var config = store.appConfig
-                    config.memoryRelevanceMode = value
-                    store.saveAppConfig(config)
-                }
-            )) {
-                Text("Always (legacy)").tag(MemoryRelevanceGateMode.always)
-                Text("Heuristic").tag(MemoryRelevanceGateMode.heuristic)
-                Text("Off").tag(MemoryRelevanceGateMode.off)
+            SettingsRow(title: "Memory inject") {
+                SettingsSegmented(
+                    options: [(MemoryRelevanceGateMode.always, "Always"), (.heuristic, "Heuristic"), (.off, "Off")],
+                    selection: Binding(
+                        get: { store.appConfig.memoryRelevanceMode },
+                        set: { value in updateConfig { $0.memoryRelevanceMode = value } }
+                    )
+                )
             }
-            .pickerStyle(.menu)
             if let botId = store.activeBotId {
                 let clusters = store.memoryDedupeClusters(botId: botId)
                 Text(clusters.isEmpty ? "No near-duplicate Facts for the active bot." : "\(clusters.count) duplicate cluster(s) found.")
@@ -78,31 +59,22 @@ extension AppSettingsOverlayView {
             title: "Local OpenAI / MCP gateway",
             subtitle: "Expose bots at http://127.0.0.1:PORT/v1/chat/completions and /mcp/tools for Cursor."
         ) {
-            Toggle("Enable local gateway", isOn: Binding(
+            settingsToggle("Local gateway", "Serves bots over loopback for Cursor and other clients.", isOn: Binding(
                 get: { store.appConfig.localGateway.enabled },
                 set: { value in
-                    var config = store.appConfig
-                    config.localGateway.enabled = value
-                    if let port = Int(gatewayPort) { config.localGateway.port = port }
-                    config.localGateway.apiKey = gatewayKey
-                    store.saveAppConfig(config)
+                    updateConfig { config in
+                        config.localGateway.enabled = value
+                        if let port = Self.validPort(gatewayPort) { config.localGateway.port = port }
+                        config.localGateway.apiKey = gatewayKey
+                    }
                 }
             ))
-            .toggleStyle(.switch)
-            GrizzyField(label: "Port", placeholder: "8787", text: $gatewayPort)
+            GrizzyField(label: "Port", placeholder: "8787", text: $gatewayPort, onCommit: { saveGateway() })
                 .padding(.top, 8)
-            GrizzyField(label: "API key (optional Bearer)", placeholder: "local-secret", text: $gatewayKey, secure: true)
+            GrizzyField(label: "API key (optional Bearer)", placeholder: "local-secret", text: $gatewayKey, secure: true, onCommit: { saveGateway() })
                 .padding(.top, 8)
-            GrizzyButton(title: "Save gateway", variant: .cream, size: .sm) {
-                var config = store.appConfig
-                if let port = Int(gatewayPort) { config.localGateway.port = port }
-                config.localGateway.apiKey = gatewayKey
-                store.saveAppConfig(config)
-                sessionNotice = config.localGateway.enabled
-                    ? "Gateway listening on port \(config.localGateway.port)"
-                    : "Gateway disabled"
-            }
-            .padding(.top, 10)
+            GrizzyButton(title: "Save gateway", variant: .cream, size: .sm) { saveGateway() }
+                .padding(.top, 10)
         }
     }
 
@@ -154,17 +126,11 @@ extension AppSettingsOverlayView {
                 onClear: {
                     store.clearSecret(.sentry)
                     CrashReporting.install(dsn: nil)
-                }
+                },
+                onCommit: { saveSentry() }
             )
-            GrizzyButton(title: "Save Sentry DSN", variant: .cream, size: .sm) {
-                store.applySecret(.sentry, input: sentryDSN)
-                CrashReporting.startSentry(dsn: store.appConfig.sentryDSN)
-                sentryDSN = ""
-                sessionNotice = store.appConfig.sentryConfigured
-                    ? "Sentry is on"
-                    : "Sentry DSN cleared — local crash file only"
-            }
-            .padding(.top, 12)
+            GrizzyButton(title: "Save Sentry DSN", variant: .cream, size: .sm) { saveSentry() }
+                .padding(.top, 12)
         }
 
         settingsCard(
@@ -231,6 +197,31 @@ extension AppSettingsOverlayView {
             .foregroundStyle(Theme.textSidebarIcon)
             .padding(.top, 8)
         }
+    }
+
+    func saveSentry() {
+        store.applySecret(.sentry, input: sentryDSN)
+        CrashReporting.startSentry(dsn: store.appConfig.sentryDSN)
+        sentryDSN = ""
+        sessionNotice = store.appConfig.sentryConfigured ? "Sentry is on" : "Sentry DSN cleared — local crash file only"
+    }
+
+    static func validPort(_ text: String) -> Int? {
+        guard let port = Int(text.trimmingCharacters(in: .whitespaces)), (1024...65_535).contains(port) else { return nil }
+        return port
+    }
+
+    func saveGateway() {
+        guard let port = Self.validPort(gatewayPort) else {
+            sessionNotice = "Port must be a number between 1024 and 65535."
+            gatewayPort = "\(store.appConfig.localGateway.port)"
+            return
+        }
+        updateConfig { config in
+            config.localGateway.port = port
+            config.localGateway.apiKey = gatewayKey
+        }
+        sessionNotice = store.appConfig.localGateway.enabled ? "Gateway listening on port \(port)" : "Gateway saved. Turn it on to start listening."
     }
 
     func memoryStatusText(_ probe: AiMemoryBridge.Probe) -> String {

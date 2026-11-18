@@ -1,0 +1,7 @@
+[
+  {"id": "name", "query": "what's my name?", "section": "identity"},
+  {"id": "earlier", "query": "what did we discuss yesterday", "section": "episode"},
+  {"id": "recall-verb", "query": "do you remember my coffee order", "section": "pinned"},
+  {"id": "plain", "query": "convert 12 miles to km", "section": "none"},
+  {"id": "tiny", "query": "hi", "section": "none"}
+]

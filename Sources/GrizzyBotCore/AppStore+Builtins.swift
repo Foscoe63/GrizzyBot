@@ -17,7 +17,7 @@ extension AppStore {
         case .learn:
             return nil
         case .recipe:
-            return recipeReply(argument: argument)
+            return recipeReply(argument: argument, bot: bot)
         case .plan:
             let task = argument.trimmingCharacters(in: .whitespacesAndNewlines)
             return task.isEmpty ? "Usage: `/plan <task>` — I'll write a plan without carrying it out." : nil
@@ -162,7 +162,7 @@ extension AppStore {
     public func recipes() -> [Recipe] { RecipeLibrary.load(root: userPersistence.root) }
 
     /// A local reply when `/recipe` needs to list recipes or ask for missing values; nil means "run it".
-    func recipeReply(argument: String) -> String? {
+    func recipeReply(argument: String, bot: Bot? = nil) -> String? {
         let all = recipes()
         let parsed = RecipeMarkdown.parseArguments(argument)
         if parsed.name.isEmpty {
@@ -174,6 +174,12 @@ extension AppStore {
         }
         guard let recipe = all.first(where: { $0.id == parsed.name }) else {
             return "No recipe named `\(parsed.name)`. `/recipe` lists them."
+        }
+        if let bot {
+            let missing = RecipeRequirements.missing(recipe, enabledTools: bot.enabledTools, secretNames: botSecretNames(botId: bot.id))
+            if !missing.isEmpty {
+                return "`/recipe \(recipe.id)` can't run yet — " + missing.joined(separator: "; ") + ". Fix that in this bot's settings, then run it again."
+            }
         }
         do {
             _ = try RecipeMarkdown.fill(recipe, values: parsed.values)

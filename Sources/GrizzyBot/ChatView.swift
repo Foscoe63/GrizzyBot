@@ -5,6 +5,9 @@ import UniformTypeIdentifiers
 struct ChatView: View {
     @Environment(AppStore.self) private var store
     @State private var draft = ""
+    @State private var showModelPicker = false
+    @State private var modelSearch = ""
+    @FocusState private var modelSearchFocused: Bool
     @State private var hoverComputer = false
     @State private var hoverCanvas = false
     @State private var hoverArtifacts = false
@@ -839,24 +842,10 @@ struct ChatView: View {
     }
 
     private func composerModelPicker(_ bot: Bot) -> some View {
-        let current = BotModelChoice.current(bot: bot)
         let workspaceModel = store.modelId
-        return Menu {
-            ForEach(composerModelChoices(for: bot)) { choice in
-                Button {
-                    store.setBotModel(bot.id, choice: choice)
-                } label: {
-                    if choice.id == current.id {
-                        Label(choice.menuLabel(workspaceModel: workspaceModel), systemImage: "checkmark")
-                    } else {
-                        Text(choice.menuLabel(workspaceModel: workspaceModel))
-                    }
-                }
-            }
-            Divider()
-            Button("Connect models…") {
-                store.openModelSettings()
-            }
+        return Button {
+            modelSearch = ""
+            showModelPicker.toggle()
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "cpu")
@@ -875,8 +864,82 @@ struct ChatView: View {
             .background(Theme.bgCard)
             .clipShape(Capsule())
         }
-        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
         .help("Model for this bot")
+        .popover(isPresented: $showModelPicker, arrowEdge: .top) {
+            composerModelPopover(bot)
+        }
+    }
+
+    private func composerModelPopover(_ bot: Bot) -> some View {
+        let current = BotModelChoice.current(bot: bot)
+        let workspaceModel = store.modelId
+        let query = modelSearch.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let choices = composerModelChoices(for: bot).filter { choice in
+            query.isEmpty
+                || choice.menuLabel(workspaceModel: workspaceModel).lowercased().contains(query)
+                || choice.id.lowercased().contains(query)
+        }
+        return VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textMuted)
+                TextField("Search models", text: $modelSearch)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .focused($modelSearchFocused)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            Divider()
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if choices.isEmpty {
+                        Text("No matching models")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.textMuted)
+                            .padding(10)
+                    }
+                    ForEach(choices) { choice in
+                        Button {
+                            store.setBotModel(bot.id, choice: choice)
+                            showModelPicker = false
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .opacity(choice.id == current.id ? 1 : 0)
+                                Text(choice.menuLabel(workspaceModel: workspaceModel))
+                                    .font(.system(size: 12.5))
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(maxHeight: 320)
+            Divider()
+            Button {
+                showModelPicker = false
+                store.openModelSettings()
+            } label: {
+                Text("Connect models…")
+                    .font(.system(size: 12.5))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(width: 300)
+        .onAppear { modelSearchFocused = true }
     }
 
     private func composerTokenStats(_ bot: Bot) -> some View {

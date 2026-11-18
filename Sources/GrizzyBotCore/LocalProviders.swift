@@ -230,6 +230,67 @@ public enum LocalProviders {
         return (normalized, merged)
     }
 
+    /// List models from a hosted provider (OpenRouter, OpenAI, Anthropic, …).
+    /// Skips the local-server URL normalisation, which would append `/v1`.
+    public static func fetchHostedModels(
+        baseUrl: String,
+        apiKey: String?,
+        timeoutSeconds: TimeInterval = 20
+    ) async throws -> [LocalModelRef] {
+        let base = baseUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard var components = URLComponents(string: base),
+              components.scheme?.lowercased() == "https" || components.scheme?.lowercased() == "http" else {
+            throw LocalProviderError.message("Base URL must be http or https.")
+        }
+        components.path += "/models"
+        if components.host == "api.anthropic.com" {
+            components.queryItems = [URLQueryItem(name: "limit", value: "1000")]
+        }
+        guard let url = components.url else {
+            throw LocalProviderError.message("Base URL is invalid.")
+        }
+        var request = URLRequest(url: url, timeoutInterval: timeoutSeconds)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if components.host == "api.anthropic.com" {
+            request.setValue(key, forHTTPHeaderField: "x-api-key")
+            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        } else if !key.isEmpty {
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
+        ModelTransport.prepare(&request)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await ModelTransport.session(for: url).data(for: request)
+        } catch {
+            throw LocalProviderError.message(ModelTransport.message(for: error, url: url))
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw LocalProviderError.message("Could not list models.")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let hint = (http.statusCode == 401 || http.statusCode == 403)
+                ? " Check the API key."
+                : ""
+            throw LocalProviderError.message("Could not list models (\(http.statusCode)).\(hint)")
+        }
+        let models = try parseModelsJSON(data).map { model -> LocalModelRef in
+            guard model.id.hasPrefix("models/") else { return model }
+            return LocalModelRef(
+                id: String(model.id.dropFirst("models/".count)),
+                label: model.label == model.id ? nil : model.label
+            )
+        }
+        guard !models.isEmpty else {
+            throw LocalProviderError.message("Reachable, but no models were listed.")
+        }
+        return models
+    }
+
     private static let probeSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.waitsForConnectivity = false

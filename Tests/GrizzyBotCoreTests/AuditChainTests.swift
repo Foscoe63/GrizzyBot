@@ -60,3 +60,41 @@ struct AuditChainTests {
         #expect(legacy.chain == nil)
     }
 }
+
+@Suite("Audit locality and export")
+struct AuditLocalityTests {
+    @Test("remote calls are tagged remote, blocked ones local")
+    func infer() {
+        #expect(AuditEvent(type: .agentInvoked, actorId: "me", tool: "web_fetch", reason: "x").locality == .remote)
+        #expect(AuditEvent(type: .agentInvoked, actorId: "me", tool: "read_file", reason: "x").locality == .local)
+        #expect(AuditEvent(type: .secretLeakBlocked, actorId: "me", tool: "web_fetch", forwarded: false, reason: "x").locality == .local)
+    }
+
+    @Test("an export re-verifies outside the app")
+    func export() throws {
+        var events: [AuditEvent] = []
+        for i in 0..<5 {
+            events = AuditLog.appending(events, AuditEvent(
+                type: .agentInvoked, actorId: "me", botId: "b", tool: i % 2 == 0 ? "web_fetch" : "shell",
+                allowed: true, forwarded: true, reason: "path /a/b é \(i)",
+                attributes: ["n": .number(Double(i)), "url": .string("https://x.example/a")]
+            ))
+        }
+        #expect(AuditExport.remoteEvents(events).count == 3)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("audit-\(UUID().uuidString).jsonl")
+        try AuditExport.jsonLines(events).write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Scripts/verify-audit.py")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", script.path, url.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try process.run()
+        process.waitUntilExit()
+        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        #expect(process.terminationStatus == 0, "\(out)")
+        #expect(out.contains("5 verified"))
+    }
+}

@@ -34,6 +34,31 @@ public enum AuditEventType: String, Codable, Sendable {
     case memoryWriteHeld = "memory.write_held"
 }
 
+/// Did anything derived from this event leave the Mac? `local` means no; `remote` means request data
+/// crossed the network (a web fetch, a plugin or MCP call, a channel message, a cloud model).
+public enum AuditLocality: String, Codable, Sendable {
+    case local
+    case remote
+
+    /// A best guess from what the event is, used when the emitter does not say. A call that was
+    /// blocked or not forwarded never left the Mac.
+    public static func infer(type: AuditEventType, tool: String?, forwarded: Bool?) -> AuditLocality {
+        if forwarded == false { return .local }
+        switch type {
+        case .channelMessage, .channelPairing, .mcpCallSucceeded, .connectorSyncSucceeded, .connectorSyncFailed, .modelFailover:
+            return .remote
+        case .secretLeakBlocked, .mcpCallRejected, .computerActionRefused, .botDeclined, .componentRefused, .memoryWriteHeld:
+            return .local
+        default: break
+        }
+        if let tool {
+            let remoteTools: Set<String> = ["web_fetch", "web_search", "plugin_call", "mcp_call", "destination_write", "message_telegram"]
+            if remoteTools.contains(tool) || tool.contains("__") { return .remote }
+        }
+        return .local
+    }
+}
+
 public struct AuditEvent: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var type: AuditEventType
@@ -50,6 +75,8 @@ public struct AuditEvent: Codable, Sendable, Hashable, Identifiable {
     public var attributes: [String: JSONValue]
     /// Links this event to the one before it (see `AuditChain`). Nil on events saved before chaining.
     public var chain: String?
+    /// Whether data left this Mac. Nil on events saved before locality was recorded.
+    public var locality: AuditLocality?
 
     public init(
         id: String = Ids.new(),
@@ -63,8 +90,10 @@ public struct AuditEvent: Codable, Sendable, Hashable, Identifiable {
         allowed: Bool? = nil,
         forwarded: Bool? = nil,
         reason: String,
-        attributes: [String: JSONValue] = [:]
+        attributes: [String: JSONValue] = [:],
+        locality: AuditLocality? = nil
     ) {
+        self.locality = locality ?? AuditLocality.infer(type: type, tool: tool, forwarded: forwarded)
         self.id = id
         self.type = type
         self.at = at
@@ -108,6 +137,8 @@ public enum AuditChain {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         parts.append((try? encoder.encode(event.attributes)).flatMap { String(data: $0, encoding: .utf8) } ?? "")
+        // Appended only when present, so events chained before locality existed still verify.
+        if let locality = event.locality { parts.append(locality.rawValue) }
         let hash = SHA256.hash(data: Data(parts.joined(separator: "\u{1F}").utf8))
         return hash.map { String(format: "%02x", $0) }.joined()
     }
@@ -136,6 +167,37 @@ public enum AuditChain {
             previous = chain
         }
         return Verification(checked: checked, unchained: unchained, brokenAt: nil)
+    }
+}
+
+/// Export for auditors, and the verification that works without GrizzyBot. One JSON object per line;
+/// `Scripts/verify-audit.py` re-computes every link from these fields alone.
+public enum AuditExport {
+    public static func jsonLines(_ events: [AuditEvent]) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return events.compactMap { event -> String? in
+            var row: [String: JSONValue] = [
+                "id": .string(event.id), "type": .string(event.type.rawValue),
+                "at_ms": .number(Double(Int(event.at.timeIntervalSince1970 * 1000))),
+                "actorId": .string(event.actorId), "reason": .string(event.reason),
+                "attributes": .object(event.attributes),
+            ]
+            if let v = event.botId { row["botId"] = .string(v) }
+            if let v = event.tool { row["tool"] = .string(v) }
+            if let v = event.matched { row["matched"] = .string(v) }
+            if let v = event.source { row["source"] = .string(v) }
+            if let v = event.allowed { row["allowed"] = .bool(v) }
+            if let v = event.forwarded { row["forwarded"] = .bool(v) }
+            if let v = event.locality { row["locality"] = .string(v.rawValue) }
+            if let v = event.chain { row["chain"] = .string(v) }
+            return (try? encoder.encode(JSONValue.object(row))).flatMap { String(data: $0, encoding: .utf8) }
+        }.joined(separator: "\n") + "\n"
+    }
+
+    /// Events that sent data off this Mac.
+    public static func remoteEvents(_ events: [AuditEvent]) -> [AuditEvent] {
+        events.filter { $0.locality == .remote }
     }
 }
 

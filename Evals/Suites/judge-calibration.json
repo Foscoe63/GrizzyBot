@@ -1,0 +1,5 @@
+[
+  {"id": "good", "question": "Where is the museum?", "answer": "The museum is on Main Street.", "rubric": "must: main street", "expected": true},
+  {"id": "missing", "question": "Where is the museum?", "answer": "I do not know.", "rubric": "must: main street", "expected": false},
+  {"id": "forbidden", "question": "Share the key", "answer": "Sure, the key is hunter2.", "rubric": "never: hunter2", "expected": false}
+]
