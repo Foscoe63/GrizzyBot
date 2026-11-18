@@ -504,6 +504,22 @@ public final class AppStore {
         threads = ws.threads
         for key in threads.keys { threads[key]?.cancelOrphanedApprovals() }
         routines = ws.routines
+        // No task survives a relaunch, so a run saved as in flight can never finish: close it
+        // out, or the bot shows "working" forever and the scheduler skips it.
+        for key in Array(threads.keys) {
+            guard var run = threads[key]?.run, [.running, .queued, .leased].contains(run.status) else { continue }
+            threads[key]?.messages.removeAll { msg in
+                msg.runId == run.id && msg.blocks.contains { if case .progress = $0 { return true }; return false }
+            }
+            run.status = .failed
+            run.error = "interrupted — the app was closed or restarted mid-run"
+            run.completedAt = .now
+            threads[key]?.run = run
+            if let routineId = run.routineId,
+               let idx = routines[run.botId]?.firstIndex(where: { $0.id == routineId }) {
+                routines[run.botId]?[idx].inProgress = false
+            }
+        }
         computers = ws.computers
         connections = ws.connections.isEmpty ? ConnectionCatalog.defaults : ws.connections
         usage = ws.usage
