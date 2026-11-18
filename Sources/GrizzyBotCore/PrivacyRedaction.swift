@@ -150,3 +150,22 @@ public struct RedactionPreview: Sendable, Equatable {
         return RedactionPreview(segments: segments)
     }
 }
+
+
+/// A `StreamingUnscrubber` that deltas arriving on different tasks can share.
+public final class SyncUnscrubber: @unchecked Sendable {
+    private let lock = NSLock()
+    private var inner: StreamingUnscrubber
+
+    public init(session: RedactionSession) { inner = StreamingUnscrubber(session: session) }
+
+    public func feed(_ chunk: String) -> String {
+        lock.lock(); defer { lock.unlock() }
+        return inner.feed(chunk)
+    }
+
+    public func finish() -> String {
+        lock.lock(); defer { lock.unlock() }
+        return inner.finish()
+    }
+}

@@ -27,6 +27,27 @@ extension AppSettingsOverlayView {
         }
 
         settingsCard(
+            title: "Review and detection",
+            subtitle: "Look at what leaves your Mac, widen what is caught, and choose what is never touched."
+        ) {
+            PrivacyAdvancedBlock()
+        }
+
+        settingsCard(
+            title: "Encryption at rest",
+            subtitle: "Optionally encrypt this account's data files, with a recovery key you keep."
+        ) {
+            StorageEncryptionBlock()
+        }
+
+        settingsCard(
+            title: "Settings history",
+            subtitle: "Changes to settings, by you or by a bot you approved, and a way to undo them."
+        ) {
+            ConfigHistoryBlock()
+        }
+
+        settingsCard(
             title: "Lean memory",
             subtitle: "Heuristic mode injects Pin/Facts only when the prompt looks memory-relevant."
         ) {

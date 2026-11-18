@@ -228,6 +228,9 @@ public final class AppStore {
     var inheritedTaint: [String: [String]] = [:]
     /// What tainted each bot's most recent run, so a room can pass it along when one bot pulls in another.
     var lastRunTaint: [String: [String]] = [:]
+    /// Reversible privacy placeholders, one set per conversation, so a name scrubbed on the way out is put
+    /// back in the reply and in the tool calls that follow.
+    var redactionSessions: [String: RedactionSession] = [:]
     /// The Chief of Staff's in-flight hand-off, so Stop can end it.
     var dispatchTasks: [String: Task<Void, Never>] = [:]
     /// The bot a dispatch is waiting on, per Chief of Staff.
@@ -1528,12 +1531,15 @@ public final class AppStore {
             injected = pinFolderToRun ? [] : SkillMarkdown.matching(botSkills, prompt: prompt)
         }
         let agentPrompt: String
+        let privacySession = redactionSession(forBot: botId)
+        let streamUnscrub = SyncUnscrubber(session: privacySession)
         do {
             agentPrompt = try PrivacyFilter.applyForSend(
                 agentPromptRaw,
                 settings: appConfig.privacyFilter,
                 logDirectory: userPersistence.root,
-                logContext: "bot:\(botId)"
+                logContext: "bot:\(botId)",
+                session: privacySession
             )
         } catch {
             let message = error.localizedDescription
@@ -1676,8 +1682,10 @@ public final class AppStore {
                     client: client,
                     request: loopRequest,
                     onDelta: { [weak self] delta in
+                        let shown = streamUnscrub.feed(delta)
+                        guard !shown.isEmpty else { return }
                         Task { @MainActor in
-                            self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: delta)
+                            self?.appendStreamDelta(threadKey: threadKey, runId: runId, messageId: progressId, delta: shown)
                         }
                     },
                     onStep: { [weak self] step, max in
@@ -1707,7 +1715,7 @@ public final class AppStore {
                 default: return true
                 }
             })
-            replyText = result.text
+            replyText = privacySession.unscrub(result.text)
             if let answered = result.answeredBy {
                 routedNote = "answered by \(answered) after \(result.failedOver.joined(separator: ", ")) failed"
                 appendRunLog(botId: botId, kind: "error", text: "Model failover: \(result.failedOver.joined(separator: " → ")) → \(answered)")
@@ -2044,7 +2052,7 @@ public final class AppStore {
         }
     }
 
-    private func executeAgentTool(
+    func executeAgentTool(
         name: String,
         argumentsJSON: String,
         botId: String,
@@ -2970,6 +2978,34 @@ public final class AppStore {
                 output: skill.body,
                 blocks: [.card(lines: [CardLine(k: "skill", v: skill.id)])]
             )
+
+        case "generate_image":
+            guard ImageGeneration.isAvailable else { return AgentToolCallResult(output: ImageGeneration.Failure.unavailable.localizedDescription) }
+            do {
+                let style = ImageGeneration.Style(rawValue: s("style").lowercased()) ?? .illustration
+                let images = try await ImageGeneration.generate(prompt: s("prompt"), style: style, count: Int(s("count")) ?? 1)
+                var paths: [String] = []
+                for (i, data) in images.enumerated() {
+                    let path = ImageGeneration.fileName(for: s("prompt"), index: i)
+                    let url = try botHome.homeURL(botId: botId).appendingPathComponent(path)
+                    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try data.write(to: url, options: .atomic)
+                    paths.append(path)
+                }
+                refreshFilesMirror(botId: botId)
+                return AgentToolCallResult(
+                    output: "Made \(paths.count) image\(paths.count == 1 ? "" : "s"): \(paths.joined(separator: ", ")) (in the bot home).",
+                    blocks: [.card(lines: paths.map { CardLine(k: "image", v: $0) })]
+                )
+            } catch {
+                return AgentToolCallResult(output: error.localizedDescription)
+            }
+
+        case "config_manage":
+            return configManage(bot: bot, argumentsJSON: argumentsJSON, approved: approved, taint: taint)
+
+        case "workflow_run":
+            return await workflowRun(bot: bot, argumentsJSON: argumentsJSON)
 
         case "routine_manage":
             return routineManage(bot: bot, argumentsJSON: argumentsJSON, approved: approved, taint: taint)

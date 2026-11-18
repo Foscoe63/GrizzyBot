@@ -19,6 +19,9 @@ struct ChatView: View {
     @State private var sessionNotice: String?
     @State private var pendingFiles: [URL] = []
     @State private var dictation = DictationSession()
+    @State private var handsFree = HandsFreeListener()
+    @State private var privacyReview: RedactionPreview?
+    @State private var privacyReviewed = false
     @State private var searchQuery = ""
     @State private var searchThisThread = false
     @State private var pasteOverride = false
@@ -56,6 +59,17 @@ struct ChatView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(item: Binding(get: { privacyReview.map(PrivacyReviewItem.init) }, set: { if $0 == nil { privacyReview = nil } })) { item in
+            PrivacyReviewSheet(
+                preview: item.preview,
+                onSendScrubbed: { privacyReview = nil; privacyReviewed = true; send() },
+                onSendAsWritten: {
+                    if let bot { store.allowPrivacyItems(forBot: bot.id, originals: item.preview.segments.filter(\.isRedacted).map(\.original)) }
+                    privacyReview = nil; privacyReviewed = true; send()
+                },
+                onCancel: { privacyReview = nil }
+            )
+        }
         .onChange(of: store.activeBotId) { _, _ in
             draft = ""
             pendingFiles = []
@@ -763,6 +777,20 @@ struct ChatView: View {
                 .help(dictation.isListening ? "Stop dictation" : "Dictate")
 
                 Button {
+                    handsFree.onCommand = { command in
+                        if let bot { store.send(botId: bot.id, text: command) }
+                    }
+                    handsFree.toggle()
+                } label: {
+                    Text(handsFree.isOn ? "👂" : "🔈")
+                        .font(.system(size: 13))
+                        .opacity(handsFree.isOn ? 1 : 0.55)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help(handsFree.isOn ? "\(handsFree.status) — click to stop" : "Hands-free: say “Hey Grizzy” and a request")
+
+                Button {
                     if let bot, store.isRunActive(botId: bot.id) {
                         store.stopRun(botId: bot.id)
                     } else {
@@ -1028,6 +1056,13 @@ struct ChatView: View {
         if !pasteOverride, PasteGuard.warning(for: text, localModel: local) != nil {
             return
         }
+        // Optional review of anything personal before it leaves.
+        if !privacyReviewed, store.appConfig.privacyFilter.reviewBeforeSend,
+           let preview = store.privacyPreview(forBot: bot.id, text: text) {
+            privacyReview = preview
+            return
+        }
+        privacyReviewed = false
         draft = ""
         pendingFiles = []
         pasteOverride = false
@@ -1134,4 +1169,9 @@ struct PeerWaitBanner: View {
         if minutes < 60 { return "\(minutes) min" }
         return "\(minutes / 60) h \(minutes % 60) min"
     }
+}
+
+private struct PrivacyReviewItem: Identifiable {
+    let preview: RedactionPreview
+    var id: String { preview.original }
 }

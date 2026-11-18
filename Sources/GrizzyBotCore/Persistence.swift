@@ -171,6 +171,8 @@ public enum ConnectionCatalog {
 /// JSON file persistence under Application Support (or a test override path).
 public struct Persistence: Sendable {
     public let root: URL
+    /// Where the optional at-rest key lives (the Keychain; tests substitute their own).
+    public var keyStore: StorageEncryption.KeyStore = .keychain
 
     private static let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -326,7 +328,12 @@ public struct Persistence: Sendable {
     }
 
     private func load<T: Decodable>(_ type: T.Type, fromURL url: URL) -> T? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard var data = try? Data(contentsOf: url) else { return nil }
+        if StorageEncryption.isEncrypted(data) {
+            // Detection-first: the file says what it is. No key means no read, never a crash or a wipe.
+            guard let key = keyStore.load(root), let plain = try? StorageEncryption.open(data, key: key) else { return nil }
+            data = plain
+        }
         return try? Self.decoder.decode(T.self, from: data)
     }
 
@@ -335,7 +342,12 @@ public struct Persistence: Sendable {
     }
 
     private func save<T: Encodable>(_ value: T, toURL url: URL) {
-        guard let data = try? Self.encoder.encode(value) else { return }
+        guard var data = try? Self.encoder.encode(value) else { return }
+        if StorageEncryption.marker(in: root).enabled {
+            // If the key cannot be read, keep the file as it is rather than write something unreadable.
+            guard let key = keyStore.load(root), let sealed = try? StorageEncryption.seal(data, key: key) else { return }
+            data = sealed
+        }
         let tmp = url.appendingPathExtension("tmp")
         do {
             try data.write(to: tmp, options: .atomic)

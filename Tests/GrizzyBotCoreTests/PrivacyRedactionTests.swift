@@ -55,3 +55,27 @@ struct PrivacyRedactionTests {
         #expect(PrivacyFilter.survivingCritical(in: "key sk-abcdefghijklmnopqrstuvwx", settings: .default).isEmpty == false)
     }
 }
+
+@Suite("Privacy in the send path")
+@MainActor
+struct PrivacySendPathTests {
+    @Test("the model sees a placeholder, the person sees the real address in the reply")
+    func roundTrip() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("GrizzyBotTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = AppStore(dataDirectory: dir, delayScale: 0.01)
+        #expect(store.signUp(name: "A", email: "priv@b.com", password: "password1") == nil)
+        let bot = store.createBot(name: "Agent", title: "helper")
+        let client = QueueChatClient([ChatCompletionResponse(text: "I will write to [EMAIL_1] now.")])
+        store.chatCompleter = client
+        store.send(botId: bot.id, text: "please email ada@example.com about lunch")
+        #expect(await store.waitForRunCompletion(botId: bot.id))
+        let sent = client.requests.flatMap(\.messages).compactMap(\.content).joined(separator: "\n")
+        #expect(sent.contains("[EMAIL_1]"))
+        #expect(!sent.contains("ada@example.com"))
+        let reply = store.threads[bot.id]?.messages.last?.blocks.compactMap { block -> String? in
+            if case .text(let t) = block { return t } else { return nil }
+        }.joined()
+        #expect(reply?.contains("ada@example.com") == true)
+    }
+}

@@ -25,7 +25,7 @@ public struct ConfigChange: Codable, Sendable, Equatable, Identifiable {
 public enum ConfigHistory {
     public static let cap = 100
 
-    static func isSecretKey(_ key: String) -> Bool {
+    public static func isSecretKey(_ key: String) -> Bool {
         let k = key.lowercased()
         return ["key", "token", "secret", "dsn", "password"].contains { k.contains($0) }
     }

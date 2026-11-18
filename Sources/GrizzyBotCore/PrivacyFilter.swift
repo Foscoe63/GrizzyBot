@@ -139,6 +139,8 @@ public struct PrivacyFilterSettings: Codable, Sendable, Equatable {
     public var neverRedact: [String]
     /// Also look for people, places and organisations with Apple's on-device language model.
     public var useOnDeviceNER: Bool
+    /// Show what will be scrubbed, and let the person decide, before a message that has personal data goes out.
+    public var reviewBeforeSend: Bool
 
     public static let `default` = PrivacyFilterSettings(
         enabled: true,
@@ -155,8 +157,10 @@ public struct PrivacyFilterSettings: Codable, Sendable, Equatable {
         minimumConfidence: Double = 0.80,
         enabledTypes: Set<PIIType>? = nil,
         neverRedact: [String] = [],
-        useOnDeviceNER: Bool = false
+        useOnDeviceNER: Bool = false,
+        reviewBeforeSend: Bool = false
     ) {
+        self.reviewBeforeSend = reviewBeforeSend
         self.neverRedact = neverRedact
         self.useOnDeviceNER = useOnDeviceNER
         self.enabled = enabled
@@ -167,7 +171,7 @@ public struct PrivacyFilterSettings: Codable, Sendable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case enabled, redactBeforeCloudSend, failClosed, minimumConfidence, enabledTypes, neverRedact, useOnDeviceNER
+        case enabled, redactBeforeCloudSend, failClosed, minimumConfidence, enabledTypes, neverRedact, useOnDeviceNER, reviewBeforeSend
     }
 
     public init(from decoder: Decoder) throws {
@@ -184,6 +188,7 @@ public struct PrivacyFilterSettings: Codable, Sendable, Equatable {
         }
         neverRedact = try c.decodeIfPresent([String].self, forKey: .neverRedact) ?? []
         useOnDeviceNER = try c.decodeIfPresent(Bool.self, forKey: .useOnDeviceNER) ?? false
+        reviewBeforeSend = try c.decodeIfPresent(Bool.self, forKey: .reviewBeforeSend) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -195,6 +200,7 @@ public struct PrivacyFilterSettings: Codable, Sendable, Equatable {
         try c.encode(enabledTypes.map(\.rawValue).sorted(), forKey: .enabledTypes)
         try c.encode(neverRedact, forKey: .neverRedact)
         try c.encode(useOnDeviceNER, forKey: .useOnDeviceNER)
+        try c.encode(reviewBeforeSend, forKey: .reviewBeforeSend)
     }
 }
 
@@ -216,11 +222,12 @@ public enum PrivacyFilter: Sendable {
         _ text: String,
         settings: PrivacyFilterSettings = .default,
         logDirectory: URL? = nil,
-        logContext: String = "outbound_send"
+        logContext: String = "outbound_send",
+        session: RedactionSession? = nil
     ) throws -> String {
         guard settings.enabled, !text.isEmpty else { return text }
 
-        let result = redact(text, settings: settings)
+        let result = redact(text, settings: settings, session: session)
         if settings.failClosed, result.hasCriticalPII {
             let types = result.detections
                 .filter { $0.type.severity == .critical }
@@ -274,7 +281,8 @@ public enum PrivacyFilter: Sendable {
                 PIIDetection(
                     type: d.type,
                     originalText: d.originalText,
-                    redactedText: session.placeholder(for: d.originalText, type: d.type),
+                    // Secrets are never made reversible: a placeholder that can be put back is a leak waiting.
+                    redactedText: d.type.severity == .critical ? d.redactedText : session.placeholder(for: d.originalText, type: d.type),
                     confidence: d.confidence,
                     range: d.range
                 )
