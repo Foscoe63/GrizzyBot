@@ -47,7 +47,7 @@ public enum ImageGeneration {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw Failure.emptyPrompt }
         #if canImport(ImagePlayground) && canImport(AppKit)
-        if #available(macOS 15.4, *), ImagePlaygroundViewController.isAvailable {
+        if #available(macOS 15.4, *), await MainActor.run(body: { ImagePlaygroundViewController.isAvailable }) {
             let creator: ImageCreator
             do { creator = try await ImageCreator() } catch { throw Failure.refused(String(describing: error)) }
             let wanted: ImagePlaygroundStyle
