@@ -571,9 +571,10 @@ extension AppStore {
                     execute: execute
                 )
             } else {
-                result = try await AgentLoop.run(
+                let frozenRequest = loopRequest
+                result = try await Self.withRunDeadline(seconds: 45 * 60) { try await AgentLoop.run(
                     client: client,
-                    request: loopRequest,
+                    request: frozenRequest,
                     onDelta: { [weak self] delta in
                         let shown = streamUnscrub.feed(delta)
                         guard !shown.isEmpty else { return }
@@ -599,7 +600,7 @@ extension AppStore {
                         }
                     },
                     execute: execute
-                )
+                ) }
             }
             blocks.append(contentsOf: result.blocks.filter { block in
                 // Live tool messages already show status cards; keep interactive blocks only.
@@ -663,7 +664,14 @@ extension AppStore {
             runTasks.removeValue(forKey: runId)
             return
         }
-        guard var thread2 = threads[threadKey], thread2.run?.id == runId else { return }
+        guard var thread2 = threads[threadKey], thread2.run?.id == runId else {
+            // Superseded by a newer run: still release this run's resources.
+            gatewayObservers.removeValue(forKey: threadKey)?.onFinish("The run was replaced by a newer one.")
+            runTasks.removeValue(forKey: runId)
+            runInboxes.removeValue(forKey: runId)
+            appendRunLog(botId: botId, kind: "error", text: "Run \(runId) was superseded; its result was discarded")
+            return
+        }
         thread2.messages.removeAll { $0.id == progressMsg.id }
 
         gatewayObservers.removeValue(forKey: threadKey)?.onFinish(replyText.isEmpty ? "done." : replyText)
@@ -953,3 +961,27 @@ extension AppStore {
         }
     }
 }
+
+struct RunDeadlineError: LocalizedError {
+    let seconds: Int
+    var errorDescription: String? { "The run took longer than \(seconds / 60) minutes and was stopped." }
+}
+
+extension AppStore {
+    /// Ends a run that has produced no result within `seconds`, so a hang cannot hold the bot busy forever.
+    static func withRunDeadline<T: Sendable>(
+        seconds: Int,
+        _ work: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await work() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
+                throw RunDeadlineError(seconds: seconds)
+            }
+            defer { group.cancelAll() }
+            return try await group.next()!
+        }
+    }
+}
+
