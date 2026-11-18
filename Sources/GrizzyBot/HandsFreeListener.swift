@@ -14,7 +14,12 @@ final class HandsFreeListener {
     var error: String?
 
     var onCommand: ((String) -> Void)?
-    var phrase = "hey grizzy"
+    static let phraseKey = "handsFreePhrase"
+    static let defaultPhrase = "hey grizzy"
+    var phrase: String {
+        let saved = UserDefaults.standard.string(forKey: Self.phraseKey)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        return saved.isEmpty ? Self.defaultPhrase : saved
+    }
 
     private let engine = AVAudioEngine()
     private let recognizer = SFSpeechRecognizer()

@@ -102,7 +102,7 @@ struct PrivacyAdvancedBlock: View {
 
             Text("Try it").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.textBright).padding(.top, 6)
             GrizzyField(placeholder: "Type something to scrub", text: $sample, axis: .vertical, lineLimit: 2...4)
-            let preview = RedactionPreview.make(for: sample, settings: store.appConfig.privacyFilter)
+            let preview = RedactionPreview.make(for: sample, settings: store.appConfig.privacyFilter, session: RedactionSession())
             if preview.segments.contains(where: \.isRedacted) {
                 RedactionPreviewView(preview: preview)
             } else {
@@ -124,8 +124,13 @@ struct ConfigHistoryBlock: View {
     @State private var notice: String?
     @State private var revision = 0
 
+    private static func recent(_ store: AppStore, whenConfig _: AppConfig) -> [ConfigChange] {
+        Array(store.configHistory().suffix(8).reversed())
+    }
+
     var body: some View {
-        let entries = Array(store.configHistory().suffix(8).reversed())
+        // Reading appConfig makes this re-read the history whenever settings change.
+        let entries = Self.recent(store, whenConfig: store.appConfig)
         VStack(alignment: .leading, spacing: 8) {
             if entries.isEmpty {
                 Text("No changes recorded yet.").font(.system(size: 12.5)).foregroundStyle(Theme.textSecondary)
@@ -189,5 +194,43 @@ struct StorageEncryptionBlock: View {
             if let notice { Text(notice).font(.system(size: 12)).foregroundStyle(Theme.textSecondary) }
         }
         .onAppear { on = store.storageEncryptionEnabled }
+    }
+}
+
+/// The phrase hands-free listening waits for.
+struct HandsFreePhraseBlock: View {
+    @AppStorage(HandsFreeListener.phraseKey) private var phrase = HandsFreeListener.defaultPhrase
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GrizzyField(label: "Wake phrase", placeholder: HandsFreeListener.defaultPhrase, text: $phrase)
+            Text("Pick two or more syllables so it isn't set off by ordinary talk. Leave it empty to use “\(HandsFreeListener.defaultPhrase)”.")
+                .font(.system(size: 12)).foregroundStyle(Theme.textMuted).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// The workflows saved in this account, read from the workflows folder.
+struct WorkflowsListBlock: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        let flows = store.workflows()
+        VStack(alignment: .leading, spacing: 8) {
+            if flows.isEmpty {
+                Text("None yet. A workflow is a JSON file in the workflows folder of your GrizzyBot folder; ask a bot to draft one.")
+                    .font(.system(size: 12.5)).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(flows) { flow in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(flow.name).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.textBright)
+                    Text("\(flow.nodes.count) steps · " + (flow.inputs.isEmpty ? "no input" : "needs " + flow.inputs.keys.sorted().joined(separator: ", ")))
+                        .font(.system(size: 11.5)).foregroundStyle(Theme.textMuted)
+                    if !flow.summary.isEmpty {
+                        Text(flow.summary).font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+                    }
+                }
+            }
+        }
     }
 }

@@ -291,6 +291,13 @@ extension AppSettingsOverlayView {
     @ViewBuilder
     var voiceSection: some View {
         settingsCard(
+            title: "Hands-free",
+            subtitle: "Say this phrase, then your request. Used by the ear button in the chat bar."
+        ) {
+            HandsFreePhraseBlock()
+        }
+
+        settingsCard(
             title: "Text to speech",
             subtitle: "With an ElevenLabs key, Speak replies uses ElevenLabs. Without a key, GrizzyBot uses on-device macOS voices. Voice can be a name (Rachel, Adam) or an ElevenLabs voice id."
         ) {

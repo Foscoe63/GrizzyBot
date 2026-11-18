@@ -7,6 +7,13 @@ extension AppSettingsOverlayView {
     @ViewBuilder
     var toolsSection: some View {
         settingsCard(
+            title: "Workflows",
+            subtitle: "Saved multi-step flows a bot can run with the workflow_run tool."
+        ) {
+            WorkflowsListBlock()
+        }
+
+        settingsCard(
             title: "MCP servers",
             subtitle: "Green means the server answered tools/list. Red means it did not. Expand a server to turn individual tools on or off for new bots."
         ) {
