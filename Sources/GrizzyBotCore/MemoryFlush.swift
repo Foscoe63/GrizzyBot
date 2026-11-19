@@ -5,10 +5,7 @@ import Foundation
 /// cannot do anything else, and whatever it saves goes through the normal memory rules (secret
 /// refusal, and the taint gate if the run has read outside content).
 enum MemoryFlush {
-    static let nudge = """
-    The conversation is about to be shortened to fit the context window. Anything not saved will be lost.
-    If there are durable facts, decisions, preferences, or open commitments above that you will need later, save each with remember (one short fact per call). If nothing is worth keeping, reply with exactly: NOTHING_TO_SAVE
-    """
+    static let nudge = AgentPrompts.memoryFlush
 
     static let maxSaves = 6
 

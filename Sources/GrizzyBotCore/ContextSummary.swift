@@ -7,12 +7,7 @@ enum ContextSummary {
     static let maxTranscriptChars = 24_000
     static let maxSummaryChars = 3_500
 
-    static let instruction = """
-    You are compacting the earlier part of a working session so it fits in context. Write a faithful summary \
-    that lets work continue without the original messages. Keep: the goal and constraints, decisions made, \
-    files/paths/IDs/URLs touched, tool results that matter (exact values, errors), what is finished, and what \
-    is still open. Drop chatter and repetition. Do not invent anything. Plain text, under 400 words, no preamble.
-    """
+    static let instruction = AgentPrompts.summarize
 
     /// Index where the kept tail starts, or nil when there is nothing worth summarizing.
     /// Mirrors `ContextCompactor.compact`'s split so the two agree on what is "old".
@@ -45,7 +40,7 @@ enum ContextSummary {
     }
 
     static func note(_ summary: String) -> ChatMessage {
-        .user("\(ContextDigest.prefix) summarized by you so far; treat as accurate history:]\n" + summary)
+        .user("\(ContextDigest.prefix) \(AgentPrompts.summaryNoteHeader)\n" + summary)
     }
 
     /// Replaces messages[1..<tailStart] with one summary note. Returns tokens spent.

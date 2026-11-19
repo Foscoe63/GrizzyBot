@@ -70,13 +70,13 @@ public struct ToolLoopGuard: Sendable {
             return .stop("\(label) was called \(similar) times in a row with near-identical arguments")
         }
         if failing >= limits.failingWarn, warned.insert("f").inserted {
-            return .warn("\(label) has failed \(failing) times with the same arguments. Change the arguments or approach, or tell the person what is stuck.")
+            return .warn(AgentPrompts.guardFailing(tool: label, count: failing))
         }
         if identical >= limits.sameResultWarn, warned.insert("i").inserted {
-            return .warn("\(label) keeps returning the same result. Use what you have, try a different approach, or finish.")
+            return .warn(AgentPrompts.guardSameResult(tool: label))
         }
         if similar >= limits.similarWarn, warned.insert("s").inserted {
-            return .warn("You have called \(label) \(similar) times in a row with near-identical arguments. Confirm this is making progress, otherwise change approach or finish.")
+            return .warn(AgentPrompts.guardSimilar(tool: label, count: similar))
         }
         return .ok
     }
