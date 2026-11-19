@@ -914,6 +914,12 @@ public enum AgentLoop {
         var webFails = 0
         var mcpDeadEnds = 0
         var warnedMcpStall = false
+        var loopGuard = ToolLoopGuard()
+        var lengthContinues = 0
+        var emptyNudges = 0
+        var carry = ""
+        var summaries = 0
+        var ranTools = false
         var flushedMemory = false
         var activeClient: any ChatCompleting = client
         var activeEndpoint = request.endpoint
@@ -1044,8 +1050,7 @@ public enum AgentLoop {
             onStep?(step, maxSteps)
             messages.removeAll(where: PinnedFacts.isPinMessage)
             let sizeBefore = ContextCompactor.encodedSize(messages)
-            let packed = ContextCompactor.compact(messages, budget: request.charBudget)
-            if packed.compacted, !flushedMemory, let rememberTool = tools.first(where: { $0.function.name == "remember" }) {
+            if sizeBefore > request.charBudget, !flushedMemory, let rememberTool = tools.first(where: { $0.function.name == "remember" }) {
                 flushedMemory = true
                 let usage = await MemoryFlush.run(
                     client: activeClient,
@@ -1058,6 +1063,19 @@ public enum AgentLoop {
                 inputTokens += usage.input
                 outputTokens += usage.output
             }
+            if sizeBefore > request.charBudget, summaries < ContextSummary.maxPerRun {
+                summaries += 1
+                if let usage = await ContextSummary.run(
+                    client: activeClient, endpoint: activeEndpoint,
+                    messages: &messages, stallMs: request.stallMs
+                ) {
+                    inputTokens += usage.input
+                    outputTokens += usage.output
+                    tracker.update { $0.compactions += 1 }
+                    compacted = true
+                }
+            }
+            let packed = ContextCompactor.compact(messages, budget: request.charBudget)
             messages = packed.messages
             if packed.compacted {
                 compacted = true
@@ -1114,6 +1132,33 @@ public enum AgentLoop {
                 if !lastText.isEmpty {
                     messages.append(.assistant(lastText))
                 }
+                // Cut off by the output cap: ask for the rest instead of ending mid-sentence.
+                if step < maxSteps, lengthContinues < 3, !lastText.isEmpty,
+                   ["length", "max_tokens"].contains(response.finishReason ?? "") {
+                    lengthContinues += 1
+                    carry += lastText
+                    let tail = lastText.split(whereSeparator: \.isWhitespace).suffix(6).joined(separator: " ")
+                    messages.append(.user(
+                        "[automated] Your last reply hit the output limit and was cut off after: \"\(tail)\". Continue exactly where you left off, with no preamble and no repeating."
+                    ))
+                    continue
+                }
+                // Tools ran but the model said nothing: ask for the answer rather than returning blank.
+                if lastText.isEmpty, carry.isEmpty, ranTools {
+                    if step < maxSteps, emptyNudges < 2 {
+                        emptyNudges += 1
+                        messages.append(.user(
+                            "[automated] You ran tools but wrote no reply. Using the tool results above, answer the person now in plain text. Do not call more tools unless something essential is missing."
+                        ))
+                        continue
+                    }
+                    return loopResult(
+                        text: "I ran the tools but the model returned no written answer. Ask me to summarize what was found and I'll use the results above.",
+                        steps: step,
+                        failed: true,
+                        failureReason: "empty final reply after tool calls"
+                    )
+                }
                 // The person spoke up while this last answer was being written: answer
                 // that too rather than ending the turn on a reply that ignores it.
                 if step < maxSteps, let spoken = request.steer?(), !spoken.isEmpty {
@@ -1126,7 +1171,7 @@ public enum AgentLoop {
                     blocks: blocks
                 )
                 return loopResult(
-                    text: lastText,
+                    text: carry.isEmpty ? lastText : carry + String(response.text.prefix(while: \.isWhitespace)) + lastText,
                     steps: step,
                     failed: unconfirmed,
                     failureReason: unconfirmed ? "claimed vault write without an ok tool result" : nil
@@ -1146,10 +1191,19 @@ public enum AgentLoop {
                 onTool: onTool,
                 execute: execute
             )
+            ranTools = true
             var disabledThisStep: [String] = []
             var stepNotes: [ChatMessage] = []
             var finish: (text: String, pause: AgentPause?)?
+            var loopStop: String?
             for (call, result) in zip(response.toolCalls, results) {
+                if result.pause == nil, !result.endTurn {
+                    switch loopGuard.record(tool: call.name, arguments: call.arguments, output: result.output) {
+                    case .ok: break
+                    case .warn(let note): stepNotes.append(.user(note))
+                    case .stop(let why): loopStop = loopStop ?? why
+                    }
+                }
                 blocks.append(contentsOf: result.blocks)
                 inputTokens += result.extraInputTokens
                 outputTokens += result.extraOutputTokens
@@ -1250,6 +1304,15 @@ public enum AgentLoop {
             if let finish {
                 if let nextPause = finish.pause { pause = nextPause }
                 return loopResult(text: finish.text, steps: step)
+            }
+            if let why = loopStop {
+                let prefix = lastText.isEmpty ? "" : lastText + "\n\n"
+                return loopResult(
+                    text: prefix + "I got stuck (\(why)) without making progress, so I stopped early. Try rephrasing, or ask me to take a different approach.",
+                    steps: step,
+                    failed: true,
+                    failureReason: "tool loop guard: \(why)"
+                )
             }
             if let spoken = request.steer?(), !spoken.isEmpty {
                 messages.append(.user(QueuePlanner.steerNote(spoken)))

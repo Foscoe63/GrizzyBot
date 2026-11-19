@@ -291,7 +291,9 @@ public enum McpClient {
     static func initialize(session: any McpSession) async throws -> [String: Any] {
         let params: [String: Any] = [
             "protocolVersion": protocolVersion,
-            "capabilities": ["roots": ["listChanged": false]],
+            "capabilities": McpElicitation.isEnabled
+                ? ["roots": ["listChanged": false], "elicitation": [String: Any]()]
+                : ["roots": ["listChanged": false]],
             "clientInfo": [
                 "name": clientName,
                 "version": clientVersion,
@@ -384,7 +386,7 @@ public enum McpClient {
             }
         }
         if !texts.isEmpty {
-            return McpToolOutput(text: texts.joined(separator: "\n\n"), isError: isError, images: images)
+            return McpToolOutput(text: McpResponseLimit.clip(texts.joined(separator: "\n\n")), isError: isError, images: images)
         }
         if let structured = obj["structuredContent"] {
             return McpToolOutput(text: stringifyJSON(structured), isError: isError, images: images)
@@ -592,6 +594,14 @@ public enum McpClient {
             return Int(value)
         }
         return nil
+    }
+
+    /// Same as the sync form, plus requests that need the person (elicitation).
+    static func serverRequestResult(method: String, params: [String: Any]) async -> [String: Any]? {
+        if method == "elicitation/create", McpElicitation.isEnabled {
+            return await McpElicitation.respond(params: params)
+        }
+        return serverRequestResult(method: method)
     }
 
     /// Answers a request the server sent us. Nil means "method not found".
@@ -868,7 +878,12 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
     private func ingest(_ chunk: Data) {
         buffer.append(chunk)
         for message in McpClient.extractStdioMessages(from: &buffer) {
+            if McpResponseLimit.exceeds(bytes: message.count) { continue }
             handleLine(message)
+        }
+        if McpResponseLimit.exceeds(bytes: buffer.count) {
+            buffer.removeAll()
+            failAll(McpError.transport(McpResponseLimit.tooLargeMessage))
         }
     }
 
@@ -879,7 +894,7 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
             // progress), not a reply. Its id lives in the server's id space and must not be
             // matched against our pending requests.
             if let method = obj["method"] as? String {
-                handleServerMessage(method: method, id: obj["id"])
+                handleServerMessage(method: method, id: obj["id"], params: obj["params"] as? [String: Any] ?? [:])
                 return
             }
             guard let id = McpClient.jsonRPCId(obj) else { return }
@@ -913,7 +928,7 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
         }
     }
 
-    private func handleServerMessage(method: String, id: Any?) {
+    private func handleServerMessage(method: String, id: Any?, params: [String: Any]) {
         if method == "notifications/progress" {
             // Long tools report progress; treat it as liveness and push the deadlines out.
             let renewed = Date().addingTimeInterval(timeout)
@@ -922,6 +937,21 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
         }
         guard let id else { return }  // other notifications need no answer
         var reply: [String: Any] = ["jsonrpc": "2.0", "id": id]
+        if method == "elicitation/create", McpElicitation.isEnabled {
+            let sendableParams = SendableJSON(params)
+            let sendableId = SendableJSON(id)
+            Task { [weak self] in
+                let result = await McpElicitation.respond(params: sendableParams.value as? [String: Any] ?? [:])
+                self?.queue.async {
+                    guard let self else { return }
+                    let body: [String: Any] = ["jsonrpc": "2.0", "id": sendableId.value, "result": result]
+                    if let data = try? JSONSerialization.data(withJSONObject: body) {
+                        try? self.stdin.write(contentsOf: data + Data([0x0A]))
+                    }
+                }
+            }
+            return
+        }
         if let result = McpClient.serverRequestResult(method: method) {
             reply["result"] = result
         } else {
@@ -1183,6 +1213,7 @@ final class McpHTTPSession: McpSession, @unchecked Sendable {
                 return try await postStreamable(data: data, method: method, nameHint: params?["name"] as? String)
             } catch {
                 // Auto-fallback to legacy SSE when streamable init is rejected.
+                if error is McpAuthFailed { throw error }
                 if method == "initialize" {
                     try await bootstrapLegacySSE()
                     forceLegacy = true
@@ -1220,7 +1251,7 @@ final class McpHTTPSession: McpSession, @unchecked Sendable {
         }
     }
 
-    private func postStreamable(data: Data, method: String, nameHint: String?) async throws -> Any {
+    private func postStreamable(data: Data, method: String, nameHint: String?, retriedAuth: Bool = false) async throws -> Any {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.httpBody = data
@@ -1235,8 +1266,9 @@ final class McpHTTPSession: McpSession, @unchecked Sendable {
             request.setValue(mcpSessionId, forHTTPHeaderField: "MCP-Session-Id")
         }
         applyUserHeaders(to: &request)
+        await applyOAuth(to: &request)
 
-        let (responseData, response) = try await session.data(for: request)
+        let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw McpError.transport("Invalid HTTP response")
         }
@@ -1245,19 +1277,86 @@ final class McpHTTPSession: McpSession, @unchecked Sendable {
             mcpSessionId = sid
         }
 
+        if http.statusCode == 401, !retriedAuth, !hasUserAuthorization {
+            do {
+                try await McpOAuthManager.shared.authorize(
+                    endpoint: endpoint,
+                    wwwAuthenticate: http.value(forHTTPHeaderField: "WWW-Authenticate")
+                )
+            } catch {
+                throw McpAuthFailed(message: error.localizedDescription)
+            }
+            return try await postStreamable(data: data, method: method, nameHint: nameHint, retriedAuth: true)
+        }
         if http.statusCode == 400 || http.statusCode == 404 || http.statusCode == 405 {
             throw McpError.transport("Streamable HTTP rejected (\(http.statusCode))")
+        }
+        let contentType = http.value(forHTTPHeaderField: "Content-Type") ?? ""
+        if (200..<300).contains(http.statusCode), contentType.contains("text/event-stream") {
+            return try await readEventStream(bytes)
+        }
+        var responseData = Data()
+        for try await byte in bytes {
+            responseData.append(byte)
+            if McpResponseLimit.exceeds(bytes: responseData.count) {
+                throw McpError.transport(McpResponseLimit.tooLargeMessage)
+            }
         }
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: responseData, encoding: .utf8) ?? ""
             throw McpError.transport("HTTP \(http.statusCode): \(body.prefix(200))")
         }
-
-        let contentType = http.value(forHTTPHeaderField: "Content-Type") ?? ""
-        if contentType.contains("text/event-stream") {
-            return try extractResult(fromSSE: String(data: responseData, encoding: .utf8) ?? "")
-        }
         return try extractResult(fromJSON: responseData)
+    }
+
+    /// Reads a POST reply as it arrives so server requests sent mid-call (elicitation) can be
+    /// answered while the server is still waiting on us. Returns at the JSON-RPC response.
+    private func readEventStream(_ bytes: URLSession.AsyncBytes) async throws -> Any {
+        var pendingData = ""
+        var total = 0
+        for try await line in bytes.lines {
+            total += line.utf8.count + 1
+            if McpResponseLimit.exceeds(bytes: total) {
+                throw McpError.transport(McpResponseLimit.tooLargeMessage)
+            }
+            guard line.hasPrefix("data:") else { continue }
+            var value = String(line.dropFirst(5))
+            if value.hasPrefix(" ") { value = String(value.dropFirst()) }
+            pendingData += pendingData.isEmpty ? value : "\n" + value
+            guard let event = pendingData.data(using: .utf8),
+                  let obj = try? McpClient.decodeJSONObject(event) else { continue }
+            pendingData = ""
+            if let method = obj["method"] as? String {
+                if let id = obj["id"] {
+                    await answerServerRequest(method: method, id: id, params: obj["params"] as? [String: Any] ?? [:])
+                }
+                continue
+            }
+            if obj["result"] != nil || obj["error"] != nil {
+                return try extractResult(fromJSON: event)
+            }
+        }
+        throw McpError.protocolError("SSE stream had no JSON-RPC response")
+    }
+
+    private func answerServerRequest(method: String, id: Any, params: [String: Any]) async {
+        var reply: [String: Any] = ["jsonrpc": "2.0", "id": id]
+        if let result = await McpClient.serverRequestResult(method: method, params: params) {
+            reply["result"] = result
+        } else {
+            reply["error"] = ["code": -32601, "message": "Method not found: \(method)"]
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: reply) else { return }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.httpBody = data
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue(negotiatedVersion, forHTTPHeaderField: "MCP-Protocol-Version")
+        if let mcpSessionId { request.setValue(mcpSessionId, forHTTPHeaderField: "MCP-Session-Id") }
+        applyUserHeaders(to: &request)
+        await applyOAuth(to: &request)
+        _ = try? await session.data(for: request)
     }
 
     private func postLegacy(data: Data, expectResult: Bool = true) async throws -> Any {
@@ -1272,6 +1371,9 @@ final class McpHTTPSession: McpSession, @unchecked Sendable {
         applyUserHeaders(to: &request)
 
         let (responseData, response) = try await session.data(for: request)
+        if McpResponseLimit.exceeds(bytes: responseData.count) {
+            throw McpError.transport(McpResponseLimit.tooLargeMessage)
+        }
         guard let http = response as? HTTPURLResponse else {
             throw McpError.transport("Invalid HTTP response")
         }
@@ -1321,6 +1423,16 @@ final class McpHTTPSession: McpSession, @unchecked Sendable {
         throw McpError.protocolError("SSE stream had no JSON-RPC response")
     }
 
+    private var hasUserAuthorization: Bool {
+        headers.keys.contains { $0.lowercased() == "authorization" }
+    }
+
+    /// Adds the stored OAuth bearer token unless the user configured their own Authorization header.
+    private func applyOAuth(to request: inout URLRequest) async {
+        guard !hasUserAuthorization, let token = await McpOAuthManager.shared.currentToken(for: endpoint) else { return }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+
     private func applyUserHeaders(to request: inout URLRequest) {
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
@@ -1356,6 +1468,12 @@ final class McpHTTPSession: McpSession, @unchecked Sendable {
 }
 
 /// Folders offered to MCP servers through `roots/list` (the bot's working and granted folders).
+/// Sign-in was needed and did not complete. Not a transport problem, so no legacy fallback.
+struct McpAuthFailed: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
 public enum McpRoots {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var paths: [String] = []
