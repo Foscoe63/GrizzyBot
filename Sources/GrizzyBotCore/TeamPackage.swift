@@ -225,7 +225,11 @@ public struct TeamPackage: Codable, Sendable, Equatable {
     // MARK: Read
 
     public static func parse(markdown: String) throws -> TeamPackage {
-        guard let open = markdown.range(of: "```\(fence)") else { throw ParseError.noPackage }
+        guard let open = markdown.range(of: "```\(fence)") else {
+            // Not one of ours: try the formats other tools publish (OpenMausBot, botteams).
+            if let foreign = ExternalTeamImport.convert(markdown: markdown) { return foreign }
+            throw ParseError.noPackage
+        }
         let afterOpen = markdown[open.upperBound...]
         guard let lineEnd = afterOpen.firstIndex(of: "\n"),
               let close = afterOpen[lineEnd...].range(of: "\n```")
@@ -260,7 +264,8 @@ public struct TeamPackage: Codable, Sendable, Equatable {
     public static let maxDownloadBytes = 512 * 1024
 
     /// Downloads a small https text file. Used for team files and library indexes.
-    public static func download(url: URL, session: URLSession = .shared) async throws -> String {
+    public static func download(url source: URL, session: URLSession = .shared) async throws -> String {
+        let url = GitHubSource.rawURL(for: source)
         guard url.scheme?.lowercased() == "https", url.host != nil else {
             throw ParseError.invalid("only https links can be imported")
         }

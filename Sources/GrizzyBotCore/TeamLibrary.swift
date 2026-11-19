@@ -47,6 +47,7 @@ public struct TeamLibraryIndex: Codable, Sendable, Equatable {
     }
 
     public static func fetch(url: URL, session: URLSession = .shared) async throws -> TeamLibraryIndex {
+        if GitHubSource.isRepoLink(url) { return try await GitHubSource.index(for: url, session: session) }
         var index = try parse(try await TeamPackage.download(url: url, session: session))
         // Make every address absolute now, so a later click never depends on where the index came from.
         index.teams = index.teams.map { entry in
