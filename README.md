@@ -57,11 +57,13 @@
 
 ## 🆕 What's new
 
-### Unreleased — Private desktop, queued hand-offs, tickets and more
+### 0.16.0 — Private desktop, tickets, demonstrations and a browser address bar
 
 - **Private desktop.** A bot's browser and desktop can run in its own hardened Podman container ([details](#private-desktop)), with Mac folders shown **read-only, writable or as a private copy**, and an optional **No network** switch.
 - **Teach by demonstration.** Do a task once in the in-app browser; GrizzyBot writes the steps down as a skill proposal you review ([details](#teach-by-demonstration)).
-- **Ticket board.** A shared board for you and your bots, with a Tickets page in the sidebar ([details](#ticket-board)).
+- **Ticket board.** A shared board for you and your bots, with a Tickets page in the sidebar; drag a card between columns to change its status ([details](#ticket-board)).
+- **Address bar in the in-app browser.** Back, forward, reload and an address field while you hold a bot's browser; only http and https open.
+- **Routines calendar shows every run.** A daily routine now appears on each day it will run, not only its next one.
 - **Review actions before asking.** A per-bot switch lets a small model check each action that would stop for approval against what you last wrote; unsure means it still asks.
 - **Hand-offs to a busy bot wait in line** (up to five) instead of failing, and the answer comes back in the sender's thread.
 - **A `/goal` that checks itself.** After each turn a judge says done, continue or wait; unfinished goals carry on by themselves up to a turn budget. `/goal pause`, `/goal resume`, `/goal status`.
@@ -479,7 +481,7 @@ Bots can pass work to each other three ways, from most manual to most automatic.
 
 ### Ticket board
 
-The sidebar's **Tickets** page is one board for you and every bot: a column each for To do, In progress, In review and Blocked (Done and Won't do behind *Show done*), with priority, owner and comments. Add a ticket, change its status, priority or owner, comment or delete it from the page. Bots always have `board_tickets`, `ticket_get`, `ticket_create`, `ticket_update` and `ticket_comment`; assigning a ticket to a bot wakes it with the ticket. The board is one file, `tickets.json`, so a routine running with the app closed sees the same tickets.
+The sidebar's **Tickets** page is one board for you and every bot: a column each for To do, In progress, In review and Blocked (Done and Won't do behind *Show done*), with priority, owner and comments. Add a ticket, drag a card to another column (or use its status menu), change its priority or owner, comment or delete it from the page. Bots always have `board_tickets`, `ticket_get`, `ticket_create`, `ticket_update` and `ticket_comment`; assigning a ticket to a bot wakes it with the ticket. The board is one file, `tickets.json`, so a routine running with the app closed sees the same tickets.
 
 ---
 
