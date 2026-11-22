@@ -349,6 +349,11 @@ private struct ComputerFullWindowOverlay: View {
                 Rectangle().fill(Theme.borderSidebar).frame(height: 1)
             }
 
+            if let bot, computer?.controlHolder == .user, computer?.state == .running,
+               !store.isPrivateDesktop(botId: bot.id), !store.isThisMacComputer(botId: bot.id), computer?.kind != .desktop {
+                BrowserAddressBar(botId: bot.id)
+            }
+
             ZStack {
                 Theme.bgScreen
                 if let bot {

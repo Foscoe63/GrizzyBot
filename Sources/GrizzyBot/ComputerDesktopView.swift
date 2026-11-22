@@ -283,6 +283,28 @@ final class AppComputerRuntime: ComputerRuntime {
     private static let safariUserAgent =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15"
 
+    // MARK: The person's address bar
+
+    /// What the person typed, as a web page. Nothing but http and https is ever loaded.
+    @discardableResult
+    func navigate(botId: String, to text: String) -> Bool {
+        guard !thisMac.contains(botId), let url = AddressInput.resolve(text), ComputerURLPolicy.allows(url) else { return false }
+        webView(for: botId).load(URLRequest(url: url))
+        return true
+    }
+
+    func goBack(botId: String) { webs[botId]?.goBack() }
+    func goForward(botId: String) { webs[botId]?.goForward() }
+    func reload(botId: String) { webs[botId]?.reload() }
+    func canGoBack(botId: String) -> Bool { webs[botId]?.canGoBack ?? false }
+    func canGoForward(botId: String) -> Bool { webs[botId]?.canGoForward ?? false }
+
+    /// The address to show: the page's, or nothing for the bot's own desktop page.
+    func shownAddress(botId: String) -> String {
+        guard let url = webs[botId]?.url, url.scheme == "http" || url.scheme == "https" else { return "" }
+        return url.absoluteString
+    }
+
     func currentURL(botId: String) async -> String {
         if thisMac.contains(botId) { return "this-mac://" }
         return webs[botId]?.url?.absoluteString ?? homes[botId]?.absoluteString ?? ""
@@ -632,5 +654,69 @@ final class DemoMessageHandler: NSObject, WKScriptMessageHandler {
     init(_ handle: @escaping (Any?) -> Void) { self.handle = handle }
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         handle(message.body)
+    }
+}
+
+
+/// Back, forward, reload and an address field for the in-app browser, for the person who has taken it over.
+struct BrowserAddressBar: View {
+    let botId: String
+    @State private var text = ""
+    @State private var failed = false
+    /// What the field last showed by itself. While the text differs from it, the person has edited it and it is left alone.
+    @State private var shown = ""
+    @FocusState private var editing: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            bar("chevron.left", "Back") { AppComputerRuntime.shared.goBack(botId: botId) }
+                .disabled(!AppComputerRuntime.shared.canGoBack(botId: botId))
+            bar("chevron.right", "Forward") { AppComputerRuntime.shared.goForward(botId: botId) }
+                .disabled(!AppComputerRuntime.shared.canGoForward(botId: botId))
+            bar("arrow.clockwise", "Reload") { AppComputerRuntime.shared.reload(botId: botId) }
+            TextField("Search or enter a web address", text: $text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13.5))
+                .foregroundStyle(Theme.textBright)
+                .focused($editing)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.bgCard))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(failed ? Theme.redError : Color.clear, lineWidth: 1))
+                .onSubmit {
+                    failed = !AppComputerRuntime.shared.navigate(botId: botId, to: text)
+                    if !failed {
+                        editing = false
+                        // The page's own address replaces what was typed once it loads.
+                        shown = text
+                    }
+                }
+                .accessibilityIdentifier("browser.address")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+        .background(Theme.bgApp)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.borderSidebar).frame(height: 1) }
+        .task(id: botId) {
+            // Follow the page while the person is not typing in the field.
+            while !Task.isCancelled {
+                let current = AppComputerRuntime.shared.shownAddress(botId: botId)
+                if !editing, text == shown, current != shown {
+                    shown = current
+                    text = current
+                }
+                try? await Task.sleep(for: .milliseconds(700))
+            }
+        }
+    }
+
+    private func bar(_ symbol: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 12.5, weight: .medium)).frame(width: 26, height: 26)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.textSecondary)
+        .help(label)
+        .accessibilityLabel(label)
     }
 }
