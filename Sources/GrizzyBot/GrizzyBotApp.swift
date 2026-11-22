@@ -112,6 +112,7 @@ struct GrizzyBotApp: App {
                 themeManager.load(from: store.appConfig)
                 appDelegate.onRoutineTick = { store.tickDueRoutines() }
                 MacBridge.indexBots(store.bots)
+                Task { await UpdateChecker.run(silent: true) }
             }
             .onOpenURL { url in
                 if url.isFileURL {
@@ -215,6 +216,11 @@ struct GrizzyBotApp: App {
                 }
             }
             .keyboardShortcut("z", modifiers: [.command, .shift])
+        }
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") {
+                Task { await UpdateChecker.run(silent: false) }
+            }
         }
         CommandGroup(after: .appSettings) {
             Button("Diagnostics") {

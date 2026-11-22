@@ -199,6 +199,7 @@
 		66EE0053301509B186F7CC07 /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38E648A6DDC4A0777E9D91B2 /* SyntaxHighlighter.swift */; };
 		66EEDE773AB744169B51AFB8 /* RightPanelView+Computer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBEB1A210960768451D7829 /* RightPanelView+Computer.swift */; };
 		67786054E57D901D86FA257D /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF394BDED582E532893E9AD /* Persistence.swift */; };
+		678C097EB2545FD749B2BC98 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F920EF5B402FE1C5D2F93B /* UpdateChecker.swift */; };
 		681F89E82D071131DA0F6491 /* TeamCheckinTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21768EE9D398794BA04020B5 /* TeamCheckinTests.swift */; };
 		68AAAF68F51CEC2D71C6EF44 /* AppStore+ImpliedTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC595CBF8592CC83DAAE0092 /* AppStore+ImpliedTools.swift */; };
 		69BCFEDA49356BA041DE8D31 /* McpToolRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D0BC9641DCCE35A309E36E /* McpToolRouting.swift */; };
@@ -916,6 +917,7 @@
 		D2F98EB9BD8E7B414D17F5FF /* McpToolGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpToolGate.swift; sourceTree = "<group>"; };
 		D3DB698FC0B1F6B35CB5B99E /* McpCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpCatalog.swift; sourceTree = "<group>"; };
 		D4374D846011183A8A0690FB /* LibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryTests.swift; sourceTree = "<group>"; };
+		D4F920EF5B402FE1C5D2F93B /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		D526B98BCA143BD0302A7966 /* CanvasViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasViews.swift; sourceTree = "<group>"; };
 		D5F5BBB7F1FC532399DE8DE2 /* GrizzyBot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GrizzyBot.entitlements; sourceTree = "<group>"; };
 		D61B2EBAB0004EF8B588C64B /* CheckpointTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckpointTests.swift; sourceTree = "<group>"; };
@@ -1348,6 +1350,7 @@
 				18D7916FD725847A45D92D96 /* ToolSelectionView.swift */,
 				24A71253A7A751E5B2927D5B /* ToolsSettingsViews.swift */,
 				46EF092B52E8901BD0301058 /* UITestLaunch.swift */,
+				D4F920EF5B402FE1C5D2F93B /* UpdateChecker.swift */,
 				CD33869F60ACDC866EE22FA9 /* VoiceCallController.swift */,
 				399D596F36FA36C0D0CECAA2 /* VoiceMemo.swift */,
 				98FB56E6A8F0E04C374360D2 /* WelcomeView.swift */,
@@ -2267,6 +2270,7 @@
 				7DE1A5FE95DE90002D0C0E0F /* ToolSelectionView.swift in Sources */,
 				8B10E40FA3E5FF11EDAC454E /* ToolsSettingsViews.swift in Sources */,
 				F1803C0235BB9E89B8F3F096 /* UITestLaunch.swift in Sources */,
+				678C097EB2545FD749B2BC98 /* UpdateChecker.swift in Sources */,
 				4FEB3320D2FFBDBFFE0D09F4 /* VoiceCallController.swift in Sources */,
 				DC661659D3723AC45DE917B2 /* VoiceMemo.swift in Sources */,
 				F388D25AA678456E088CDABD /* WelcomeView.swift in Sources */,
