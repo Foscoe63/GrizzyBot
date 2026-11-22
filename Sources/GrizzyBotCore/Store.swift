@@ -271,6 +271,18 @@ public final class AppStore {
     /// told. Waiting on the person for an approval does not count. 0 turns the limit off.
     public var delegateTimeout: TimeInterval = 20 * 60
     public internal(set) var delegateTimers: [String: Task<Void, Never>] = [:]
+    /// Jobs handed to a bot that was busy, by receiving bot, in the order they arrived. Not saved: they wait in memory.
+    /// Goal checks and the turn they are about to start, by bot; and the bot whose turn the loop is sending right now.
+    @ObservationIgnored var goalContinuations: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored var goalSending: String?
+    /// Turns the loop may start by itself before it stops and asks, and the pause before each.
+    public var goalBudget = GoalJudge.defaultBudget
+    public var goalContinuationDelay: Double = 1.5
+    @ObservationIgnored var delegationQueue: [String: [QueuedDelegation]] = [:]
+    @ObservationIgnored var delegationDrainers: [String: Task<Void, Never>] = [:]
+    /// How long a queued job waits for its bot to be free before it is given up on, and how often that is checked.
+    public var delegateQueueTimeout: TimeInterval = 30 * 60
+    public var delegateQueuePollInterval: TimeInterval = 1
     /// Tools lent to a bot for the one job it was handed (see `DelegateTools`).
     var lentToolRecords: [String: LentTools] = [:]
     /// Watcher runs pin file tools to the watch path until the run goes idle.
@@ -362,6 +374,7 @@ public final class AppStore {
         // reaches a bot's Private desktop, rather than a placeholder screen that would report clicks that never happened.
         installComputerRuntime(primary: FileDesktopRuntime())
         bootstrap()
+        expireQueuedDelegations()
         reloadSkills()
         reloadCanvases()
         seedSeenToolIdsIfNeeded()

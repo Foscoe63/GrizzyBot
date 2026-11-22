@@ -825,6 +825,7 @@ extension AppStore {
         instructions: String? = nil,
         color: String? = nil,
         autoApprove: Bool? = nil,
+        reviewApprovals: Bool? = nil,
         shellNetwork: Bool? = nil,
         speakReplies: Bool? = nil,
         notifications: Bool? = nil,
@@ -843,6 +844,7 @@ extension AppStore {
         if let instructions { bots[idx].instructions = instructions }
         if let color { bots[idx].color = color }
         if let autoApprove { bots[idx].autoApprove = autoApprove }
+        if let reviewApprovals { bots[idx].reviewApprovals = reviewApprovals }
         if let shellNetwork { bots[idx].shellNetwork = shellNetwork }
         if let speakReplies { bots[idx].speakReplies = speakReplies }
         if let notifications { bots[idx].notifications = notifications }

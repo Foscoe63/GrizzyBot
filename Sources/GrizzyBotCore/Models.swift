@@ -36,6 +36,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     /// Whether `shell` commands may use the network. Off for new bots; bots saved
     /// before this field existed keep the old behaviour (on).
     public var shellNetwork: Bool
+    /// Before asking the person about an action, a small model checks it against what they asked for; a clear fit runs.
+    public var reviewApprovals: Bool
     public var speakReplies: Bool
     public var notifications: Bool
     public var chiefOfStaff: Bool
@@ -62,6 +64,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var workingFolder: String?
     /// Standing objective set with `/goal`; kept in the prompt on every turn until cleared.
     public var goal: String?
+    /// What the loop around the goal remembers (see `GoalState`). Nil when there is no goal.
+    public var goalState: GoalState?
     /// Ids of `GrantedFolder`s (Settings → Folders) this bot may read and write.
     public var grantedFolderIds: [String]
     /// Granted folders also shown, read-only, inside this bot's Private desktop. A subset of `grantedFolderIds`: the desktop has
@@ -103,6 +107,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         unread: Bool = false,
         autoApprove: Bool = false,
         shellNetwork: Bool = false,
+        reviewApprovals: Bool = false,
         speakReplies: Bool = false,
         notifications: Bool = true,
         chiefOfStaff: Bool = false,
@@ -143,6 +148,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.unread = unread
         self.autoApprove = autoApprove
         self.shellNetwork = shellNetwork
+        self.reviewApprovals = reviewApprovals
         self.speakReplies = speakReplies
         self.notifications = notifications
         self.chiefOfStaff = chiefOfStaff
@@ -170,9 +176,9 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case avatarShape, avatarImageRev
         case id, name, title, description, instructions, color, notifyOnFinish, parentBotId
         case threadId, preview, status, updatedAt, createdAt
-        case pinned, hidden, unread, autoApprove, shellNetwork, speakReplies, notifications, chiefOfStaff, managedDepartments
+        case pinned, hidden, unread, autoApprove, shellNetwork, reviewApprovals, speakReplies, notifications, chiefOfStaff, managedDepartments
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
-        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, desktopFolderIds, goal
+        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, desktopFolderIds, goal, goalState
         case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable, toolSelection
     }
 
@@ -196,6 +202,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         unread = try c.decodeIfPresent(Bool.self, forKey: .unread) ?? false
         autoApprove = try c.decodeIfPresent(Bool.self, forKey: .autoApprove) ?? false
         shellNetwork = try c.decodeIfPresent(Bool.self, forKey: .shellNetwork) ?? true
+        reviewApprovals = try c.decodeIfPresent(Bool.self, forKey: .reviewApprovals) ?? false
         speakReplies = try c.decodeIfPresent(Bool.self, forKey: .speakReplies) ?? false
         notifications = try c.decodeIfPresent(Bool.self, forKey: .notifications) ?? true
         chiefOfStaff = try c.decodeIfPresent(Bool.self, forKey: .chiefOfStaff) ?? false
@@ -216,6 +223,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         grantedFolderIds = try c.decodeIfPresent([String].self, forKey: .grantedFolderIds) ?? []
         desktopFolderIds = try c.decodeIfPresent([String].self, forKey: .desktopFolderIds) ?? []
         goal = try c.decodeIfPresent(String.self, forKey: .goal)
+        goalState = try c.decodeIfPresent(GoalState.self, forKey: .goalState)
         avatarShape = try c.decodeIfPresent(String.self, forKey: .avatarShape)
         avatarImageRev = try c.decodeIfPresent(Int.self, forKey: .avatarImageRev)
         fallbackModels = try c.decodeIfPresent([ModelChoice].self, forKey: .fallbackModels) ?? []

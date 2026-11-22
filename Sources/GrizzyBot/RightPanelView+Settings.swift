@@ -361,6 +361,14 @@ extension RightPanelView {
                 }
 
                 settingsToggle(
+                    title: "Review actions before asking",
+                    subtitle: "A small model checks each action against what you asked. A clear fit runs; anything unsure still asks you.",
+                    isOn: bot.reviewApprovals
+                ) {
+                    store.patchBot(bot.id, reviewApprovals: !bot.reviewApprovals)
+                }
+
+                settingsToggle(
                     title: "Shell network access",
                     subtitle: "Let shell commands reach the network (curl, git, pip). Off keeps a prompt-injected command from sending files out.",
                     isOn: bot.shellNetwork

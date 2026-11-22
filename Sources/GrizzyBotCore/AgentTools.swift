@@ -1027,8 +1027,12 @@ extension AgentToolCatalog {
         )
         add(
             "clarify",
-            description: "Pause and ask the user a clarifying question before continuing.",
-            properties: ["question": stringProp("Question for the user")],
+            description: "Pause and ask the user a question before continuing. When the answer is one of a few known choices, pass options: they get buttons, which is faster for them than typing.",
+            properties: [
+                "question": stringProp("Question for the user"),
+                "options": stringProp("Optional 2–6 short choices, as a JSON array or separated by |. Omit for an open question."),
+                "detail": stringProp("Optional one line of context under the question"),
+            ],
             required: ["question"]
         )
         add(

@@ -107,6 +107,7 @@ struct BotChatView: View {
         case .answered: return nil
         case .needsUser: return "Stopped and needs you to answer in its own chat."
         case .failed: return "Did not finish."
+        case .queued: return "Waiting for it to be free."
         }
     }
 }

@@ -9,6 +9,7 @@ extension AppStore {
             routingHolds[botId, default: []].append(HeldSend(text: text, files: files, workingFolderOverride: workingFolderOverride))
             return
         }
+        noteUserMessageForGoal(botId: botId)
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         var imported: [String] = []
         for file in files {
@@ -795,6 +796,7 @@ extension AppStore {
         if failed {
             reportIncident(botId: botId, threadKey: threadKey, run: thread2.run, reason: failureReason ?? replyText)
         }
+        afterRunGoalCheck(botId: botId, threadKey: threadKey, status: thread2.run?.status, provider: provider, modelId: selectedModel, client: client)
     }
 
     func runScriptedAgent(botId: String, threadKey: String, runId: String, prompt: String) async {

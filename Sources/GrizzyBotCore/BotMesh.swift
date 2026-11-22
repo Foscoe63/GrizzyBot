@@ -31,6 +31,8 @@ public struct BotChatEntry: Codable, Sendable, Hashable, Identifiable {
         case answered
         case needsUser
         case failed
+        /// Waiting for the other bot to be free; not yet sent.
+        case queued
     }
 
     public var id: String
