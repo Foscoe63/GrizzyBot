@@ -80,6 +80,11 @@ extension RightPanelView {
             .padding(.top, 12)
             }
 
+            if let bot, !store.isPrivateDesktop(botId: bot.id), !store.isThisMacComputer(botId: bot.id) {
+                TeachByDemoControls(botId: bot.id)
+                    .padding(.top, 10)
+            }
+
             if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
                 Text("Preview only — the bot clicks your real Mac. Take control to type passwords yourself.")
                     .font(.system(size: 12))
@@ -229,4 +234,42 @@ extension RightPanelView {
     }
 
     // MARK: - Create
+}
+
+
+/// Record a task by doing it in the in-app browser; the steps become a skill proposal.
+struct TeachByDemoControls: View {
+    @Environment(AppStore.self) private var store
+    let botId: String
+    @State private var title = ""
+    @State private var message: String?
+
+    private var recording: Bool { store.demoRecordingBotId == botId }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if recording {
+                Text("Recording — do the task in the browser. \(store.demoStepCount) step\(store.demoStepCount == 1 ? "" : "s") so far. Passwords and codes are never written down.")
+                    .font(.system(size: 12.5)).foregroundStyle(Theme.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("What is this task called?", text: $title).textFieldStyle(.roundedBorder)
+                HStack {
+                    GrizzyButton(title: "Stop and save", variant: .outline, size: .sm) {
+                        message = store.finishDemo(title: title)
+                        title = ""
+                    }
+                    GrizzyButton(title: "Cancel", variant: .outline, size: .sm) { store.cancelDemo() }
+                }
+            } else {
+                GrizzyButton(title: "Teach by demonstration", variant: .outline, size: .sm) {
+                    message = store.startDemo(botId: botId)
+                }
+                .accessibilityIdentifier("demo.start")
+            }
+            if let message {
+                Text(message).font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
 }

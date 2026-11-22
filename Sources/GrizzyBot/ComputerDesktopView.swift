@@ -10,6 +10,8 @@ final class AppComputerRuntime: ComputerRuntime {
     static let shared = AppComputerRuntime()
 
     private var webs: [String: WKWebView] = [:]
+    /// Set by the app: where a person's recorded actions go.
+    var onDemoEvent: ((String, DemoEvent) -> Void)?
     private var navDelegates: [String: ComputerNavigationDelegate] = [:]
     private var homes: [String: URL] = [:]
     private var lastJPEG: [String: Data] = [:]
@@ -52,6 +54,13 @@ final class AppComputerRuntime: ComputerRuntime {
         } else {
             config.websiteDataStore = .nonPersistent()
         }
+        // Teaching: reports what a person does. Its own content world, so no page can see it or send fake reports.
+        let world = WKContentWorld.world(name: "grizzyDemo")
+        config.userContentController.addUserScript(WKUserScript(source: DemoRecorder.pageScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false, in: world))
+        config.userContentController.add(DemoMessageHandler { [weak self] raw in
+            guard let self, let event = DemoEvent.parse(raw) else { return }
+            self.onDemoEvent?(botId, event)
+        }, contentWorld: world, name: "grizzyDemo")
         let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 1280, height: 800), configuration: config)
         web.customUserAgent = Self.safariUserAgent
         let delegate = ComputerNavigationDelegate()
@@ -613,5 +622,15 @@ struct ThisMacScreenPreview: View {
         } else {
             missCount += 1
         }
+    }
+}
+
+
+/// Receives the teaching script's reports. Holds no reference back to the web view, so it cannot form a cycle with it.
+final class DemoMessageHandler: NSObject, WKScriptMessageHandler {
+    private let handle: (Any?) -> Void
+    init(_ handle: @escaping (Any?) -> Void) { self.handle = handle }
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        handle(message.body)
     }
 }

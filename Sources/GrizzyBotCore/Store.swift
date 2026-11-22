@@ -76,6 +76,10 @@ public final class AppStore {
     public var mainView: ShellMainView = .chat
     /// Bumped whenever the ticket board changes, so views that read it redraw.
     public var ticketRevision = 0
+    /// The bot being taught right now, and how many steps have been written down. One recording at a time.
+    public var demoRecordingBotId: String?
+    public var demoStepCount = 0
+    @ObservationIgnored var demoRecorder = DemoRecorder()
     public var activeGroupId: String?
     public var composerDrafts: [String: String] = [:]
     public var runLog: [RunLogLine] = []
