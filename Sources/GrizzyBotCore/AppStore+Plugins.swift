@@ -1002,6 +1002,18 @@ extension AppStore {
     func appendLiveTool(threadKey: String, runId: String, name: String, result: AgentToolCallResult) {
         guard var thread = threads[threadKey], thread.run?.id == runId else { return }
         var blocks = result.blocks
+        // Questions are carried by the run's closing message; showing them here too would render them twice.
+        blocks.removeAll {
+            switch $0 {
+            case .choice, .ask: return true
+            default: return false
+            }
+        }
+        if blocks.isEmpty, result.blocks.contains(where: {
+            if case .choice = $0 { return true }
+            if case .ask = $0 { return true }
+            return false
+        }) { return }
         // A pause ends the run in the same breath, and the run's closing message carries the approval card
         // along with the pending tool it resumes. A second card here would be answerable before that tool
         // is recorded, and would be left waiting after the first was answered.
