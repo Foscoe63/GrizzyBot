@@ -204,7 +204,7 @@ public enum McpClient {
         prompt: String,
         timeout: TimeInterval = 45
     ) async throws -> McpCallResult {
-        try await pooled(server: server, timeout: timeout) { session in
+        try await tracked(server) { try await pooled(server: server, timeout: timeout) { session in
             let tools = try await toolsList(session: session)
             guard !tools.isEmpty else { throw McpError.noTools }
             let tool = selectTool(from: tools, prompt: prompt)
@@ -213,7 +213,24 @@ public enum McpClient {
             return McpCallResult(
                 toolName: tool.name, text: out.text, isError: out.isError, listedTools: tools, images: out.images
             )
+        } }
+    }
+
+    /// Records the outcome of a call against the server's health.
+    static func tracked<T: Sendable>(_ server: McpServer, _ body: () async throws -> T) async throws -> T {
+        do {
+            let value = try await body()
+            McpHealthBook.shared.recordSuccess(serverId: server.id)
+            return value
+        } catch {
+            if !(error is CancellationError), !isCancel(error) { McpHealthBook.shared.recordFailure(serverId: server.id, error: error) }
+            throw error
         }
+    }
+
+    private static func isCancel(_ error: Error) -> Bool {
+        if case McpError.cancelled = error { return true }
+        return false
     }
 
     /// Call a named tool with explicit arguments.
@@ -224,14 +241,14 @@ public enum McpClient {
         timeout: TimeInterval = 45
     ) async throws -> McpCallResult {
         // Unwrapped inside the closure: `[String: Any]` is not Sendable, `[String: JSONValue` is.
-        try await pooled(server: server, timeout: timeout) { session in
+        try await tracked(server) { try await pooled(server: server, timeout: timeout) { session in
             let out = try await toolsCall(
                 session: session,
                 name: toolName,
                 arguments: arguments.mapValues(\.any)
             )
             return McpCallResult(toolName: toolName, text: out.text, isError: out.isError, images: out.images)
-        }
+        } }
     }
 
     /// List tools only (useful for diagnostics).
@@ -867,6 +884,11 @@ final class McpStdioSession: McpSession, @unchecked Sendable {
 
     private func ingest(_ chunk: Data) {
         buffer.append(chunk)
+        if buffer.count > McpLimits.maxResponseBytes {
+            buffer.removeAll()
+            failAll(McpError.transport("The server sent more than \(McpLimits.maxResponseBytes / 1_048_576) MB without finishing a message."))
+            return
+        }
         for message in McpClient.extractStdioMessages(from: &buffer) {
             handleLine(message)
         }
@@ -1239,6 +1261,9 @@ final class McpHTTPSession: McpSession, @unchecked Sendable {
         let (responseData, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw McpError.transport("Invalid HTTP response")
+        }
+        guard responseData.count <= McpLimits.maxResponseBytes else {
+            throw McpError.transport("The server's reply was larger than \(McpLimits.maxResponseBytes / 1_048_576) MB, so it was dropped.")
         }
 
         if let sid = http.value(forHTTPHeaderField: "MCP-Session-Id"), !sid.isEmpty {

@@ -213,6 +213,7 @@ public final class AppStore {
     var destinations: DestinationStore
     var canvasBoard: CanvasBoardStore
     var artifactStore: ArtifactStore
+    var ticketBoard: TicketBoardStore
     var runTasks: [String: Task<Void, Never>] = [:]
     /// Mid-run messages the agent loop picks up between steps, keyed by run.
     var runInboxes: [String: RunInbox] = [:]
@@ -275,6 +276,8 @@ public final class AppStore {
     /// Goal checks and the turn they are about to start, by bot; and the bot whose turn the loop is sending right now.
     @ObservationIgnored var goalContinuations: [String: Task<Void, Never>] = [:]
     @ObservationIgnored var goalSending: String?
+    /// Where a hand-over of the screen stands, by bot, until the next run reads it. Not saved.
+    @ObservationIgnored var takeoverProgress: [String: TakeoverProgress] = [:]
     /// Turns the loop may start by itself before it stops and asks, and the pause before each.
     public var goalBudget = GoalJudge.defaultBudget
     public var goalContinuationDelay: Double = 1.5
@@ -369,9 +372,11 @@ public final class AppStore {
         self.destinations = DestinationStore(root: root)
         self.canvasBoard = CanvasBoardStore(root: root)
         self.artifactStore = ArtifactStore(root: root)
+        self.ticketBoard = TicketBoardStore(root: root)
         self.delayScale = delayScale
         // The app swaps in its own browser and This Mac runtime; everything else (the CLI, a headless tick) still
         // reaches a bot's Private desktop, rather than a placeholder screen that would report clicks that never happened.
+        McpHealthBook.shared.attach(to: root.appendingPathComponent("mcp-health.json"))
         installComputerRuntime(primary: FileDesktopRuntime())
         bootstrap()
         expireQueuedDelegations()

@@ -388,11 +388,11 @@ extension AppStore {
         let botSkills = skills(for: bot)
         let slash = SlashCommand.resolve(prompt, skills: botSkills)
         let pinFolderToRun = runWorkingFolderOverride[botId] != nil
-        let agentPromptRaw: String
+        let agentPromptBase: String
         let injected: [AgentSkill]
         switch slash {
         case .skill(let skill, let skillPrompt):
-            agentPromptRaw = skillPrompt
+            agentPromptBase = skillPrompt
             if pinFolderToRun {
                 injected = []
             } else {
@@ -401,22 +401,23 @@ extension AppStore {
                 injected = [skill] + matched
             }
         case .plain(let plain):
-            agentPromptRaw = plain
+            agentPromptBase = plain
             injected = pinFolderToRun ? [] : SkillMarkdown.matching(botSkills, prompt: plain)
         case .builtin(let command, let argument):
             switch command {
-            case .plan: agentPromptRaw = BuiltinCommands.planPrompt(task: argument)
-            case .learn: agentPromptRaw = SkillLearning.prompt(topic: argument)
-            case .recipe: agentPromptRaw = recipePrompt(argument: argument) ?? prompt
-            case .meeting: agentPromptRaw = BuiltinCommands.meetingPrompt(transcriptPath: meetingTranscriptPath(argument, botId: botId))
-            case .goal: agentPromptRaw = BuiltinCommands.goalKickoff(goal: bot.goal ?? argument)
-            default: agentPromptRaw = prompt
+            case .plan: agentPromptBase = BuiltinCommands.planPrompt(task: argument)
+            case .learn: agentPromptBase = SkillLearning.prompt(topic: argument)
+            case .recipe: agentPromptBase = recipePrompt(argument: argument) ?? prompt
+            case .meeting: agentPromptBase = BuiltinCommands.meetingPrompt(transcriptPath: meetingTranscriptPath(argument, botId: botId))
+            case .goal: agentPromptBase = BuiltinCommands.goalKickoff(goal: bot.goal ?? argument)
+            default: agentPromptBase = prompt
             }
             injected = []
         case .unknown, .help:
-            agentPromptRaw = prompt
+            agentPromptBase = prompt
             injected = pinFolderToRun ? [] : SkillMarkdown.matching(botSkills, prompt: prompt)
         }
+        let agentPromptRaw = takeoverResumeNote(botId: botId).map { $0 + "\n\n" + agentPromptBase } ?? agentPromptBase
         let agentPrompt: String
         let privacySession = redactionSession(forBot: botId)
         let streamUnscrub = SyncUnscrubber(session: privacySession)
@@ -511,9 +512,13 @@ extension AppStore {
                 steer: steerPoll,
                 goal: bot.goal ?? ""
             )
+            setRunFingerprint(botId: botId, runId: runId, fingerprint: PromptFingerprint.compute(
+                systemPrompt: AgentLoop.systemPrompt(for: loopRequest), toolNames: tools.map { $0.function.name }
+            ))
             loopRequest.fallbacks = fallbacks
             loopRequest.departmentInstructions = departmentInstructionsPrompt(forBot: botId)
             loopRequest.authorityNote = authorityNote(forBot: botId)
+            loopRequest.routinesNote = RoutineReliability.activeRoutinesSection(routines[botId] ?? []) ?? ""
             loopRequest.departmentMemory = departmentMemoryPrompt(forBot: botId)
             loopRequest.deferredTools = deferredTools
             loopRequest.secretNames = botSecretNames(botId: botId)
@@ -534,6 +539,8 @@ extension AppStore {
                     )
                 }
                 if UntrustedContent.taints(tool: name) { taint.mark(tool: name) }
+                let toolOutput = result.output
+                await MainActor.run { self.recordToolOutcome(tool: name, output: toolOutput, botId: botId, runId: runId) }
                 progress.toolFinished(name, output: result.output)
                 return result
             }
@@ -794,6 +801,7 @@ extension AppStore {
         releaseWorkingFolderOverrideIfNeeded(botId: botId)
         settleQueue(botId: botId, threadKey: threadKey, runId: runId)
         if failed {
+            recordFailure(signature: "run: " + FailureSignature.normalize(failureReason ?? replyText), botId: botId, runId: runId)
             reportIncident(botId: botId, threadKey: threadKey, run: thread2.run, reason: failureReason ?? replyText)
         }
         afterRunGoalCheck(botId: botId, threadKey: threadKey, status: thread2.run?.status, provider: provider, modelId: selectedModel, client: client)

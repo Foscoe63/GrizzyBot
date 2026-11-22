@@ -446,6 +446,8 @@ public struct Run: Codable, Sendable, Hashable, Identifiable {
     public var startedAt: Date?
     public var completedAt: Date?
     public var routineId: String?
+    /// Short hash of the system prompt and tool list this run used.
+    public var promptFingerprint: String?
 
     public init(
         id: String,

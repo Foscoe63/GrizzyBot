@@ -374,7 +374,7 @@ public enum AgentToolCatalog {
 
     /// Tools that have no switch in the profile editor.
     public static var unswitchedIds: Set<String> {
-        alwaysOnIds.union(CanvasBoardStore.toolIds).union(ArtifactStore.toolIds)
+        alwaysOnIds.union(CanvasBoardStore.toolIds).union(ArtifactStore.toolIds).union(TicketBoardStore.toolIds)
     }
 
     /// What used to switch on silently when another tool was on. Written out once as real toggles
@@ -471,6 +471,8 @@ extension Bot {
         // toggle: the always-available basics and the two delegation read-outs.
         if CanvasBoardStore.toolIds.contains(toolId) { return true }
         if ArtifactStore.toolIds.contains(toolId) { return true }
+        if TicketBoardStore.toolIds.contains(toolId) { return true }
+        if (toolId == "get_bot_instructions" || toolId == "update_bot"), enabledTools.contains("spawn_bot") { return true }
         if toolId == "check_bot" || toolId == "list_delegations" || toolId == "stop_bot",
            enabledTools.contains("spawn_bot") || enabledTools.contains("message_bot") { return true }
         if AgentToolCatalog.alwaysOnIds.contains(toolId) { return true }
@@ -562,8 +564,10 @@ extension AgentToolCatalog {
                 (enabledIds.contains("spawn_bot") || enabledIds.contains("message_bot"))
                     ? ["check_bot", "list_delegations", "stop_bot"] : []
             )
+            .union(enabledIds.contains("spawn_bot") ? ["get_bot_instructions", "update_bot"] : [])
             .union(CanvasBoardStore.toolIds)
             .union(ArtifactStore.toolIds)
+            .union(TicketBoardStore.toolIds)
             .union(AgentToolCatalog.alwaysOnIds)
         var tools: [ChatTool] = []
 
@@ -1047,6 +1051,52 @@ extension AgentToolCatalog {
             ],
             required: ["kind", "name", "detail"]
         )
+        let ticketStatuses = TicketStatus.allCases.map(\.rawValue).joined(separator: ", ")
+        add(
+            "board_tickets",
+            description: "List tickets on the shared board that people and bots both use. Open ones by default, urgent first. Pass mine=true for tickets assigned to you.",
+            properties: [
+                "mine": boolProp("Only tickets assigned to you"),
+                "status": stringProp("Only this status: \(ticketStatuses)"),
+            ],
+            required: []
+        )
+        add(
+            "ticket_get",
+            description: "Read one ticket with its description and comments. ref is its number, such as 12.",
+            properties: ["ref": stringProp("Ticket number")],
+            required: ["ref"]
+        )
+        add(
+            "ticket_create",
+            description: "Add a ticket to the shared board. Assigning it to a bot wakes that bot with the ticket.",
+            properties: [
+                "title": stringProp("Short title"),
+                "detail": stringProp("What needs doing and what done looks like"),
+                "priority": stringProp("low, normal, high or urgent"),
+                "assignee": stringProp("Name of the bot who should do it (optional)"),
+            ],
+            required: ["title"]
+        )
+        add(
+            "ticket_update",
+            description: "Change a ticket's status, priority, title, detail or assignee. Assigning it to a different bot wakes that bot.",
+            properties: [
+                "ref": stringProp("Ticket number"),
+                "status": stringProp(ticketStatuses),
+                "priority": stringProp("low, normal, high or urgent"),
+                "title": stringProp("New title"),
+                "detail": stringProp("New description"),
+                "assignee": stringProp("Bot name to assign to, or none to unassign"),
+            ],
+            required: ["ref"]
+        )
+        add(
+            "ticket_comment",
+            description: "Add a comment to a ticket: progress, a question, a handoff note.",
+            properties: ["ref": stringProp("Ticket number"), "text": stringProp("The comment")],
+            required: ["ref", "text"]
+        )
         add(
             "search_team_memory",
             description: "Search your department's accepted team notes, including ones the prompt did not have room for. Every word of the query must match.",
@@ -1127,6 +1177,26 @@ extension AgentToolCatalog {
                 description: "List the jobs you handed to other bots, newest first, with whether each is still running, answered, needs the user, or failed.",
                 properties: [:],
                 required: []
+            )
+            add(
+                "get_bot_instructions",
+                description: "Read the instructions of a bot you manage, with the version stamp update_bot needs. Always read before you edit.",
+                properties: [
+                    "name": stringProp("Name of the bot"),
+                    "bot_id": stringProp("Optional bot id"),
+                ],
+                required: ["name"]
+            )
+            add(
+                "update_bot",
+                description: "Replace a bot's instructions. Pass the expected_version from get_bot_instructions; a stale edit is refused. The owner always approves the exact new text, and this only works in a run the owner started.",
+                properties: [
+                    "name": stringProp("Name of the bot"),
+                    "bot_id": stringProp("Optional bot id"),
+                    "instructions": stringProp("The complete new instructions"),
+                    "expected_version": stringProp("The version stamp from get_bot_instructions"),
+                ],
+                required: ["name", "instructions", "expected_version"]
             )
             add(
                 "delete_bot",

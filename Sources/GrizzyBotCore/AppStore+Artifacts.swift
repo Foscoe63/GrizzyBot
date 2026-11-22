@@ -468,6 +468,7 @@ extension AppStore {
         if isPrivateDesktop(botId: botId) { return }
         guard var computer = computers[botId] else { return }
         computer.controlHolder = .user
+        if takeoverProgress[botId] != nil { takeoverProgress[botId]?.taken = true }
         if computer.state == .suspended {
             computer.state = .running
             computer.screenAvailable = true

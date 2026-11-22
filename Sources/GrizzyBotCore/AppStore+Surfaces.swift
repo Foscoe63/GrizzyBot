@@ -732,6 +732,7 @@ extension AppStore {
         var seen = Set(AgentToolCatalog.builtinIds)
         seen.formUnion(CanvasBoardStore.toolIds)
         seen.formUnion(ArtifactStore.toolIds)
+        seen.formUnion(TicketBoardStore.toolIds)
         seen.formUnion(appConfig.defaultEnabledTools)
         seen.formUnion(customTools.map(\.id))
         seen.formUnion(mcpServers.map(\.toolId))

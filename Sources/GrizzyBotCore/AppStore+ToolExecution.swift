@@ -151,6 +151,8 @@ extension AppStore {
             default:
                 if CanvasBoardStore.toolIds.contains(name) { return "" }
                 if ArtifactStore.toolIds.contains(name) { return "" }
+                if TicketBoardStore.toolIds.contains(name) { return "" }
+                if name == "get_bot_instructions" || name == "update_bot" { return "spawn_bot" }
                 if mcpPromotedTools[name] != nil { return "" }
                 if AgentToolCatalog.builtinIds.contains(name) { return name }
                 return ""
@@ -1271,6 +1273,7 @@ extension AppStore {
                 computer.controlHolder = .user
                 computers[botId] = computer
             }
+            takeoverProgress[botId] = TakeoverProgress(reason: reason)
             recordAudit(
                 type: .computerHelpRequested,
                 botId: botId,
@@ -1504,6 +1507,43 @@ extension AppStore {
                 return "- \(peerName): \"\(entry.text.prefix(80))\" — \(delegationState(entry))"
             }
             return AgentToolCallResult(output: lines.joined(separator: "\n"))
+
+        case "ticket_create", "ticket_update", "ticket_comment", "ticket_get", "board_tickets":
+            return handleTicketTool(name: name, args: args, botId: botId)
+
+        case "get_bot_instructions", "update_bot":
+            let targetQuery = [s("bot_id", "id"), s("name", "bot")]
+            guard case .found(let target) = BotLookup.resolve(targetQuery, in: bots) else {
+                return AgentToolCallResult(output: "No single bot matches “\(targetQuery.first { !$0.isEmpty } ?? "")”.")
+            }
+            guard target.id != botId else { return AgentToolCallResult(output: "Edit your own instructions in your settings; this tool is for other bots.") }
+            if target.parentBotId != botId && !hasAuthority(botId, over: target.id) {
+                if let chief = bots.first(where: { $0.id == botId }), chief.chiefOfStaff {
+                    return AgentToolCallResult(output: "You can only manage bots you spawned. " + authorityRefusal(chief: chief, target: target))
+                }
+                return AgentToolCallResult(output: "You can only manage bots you spawned.")
+            }
+            if name == "get_bot_instructions" {
+                return AgentToolCallResult(output: "version: \(FleetGuard.version(of: target.instructions))\n\(target.instructions)")
+            }
+            let delegated = botChat.contains { $0.toBotId == botId && $0.reportedAt == nil && ($0.outcome == .sent || $0.outcome == .queued) }
+            let ownerStarted = threads[threadKey(for: botId)]?.run?.trigger == "user" && !delegated && !ownerWords(botId: botId).isEmpty
+            let proposed = s("instructions")
+            if let refusal = FleetGuard.check(
+                current: target.instructions,
+                proposed: proposed,
+                expectedVersion: s("expected_version"),
+                ownerStarted: ownerStarted,
+                tainted: taint?.isTainted ?? false
+            ) {
+                return AgentToolCallResult(output: refusal.message)
+            }
+            if !approved {
+                return humanGate(tool: "update_bot", detail: FleetGuard.approvalDetail(botName: target.name, proposed: proposed), argumentsJSON: argumentsJSON)
+            }
+            updateBot(botId: target.id, instructions: proposed)
+            recordAudit(type: .configurationChanged, botId: botId, tool: "update_bot", reason: "Instructions of \(target.name) replaced after approval", allowed: true, forwarded: false)
+            return AgentToolCallResult(output: "Updated \(target.name)'s instructions (new version \(FleetGuard.version(of: proposed))).")
 
         case "delete_bot":
             let confirm = s("confirm_name", "name")

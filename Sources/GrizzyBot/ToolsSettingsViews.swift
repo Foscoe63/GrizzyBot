@@ -246,6 +246,12 @@ struct McpServersToolsBlock: View {
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.textMuted)
                         }
+                        if let health = McpHealthBook.shared.health(for: server.id), health.isDegraded {
+                            Text(health.summary)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(Theme.orange)
+                                .lineLimit(2)
+                        }
                         Text(server.summaryLine)
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.textSecondary)

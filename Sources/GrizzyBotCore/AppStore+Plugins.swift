@@ -1048,6 +1048,7 @@ extension AppStore {
 
     public func tickDueRoutines() {
         let now = Date.now
+        expireUnattendedApprovals(now: now)
         recoverStuckRoutines(now: now)
         var activeRoutineRuns = 0
         for (botId, _) in routines {
