@@ -2,6 +2,11 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## 0.17.0 — Sidebar categories and notarized builds
+
+- **Sidebar categories.** Bots sit in collapsible categories under the Orchestrator (the Chief of Staff stays on its own). Sidebar **+** → *New category…* adds one; drag a bot onto a category header, or right-click it → *Move to category*, to file it. Right-click a header to rename or delete it (its bots become Uncategorized). New bots start Uncategorized; bots from before this version start in *Coding*. Open or closed state is remembered, and search expands categories that match.
+- **Notarized builds.** `make-app.sh` signs the embedded routine agent with Developer ID, hardened runtime and a timestamp, and `notarize.sh` zips the app before submitting it. Builds without an iCloud profile can use `GrizzyBot.NoiCloud.entitlements`.
+
 ## 0.16.0 — Private desktop, tickets, demonstrations and a browser address bar
 
 - **Routines calendar shows every run.** The week, 3-day and day views place a routine on each day its schedule says it will run (future runs only), not only on the day of its next run.

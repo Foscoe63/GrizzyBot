@@ -57,6 +57,10 @@
 
 ## 🆕 What's new
 
+### 0.17.0 — Sidebar categories
+
+- **Sidebar categories.** Group bots into collapsible categories of your own: sidebar **+** → *New category…*, then drag a bot onto a header (or right-click it → *Move to category*). The Orchestrator stays on its own.
+
 ### 0.16.0 — Private desktop, tickets, demonstrations and a browser address bar
 
 - **Private desktop.** A bot's browser and desktop can run in its own hardened Podman container ([details](#private-desktop)), with Mac folders shown **read-only, writable or as a private copy**, and an optional **No network** switch.
