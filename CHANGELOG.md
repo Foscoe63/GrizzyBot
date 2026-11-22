@@ -4,6 +4,7 @@ User-visible changes, newest first. The current version lives in `project.yml`.
 
 ## Unreleased
 
+- **Writable Mac folders in the Private desktop.** Each shown folder now has a mode (bot settings → Show in the Private desktop): Read-only (the default), Writable (the bot can create, change and delete files in the real folder; audited as such), or Work on a copy (an in-workspace copy, up to 20,000 files / 1 GB, that the bot edits while the original is never touched). Changing a mode restarts the desktop. The container's mounts are re-checked against the chosen modes before it is used.
 - **Routines that stay honest.** A catch-up run is told how late it is ("Started 40m late") and that missed ticks were folded into it; an approval left unanswered on a routine run for 30 minutes is skipped so the bot is not stuck overnight; each bot's prompt lists its own standing routines (bounded, marked information only).
 - **Failures grouped, prompts fingerprinted.** Repeated tool and run failures are clustered by a normalized signature (paths, numbers, ids, URLs and quoted values stripped) in `failure-clusters.json`; raw output is never stored. Each run records a short fingerprint of its system prompt and tool list so outcomes can be compared across edits.
 - **MCP guard rails.** A server reply over 16 MB is dropped instead of filling memory; each server's recent health (consecutive failures, last reason) is kept on disk and shown in Settings when it has failed three times in a row.

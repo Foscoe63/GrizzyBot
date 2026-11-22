@@ -308,7 +308,7 @@ struct PodmanInspect: Decodable {
     }
 
     /// Whether the container shows the Mac exactly what was granted: its own workspace writable, each granted folder
-    /// read-only, and nothing else. Anything extra is a way for the bot to see more than it was given.
+    /// as the person set it (read-only unless made writable), and nothing else. Anything extra is a way for the bot to see more than it was given.
     func mountsMatch(workspace: String, mounts expected: [PodmanDesktopMount]) -> Bool {
         let actual = Mounts ?? []
         let bindings = actual.filter { $0.kind == "bind" }
@@ -318,7 +318,7 @@ struct PodmanInspect: Decodable {
               work.Source == workspace, work.RW != false else { return false }
         for mount in expected {
             guard let found = bindings.first(where: { $0.Destination == mount.guestPath }),
-                  found.Source == mount.source, found.RW == false else { return false }
+                  found.Source == mount.source, found.RW == mount.writable else { return false }
         }
         return true
     }

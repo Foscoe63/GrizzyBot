@@ -71,6 +71,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     /// Granted folders also shown, read-only, inside this bot's Private desktop. A subset of `grantedFolderIds`: the desktop has
     /// a network connection, so a folder reaching it is its own decision.
     public var desktopFolderIds: [String]
+    /// How each shown folder reaches the Private desktop. A folder not listed is read-only.
+    public var desktopFolderModes: [String: DesktopFolderMode] = [:]
     /// `BotAvatarShape` raw value; nil is the default circle.
     public var avatarShape: String?
     /// Bumped whenever an uploaded avatar image changes; nil means no image.
@@ -178,7 +180,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case threadId, preview, status, updatedAt, createdAt
         case pinned, hidden, unread, autoApprove, shellNetwork, reviewApprovals, speakReplies, notifications, chiefOfStaff, managedDepartments
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
-        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, desktopFolderIds, goal, goalState
+        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, desktopFolderIds, desktopFolderModes, goal, goalState
         case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable, toolSelection
     }
 
@@ -222,6 +224,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         workingFolder = try c.decodeIfPresent(String.self, forKey: .workingFolder)
         grantedFolderIds = try c.decodeIfPresent([String].self, forKey: .grantedFolderIds) ?? []
         desktopFolderIds = try c.decodeIfPresent([String].self, forKey: .desktopFolderIds) ?? []
+        desktopFolderModes = try c.decodeIfPresent([String: DesktopFolderMode].self, forKey: .desktopFolderModes) ?? [:]
         goal = try c.decodeIfPresent(String.self, forKey: .goal)
         goalState = try c.decodeIfPresent(GoalState.self, forKey: .goalState)
         avatarShape = try c.decodeIfPresent(String.self, forKey: .avatarShape)
@@ -1181,5 +1184,23 @@ public struct PendingAgentTool: Codable, Sendable, Equatable {
 public enum Ids {
     public static func new() -> String {
         UUID().uuidString.lowercased()
+    }
+}
+
+/// How a granted Mac folder is shown inside a Private desktop.
+public enum DesktopFolderMode: String, Codable, Sendable, Hashable, CaseIterable {
+    /// The bot can read the files and not change them.
+    case readOnly = "read_only"
+    /// The bot can create, change and delete files in the real folder.
+    case writable
+    /// The bot works on a copy inside its own workspace; the original is never touched.
+    case copy
+
+    public var label: String {
+        switch self {
+        case .readOnly: return "Read-only"
+        case .writable: return "Writable"
+        case .copy: return "Work on a copy"
+        }
     }
 }

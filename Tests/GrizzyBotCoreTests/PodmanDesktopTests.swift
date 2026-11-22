@@ -375,6 +375,34 @@ struct PrivateDesktopFolderTests {
         #expect(result.mounts[0].argument == "type=bind,source=\(t.dirs[0]),target=/mnt/mac/Taxes-2025,ro=true")
     }
 
+    @Test("a writable folder mounts read-write, a copy needs no mount, and the mode changes the digest")
+    func writableAndCopy() throws {
+        let t = try tree(["Work", "Notes"])
+        let work = GrantedFolder(name: "Work", path: t.dirs[0])
+        let notes = GrantedFolder(name: "Notes", path: t.dirs[1])
+        let rw = PodmanDesktopMounts.resolve([work], modes: [work.id: .writable], home: t.home, visibleRoots: t.visible)
+        #expect(rw.mounts.first?.argument.hasSuffix("ro=false") == true)
+        let ro = PodmanDesktopMounts.resolve([work], home: t.home, visibleRoots: t.visible)
+        #expect(ro.mounts.first?.argument.hasSuffix("ro=true") == true)
+        #expect(PodmanDesktopMounts.digest(rw.mounts) != PodmanDesktopMounts.digest(ro.mounts))
+        let mixed = PodmanDesktopMounts.resolve([work, notes], modes: [notes.id: .copy], home: t.home, visibleRoots: t.visible)
+        #expect(mixed.mounts.map(\.name) == ["Work"], "a copy lives in the workspace, not in a mount")
+    }
+
+    @Test("a folder of nothing is copied, a symlink is not followed, and a huge one is refused")
+    func copying() throws {
+        let t = try tree(["Src"])
+        let src = URL(fileURLWithPath: t.dirs[0])
+        try "hello".write(to: src.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        #expect(DesktopFolderCopy.sizeRefusal(of: src) == nil)
+        let ws = URL(fileURLWithPath: t.home).appendingPathComponent("ws")
+        let dest = DesktopFolderCopy.hostPath(workspace: ws, name: "Src")
+        try DesktopFolderCopy.make(from: src, to: dest)
+        try "changed".write(to: dest.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        #expect(try String(contentsOf: src.appendingPathComponent("a.txt"), encoding: .utf8) == "hello")
+        #expect(DesktopFolderCopy.guestPath(name: "Src") == "/home/cua/workspace/copies/Src")
+    }
+
     @Test("two folders with one name get different guest folders, and one folder twice is one mount")
     func names() throws {
         let t = try tree(["a/Docs", "b/Docs"])

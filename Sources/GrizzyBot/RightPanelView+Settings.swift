@@ -672,20 +672,12 @@ extension RightPanelView {
             .font(.system(size: 13))
             .foregroundStyle(Theme.textSecondary)
             .padding(.top, 16)
-        Text("The desktop sees these folders read-only, so it can open and read the files but not change or delete them. It also has a network connection: anything it can read it could send out. Changing this restarts the desktop.")
+        Text("Read-only: the desktop can read the files, not change them. Writable: it can create, change and delete files in the real folder. Work on a copy: it edits a copy kept in its own workspace and the original is never touched. The desktop also has a network connection, so anything it can read it could send out. Changing this restarts the desktop.")
             .font(.system(size: 12.5))
             .foregroundStyle(Theme.textMuted)
             .padding(.top, 4)
         ForEach(store.grantedFolders(for: bot)) { folder in
-            let shown = bot.desktopFolderIds.contains(folder.id)
-            settingsToggle(
-                title: folder.name,
-                subtitle: store.desktopFolderRefusal(folder).map { "Cannot be shown: \($0)" }
-                    ?? (shown ? "\(folder.path) → /mnt/mac, read-only" : folder.path),
-                isOn: shown
-            ) {
-                store.setDesktopFolder(botId: bot.id, folderId: folder.id, shown: !shown)
-            }
+            DesktopFolderRow(bot: bot, folder: folder)
         }
     }
 
@@ -741,6 +733,56 @@ extension RightPanelView {
             } catch {
                 settingsError = error.localizedDescription
             }
+        }
+    }
+}
+
+
+/// One granted folder and how the Private desktop sees it.
+private struct DesktopFolderRow: View {
+    @Environment(AppStore.self) private var store
+    let bot: Bot
+    let folder: GrantedFolder
+    @State private var refusal: String?
+
+    private var current: DesktopFolderMode? {
+        bot.desktopFolderIds.contains(folder.id) ? (bot.desktopFolderModes[folder.id] ?? .readOnly) : nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(folder.name).font(.system(size: 14.5, weight: .medium)).foregroundStyle(Theme.textBright)
+                    Text(subtitle).font(.system(size: 12.5)).foregroundStyle(current == .writable ? Theme.orange : Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { current?.rawValue ?? "off" },
+                    set: { raw in refusal = store.setDesktopFolderMode(botId: bot.id, folderId: folder.id, mode: DesktopFolderMode(rawValue: raw)) }
+                )) {
+                    Text("Off").tag("off")
+                    ForEach(DesktopFolderMode.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+                }
+                .labelsHidden()
+                .frame(width: 150)
+                .disabled(store.desktopFolderRefusal(folder) != nil)
+            }
+            if let refusal {
+                Text(refusal).font(.system(size: 12)).foregroundStyle(Theme.redError)
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private var subtitle: String {
+        if let why = store.desktopFolderRefusal(folder) { return "Cannot be shown: \(why)" }
+        switch current {
+        case nil: return folder.path
+        case .readOnly?: return "\(folder.path) → read-only"
+        case .writable?: return "\(folder.path) → the bot can change and delete these files"
+        case .copy?: return "A copy in the bot's workspace; \(folder.path) is not touched"
         }
     }
 }

@@ -228,4 +228,32 @@ struct PrivateDesktopStoreTests {
         #expect(store.bots.first { $0.id == botId }?.desktopFolderIds == [])
         #expect(store.privateDesktopFolders(botId: botId).mounts.isEmpty)
     }
+
+    @Test("modes are set per folder, audited, and a copy leaves the original alone")
+    func desktopFolderModes() throws {
+        let (store, botId) = store(StatefulPodman(botId: "", container: .missing))
+        store.patchBot(botId, computerMode: .privateDesktop)
+        let dir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("gb-desktop-mode-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try "orig".write(to: dir.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+        let folder = try #require(store.addGrantedFolder(path: dir.path, name: "Proj"))
+        store.setBotFolder(botId, folderId: folder.id, granted: true)
+
+        #expect(store.setDesktopFolderMode(botId: botId, folderId: folder.id, mode: .writable) == nil)
+        #expect(store.privateDesktopFolders(botId: botId).mounts.first?.writable == true)
+        #expect(store.auditEvents.contains { $0.tool == "private_desktop_folder" && $0.reason.contains("WRITABLE") })
+
+        #expect(store.setDesktopFolderMode(botId: botId, folderId: folder.id, mode: .copy) == nil)
+        #expect(store.privateDesktopFolders(botId: botId).mounts.isEmpty, "a copy is not a mount")
+        let bot = try #require(store.bots.first { $0.id == botId })
+        #expect(bot.desktopFolderModes[folder.id] == .copy)
+        let copy = DesktopFolderCopy.hostPath(workspace: PodmanDesktopTarget(botId: botId, root: store.globalRoot).workspaceDir, name: "Proj")
+        try "edited".write(to: copy.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+        #expect(try String(contentsOf: dir.appendingPathComponent("f.txt"), encoding: .utf8) == "orig")
+        #expect(store.desktopFolderGuestPath(bot: bot, folder: folder) == "/home/cua/workspace/copies/Proj")
+
+        #expect(store.setDesktopFolderMode(botId: botId, folderId: folder.id, mode: nil) == nil)
+        #expect(store.bots.first { $0.id == botId }?.desktopFolderModes.isEmpty == true)
+    }
 }
