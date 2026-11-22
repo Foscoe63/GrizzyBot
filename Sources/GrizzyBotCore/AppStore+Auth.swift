@@ -99,7 +99,6 @@ extension AppStore {
         computerOpen = false
         canvasOpen = false
         booting = false
-        pluginsOpen = false
         showHostPrompt = false
         save()
         session = nil

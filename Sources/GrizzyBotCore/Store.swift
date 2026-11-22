@@ -92,7 +92,7 @@ public final class AppStore {
     public var pendingAuthEmail: String = ""
 
     public enum AppSettingsSection: String, Sendable, CaseIterable, Identifiable {
-        case general, connections, computer, voice, tools, themes, privacy, watchers, diagnostics, governance, knowledge, components, folders
+        case general, connections, computer, voice, tools, themes, privacy, watchers, diagnostics, governance, knowledge, components, folders, plugins, skills
         public var id: String { rawValue }
         public var label: String {
             switch self {
@@ -109,6 +109,8 @@ public final class AppStore {
             case .knowledge: return "Knowledge"
             case .components: return "Components"
             case .folders: return "Folders"
+            case .plugins: return "Plugins"
+            case .skills: return "Skills"
             }
         }
     }
@@ -126,8 +128,6 @@ public final class AppStore {
     /// Which saved version the panel is showing; nil means the current one.
     public var artifactVersionIndex: Int?
     public var booting: Bool = false
-    public var pluginsOpen: Bool = false
-    public var skillsOpen: Bool = false
     public var skills: [AgentSkill] = []
     public var showHostPrompt: Bool = false
     /// App layer: speak replies and local notifications.
@@ -332,7 +332,7 @@ public final class AppStore {
     public var composioClient: (any ComposioConnecting)?
     public var googleOAuthClient: (any GoogleOAuthConnecting)?
     /// App layer opens OAuth / Composio URLs (NSWorkspace). Must not be observed — storing a
-    /// closure on an `@Observable` property crashes PluginsOverlayView body updates (SIGBUS).
+    /// closure on an `@Observable` property crashes PluginsPageView body updates (SIGBUS).
     @ObservationIgnored
     public var openExternalURL: ((URL) -> Void)?
     public var pluginError: String?
@@ -527,7 +527,6 @@ public final class AppStore {
         computerOpen = false
         canvasOpen = false
         booting = false
-        pluginsOpen = false
         showHostPrompt = false
         mainView = .chat
     }
@@ -622,8 +621,6 @@ public final class AppStore {
         computerOpen = false
         canvasOpen = false
         booting = false
-        pluginsOpen = false
-        skillsOpen = false
         mainView = .chat
         hydrateMemoryFiles()
         seedSeenToolIdsIfNeeded()

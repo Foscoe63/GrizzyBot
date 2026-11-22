@@ -26,8 +26,6 @@ extension AppStore {
         route = .shell
         showHostPrompt = false
         modelSettingsOpen = false
-        pluginsOpen = false
-        skillsOpen = false
         appSettingsOpen = false
         computerOpen = false
         canvasOpen = false

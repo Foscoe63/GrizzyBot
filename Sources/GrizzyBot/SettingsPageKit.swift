@@ -66,7 +66,7 @@ extension AppStore.AppSettingsSection {
         switch self {
         case .general, .themes, .privacy, .voice: return "Settings"
         case .computer, .folders, .watchers: return "This computer"
-        case .tools, .components, .knowledge, .connections: return "Customize"
+        case .tools, .components, .knowledge, .connections, .plugins, .skills: return "Customize"
         case .governance, .diagnostics: return "Platform"
         }
     }

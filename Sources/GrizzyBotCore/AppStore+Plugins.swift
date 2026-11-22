@@ -6,8 +6,7 @@ extension AppStore {
     // MARK: - Plugins
 
     public func openPlugins() {
-        pluginsOpen = true
-        Task { await refreshPluginCatalog() }
+        openAppSettings(section: .plugins)
     }
 
     public func refreshPluginCatalog() async {

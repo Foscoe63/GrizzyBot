@@ -13,8 +13,6 @@ struct SidebarView: View {
     @State private var userMenuOpen = false
     @State private var showUsage = false
     @State private var hoverPlus = false
-    @State private var hoverPlugins = false
-    @State private var hoverSkills = false
     @State private var showNewMenu = false
     @State private var showCreateRoom = false
     @State private var roomName = ""
@@ -232,15 +230,8 @@ struct SidebarView: View {
 
             teamMapButton
                 .padding(.horizontal, 12)
-                .padding(.bottom, 2)
-
-            pluginsButton
-                .padding(.horizontal, 12)
-                .padding(.bottom, 2)
-
-            skillsButton
-                .padding(.horizontal, 12)
                 .padding(.bottom, 4)
+
 
             userRow
                 .padding(.horizontal, 18)
@@ -619,62 +610,6 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private var pluginsButton: some View {
-        Button {
-            store.openPlugins()
-        } label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(Theme.bgCard)
-                        .frame(width: 30, height: 30)
-                    Image(systemName: "puzzlepiece.extension")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.textLetter)
-                }
-                Text("Plugins")
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(Theme.textGhost)
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(hoverPlugins ? Theme.bgHoverRow : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hoverPlugins = $0 }
-    }
-
-    private var skillsButton: some View {
-        Button {
-            store.skillsOpen = true
-        } label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(Theme.bgCard)
-                        .frame(width: 30, height: 30)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.textLetter)
-                }
-                Text("Skills")
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(Theme.textGhost)
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(hoverSkills ? Theme.bgHoverRow : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hoverSkills = $0 }
     }
 
     private var userRow: some View {

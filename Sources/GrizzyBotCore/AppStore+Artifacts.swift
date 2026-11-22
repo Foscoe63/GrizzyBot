@@ -108,7 +108,6 @@ extension AppStore {
             saved = (try? artifactStore.link(id: id, skillId: skill.id)) ?? saved
         }
 
-        skillsOpen = false
         reloadArtifacts()
         activeArtifactId = saved.id
         artifactVersionIndex = nil

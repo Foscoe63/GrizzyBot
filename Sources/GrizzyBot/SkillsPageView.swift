@@ -1,7 +1,8 @@
 import GrizzyBotCore
 import SwiftUI
 
-struct SkillsOverlayView: View {
+/// Settings → Skills: packaged workflows.
+struct SkillsPageView: View {
     @Environment(AppStore.self) private var store
     @State private var search = ""
     @State private var creating = false
@@ -23,17 +24,9 @@ struct SkillsOverlayView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color(red: 4 / 255, green: 4 / 255, blue: 5 / 255).opacity(0.62)
-                .ignoresSafeArea()
-                .onTapGesture { store.skillsOpen = false }
-
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Skills")
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundStyle(Theme.textBrightAlt)
                         Text("\(store.skills.count) packaged workflows · load with read_skill")
                             .font(.system(size: 13.5))
                             .foregroundStyle(Theme.textPluginsSub)
@@ -47,22 +40,10 @@ struct SkillsOverlayView: View {
                             .foregroundStyle(Theme.textGhost)
                     }
                     .buttonStyle(.plain)
-                    Button {
-                        store.skillsOpen = false
-                    } label: {
-                        Text("✕")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 12)
                 }
-                .padding(.horizontal, 32)
-                .padding(.top, 28)
 
                 if creating {
                     createForm
-                        .padding(.horizontal, 32)
                         .padding(.top, 16)
                 } else {
                     TextField("Search skills", text: $search)
@@ -77,7 +58,6 @@ struct SkillsOverlayView: View {
                             RoundedRectangle(cornerRadius: 13, style: .continuous)
                                 .stroke(Theme.borderInputsDark, lineWidth: 1)
                         }
-                        .padding(.horizontal, 32)
                         .padding(.top, 16)
                 }
 
@@ -85,32 +65,18 @@ struct SkillsOverlayView: View {
                     Text(error)
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.redError)
-                        .padding(.horizontal, 32)
                         .padding(.top, 10)
                 }
 
-                ScrollView {
+                do {
                     LazyVStack(spacing: 4) {
                         reviewSection
                         ForEach(filtered) { skill in
                             skillRow(skill)
                         }
                     }
-                    .padding(.horizontal, 32)
-                    .padding(.vertical, 24)
+                    .padding(.vertical, 16)
                 }
-                .grizzyScroll()
-                .frame(maxHeight: .infinity)
-            }
-            .frame(width: 720, height: 640)
-            .background(Theme.bgPluginsCard)
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .accessibilityIdentifier(OverlayA11y.skills)
-            .overlay {
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .stroke(Theme.borderListRowsAlt, lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.55), radius: 40, y: 16)
         }
         .accessibilityIdentifier(OverlayA11y.skills)
         .accessibilityElement(children: .contain)

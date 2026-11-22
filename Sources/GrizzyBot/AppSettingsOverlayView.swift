@@ -205,6 +205,8 @@ struct AppSettingsOverlayView: View {
         case .knowledge: KnowledgeSettingsView()
         case .components: ComponentsSettingsView()
         case .folders: FoldersSettingsView()
+        case .plugins: PluginsPageView()
+        case .skills: SkillsPageView()
         }
     }
 
@@ -276,6 +278,8 @@ struct AppSettingsOverlayView: View {
         case .knowledge: return "books.vertical"
         case .components: return "puzzlepiece.extension"
         case .folders: return "folder"
+        case .plugins: return "puzzlepiece.extension"
+        case .skills: return "sparkles"
         }
     }
 

@@ -53,14 +53,6 @@ struct ShellView: View {
                 HostComputerPromptView()
                     .zIndex(10)
             }
-            if store.pluginsOpen {
-                PluginsOverlayView()
-                    .zIndex(20)
-            }
-            if store.skillsOpen {
-                SkillsOverlayView()
-                    .zIndex(21)
-            }
             if store.modelSettingsOpen {
                 ModelSettingsOverlayView()
                     .zIndex(25)
@@ -99,14 +91,6 @@ struct ShellView: View {
             }
             if store.modelSettingsOpen {
                 store.closeModelSettings()
-                return .handled
-            }
-            if store.pluginsOpen {
-                store.pluginsOpen = false
-                return .handled
-            }
-            if store.skillsOpen {
-                store.skillsOpen = false
                 return .handled
             }
             if store.mainView == .routines || store.mainView == .botChat {
