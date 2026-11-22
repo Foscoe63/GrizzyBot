@@ -57,6 +57,10 @@
 
 ## 🆕 What's new
 
+### 0.19.2 — Keep awake
+
+- **Keep computer awake.** *Settings → General → Background* has a toggle that holds the Mac awake while GrizzyBot is open; off follows your system settings.
+
 ### 0.19.1 — Plugins and Skills in Settings
 
 - **Plugins and Skills are Settings pages.** *Settings → Customize → Plugins* and *Skills* replace the sidebar buttons and their pop-out windows.

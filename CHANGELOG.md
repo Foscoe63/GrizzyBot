@@ -2,6 +2,10 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## 0.19.2 — Keep awake
+
+- **Keep computer awake.** A new toggle in *Settings → General → Background* stops your Mac from sleeping while GrizzyBot is open. Turn it off and your system Energy settings apply.
+
 ## 0.19.1 — Plugins and Skills in Settings
 
 - **Plugins and Skills moved into Settings.** They are now pages under *Settings → Customize* instead of sidebar buttons that opened pop-out windows. Everything on them works as before.
