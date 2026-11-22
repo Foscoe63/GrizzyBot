@@ -57,6 +57,10 @@
 
 ## 🆕 What's new
 
+### 0.19.3 — No more doubled questions
+
+- **Questions and answers show once.** A bot's multiple-choice question is one card, and picking an option sends one reply.
+
 ### 0.19.2 — Keep awake
 
 - **Keep computer awake.** *Settings → General → Background* has a toggle that holds the Mac awake while GrizzyBot is open; off follows your system settings.

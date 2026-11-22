@@ -2,6 +2,10 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## 0.19.3 — No more doubled questions
+
+- **Questions and answers no longer appear twice.** When a bot asks a question with choices, the card shows once, and tapping an option sends a single reply instead of two.
+
 ## 0.19.2 — Keep awake
 
 - **Keep computer awake.** A new toggle in *Settings → General → Background* stops your Mac from sleeping while GrizzyBot is open. Turn it off and your system Energy settings apply.
