@@ -117,6 +117,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var memoryRelevanceMode: MemoryRelevanceGateMode
     /// What a message sent mid-run does: steer the run, or wait for it.
     public var queueMode: QueueMode
+    /// Sidebar bot categories, in display order.
+    public var botCategories: [String] = ["Coding"]
     /// Run the loopback webhook receiver so outside systems can fire routines.
     public var webhooksEnabled: Bool
     public var webhookPort: Int
@@ -233,7 +235,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         case googleClientId, googleClientSecret, boxToken
         case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, impliedToolsGranted, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
         case themeAppearanceMode, activeThemePresetId, agentStallTimeoutMs
-        case privacyFilter, memoryRelevanceMode, queueMode, webhooksEnabled, webhookPort, telegram, localGateway, enableFolderWatchers
+        case privacyFilter, memoryRelevanceMode, queueMode, webhooksEnabled, webhookPort, telegram, localGateway, enableFolderWatchers, botCategories
         case controlPlaneEnabled, controlPlanePort, otlpEndpoint, teamLibraryURL, routerTimeoutSeconds, botColoredChats
         case companionEnabled, companionPort, companionAllowNetwork, routerModel
     }
@@ -266,6 +268,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         privacyFilter = try c.decodeIfPresent(PrivacyFilterSettings.self, forKey: .privacyFilter) ?? .default
         memoryRelevanceMode = try c.decodeIfPresent(MemoryRelevanceGateMode.self, forKey: .memoryRelevanceMode) ?? .heuristic
         queueMode = try c.decodeIfPresent(QueueMode.self, forKey: .queueMode) ?? .steer
+        botCategories = try c.decodeIfPresent([String].self, forKey: .botCategories) ?? ["Coding"]
         webhooksEnabled = try c.decodeIfPresent(Bool.self, forKey: .webhooksEnabled) ?? false
         webhookPort = try c.decodeIfPresent(Int.self, forKey: .webhookPort) ?? WebhookReceiver.defaultPort
         telegram = try c.decodeIfPresent(TelegramSettings.self, forKey: .telegram) ?? .default
@@ -310,6 +313,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encode(privacyFilter, forKey: .privacyFilter)
         try c.encode(memoryRelevanceMode, forKey: .memoryRelevanceMode)
         try c.encode(queueMode, forKey: .queueMode)
+        try c.encode(botCategories, forKey: .botCategories)
         try c.encode(webhooksEnabled, forKey: .webhooksEnabled)
         try c.encode(webhookPort, forKey: .webhookPort)
         try c.encode(telegram, forKey: .telegram)

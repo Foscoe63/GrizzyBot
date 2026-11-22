@@ -91,6 +91,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var dispatchable: Bool = true
     /// Allow/exclude selectors and lean turns for the tools shown to this bot's model. Nil offers every enabled tool.
     public var toolSelection: ToolSelection?
+    /// Sidebar category name; "" is uncategorized. Bots saved before categories existed decode into "Coding".
+    public var category: String = ""
 
     public init(
         id: String,
@@ -183,7 +185,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case pinned, hidden, unread, autoApprove, shellNetwork, reviewApprovals, speakReplies, notifications, chiefOfStaff, managedDepartments
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
         case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, desktopFolderIds, desktopFolderModes, desktopNoNetwork, goal, goalState
-        case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable, toolSelection
+        case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable, toolSelection, category
     }
 
     public init(from decoder: Decoder) throws {
@@ -238,6 +240,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         autoDispatch = try c.decodeIfPresent(Bool.self, forKey: .autoDispatch) ?? false
         dispatchable = try c.decodeIfPresent(Bool.self, forKey: .dispatchable) ?? true
         toolSelection = try c.decodeIfPresent(ToolSelection.self, forKey: .toolSelection)
+        category = try c.decodeIfPresent(String.self, forKey: .category) ?? (chiefOfStaff ? "" : "Coding")
     }
 }
 

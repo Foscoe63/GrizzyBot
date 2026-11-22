@@ -795,6 +795,38 @@ extension AppStore {
         save()
     }
 
+    @discardableResult
+    public func addBotCategory(_ name: String) -> Bool {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty, !appConfig.botCategories.contains(where: { $0.caseInsensitiveCompare(n) == .orderedSame }) else { return false }
+        appConfig.botCategories.append(n)
+        save()
+        return true
+    }
+
+    public func renameBotCategory(_ old: String, to name: String) {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty, let idx = appConfig.botCategories.firstIndex(of: old),
+              !appConfig.botCategories.contains(where: { $0 != old && $0.caseInsensitiveCompare(n) == .orderedSame }) else { return }
+        appConfig.botCategories[idx] = n
+        for i in bots.indices where bots[i].category == old { bots[i].category = n }
+        save()
+    }
+
+    /// Bots in the category go back to uncategorized.
+    public func deleteBotCategory(_ name: String) {
+        appConfig.botCategories.removeAll { $0 == name }
+        for i in bots.indices where bots[i].category == name { bots[i].category = "" }
+        save()
+    }
+
+    public func setBotCategory(_ botId: String, category: String) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }), !bots[idx].chiefOfStaff,
+              category.isEmpty || appConfig.botCategories.contains(category) else { return }
+        bots[idx].category = category
+        save()
+    }
+
     public func setBotHidden(_ botId: String, hidden: Bool) {
         guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
         bots[idx].hidden = hidden
