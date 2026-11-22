@@ -192,6 +192,26 @@ public enum Cron {
         return TimeZone(identifier: identifier) ?? .current
     }
 
+    /// The first time `cron` fires on `day` (a calendar day in the device's
+    /// calendar), at or after `notBefore`. Nil when it does not fire that day,
+    /// for an event-only routine, or when `day` has already passed. Lets a
+    /// calendar show every day a routine runs, not only its next run.
+    public static func firstRun(
+        on day: Date,
+        cron: String,
+        notBefore: Date,
+        timezone: String? = nil,
+        calendar: Calendar = .current
+    ) -> Date? {
+        let start = calendar.startOfDay(for: day)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return nil }
+        let floor = max(start, notBefore)
+        guard floor < end else { return nil }
+        // nextDate is strictly after `from`, so step back a second to allow a run exactly at `floor`.
+        let next = nextDate(cron, from: floor.addingTimeInterval(-1), timezone: timezone)
+        return next >= floor && next < end ? next : nil
+    }
+
     /// Next minute matching the cron expression, read in `timezone` (default: this
     /// Mac's). All five fields are honored — minute, hour, day-of-month, month,
     /// day-of-week. Day-of-month and day-of-week combine the way cron does: when
