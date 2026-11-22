@@ -26,7 +26,9 @@ if [[ -z "$TEAM" || "$TEAM" == "YOURTEAMID" ]]; then
 fi
 
 IDENTITY="${GRIZZYBOT_CODE_SIGN_IDENTITY:-Developer ID Application}"
-ENTITLEMENTS="${GRIZZYBOT_ENTITLEMENTS:-$ROOT/Sources/GrizzyBot/GrizzyBot.Release.entitlements}"
+# The Release entitlements claim iCloud, which needs a provisioning profile; without one the app will not launch.
+# Set GRIZZYBOT_ENTITLEMENTS to GrizzyBot.Release.entitlements only when an iCloud profile is embedded.
+ENTITLEMENTS="${GRIZZYBOT_ENTITLEMENTS:-$ROOT/Sources/GrizzyBot/GrizzyBot.NoiCloud.entitlements}"
 
 if [[ -d "$TARGET" && "$TARGET" == *.app ]]; then
   codesign --force --sign "$IDENTITY" --timestamp --options runtime \
