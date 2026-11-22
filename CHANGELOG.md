@@ -2,6 +2,10 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## 0.19.1 — Plugins and Skills in Settings
+
+- **Plugins and Skills moved into Settings.** They are now pages under *Settings → Customize* instead of sidebar buttons that opened pop-out windows. Everything on them works as before.
+
 ## 0.19.0 — Update check
 
 - **Check for updates.** *GrizzyBot → Check for Updates…* asks GitHub for the latest release and tells you whether you are up to date. If a newer version exists, *Open Release Page* takes you to it. GrizzyBot also checks quietly once at launch and only speaks up when there is something new. Nothing is downloaded or installed for you.

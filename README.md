@@ -57,6 +57,10 @@
 
 ## 🆕 What's new
 
+### 0.19.1 — Plugins and Skills in Settings
+
+- **Plugins and Skills are Settings pages.** *Settings → Customize → Plugins* and *Skills* replace the sidebar buttons and their pop-out windows.
+
 ### 0.19.0 — Update check
 
 - **Check for updates.** *GrizzyBot → Check for Updates…* (and a quiet check at launch) compares your version with the latest GitHub release and links to its page.
