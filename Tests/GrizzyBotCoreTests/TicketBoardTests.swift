@@ -50,3 +50,19 @@ import Testing
         #expect(managers.contains("update_bot") && managers.contains("get_bot_instructions"))
     }
 }
+
+@Suite @MainActor struct TicketScreenStoreTests {
+    @Test func ownerActionsRefreshAndPersist() throws {
+        let store = AppStore(dataDirectory: FileManager.default.temporaryDirectory.appendingPathComponent("ts-\(UUID().uuidString)"), delayScale: 0)
+        let before = store.ticketRevision
+        #expect(store.createTicket(title: "Ship it", detail: "", priority: .high, assigneeId: nil))
+        let t = try #require(store.tickets(includeClosed: true).first)
+        store.setTicketStatus(t.id, .inReview)
+        store.commentOnTicket(t.id, text: "looks good")
+        #expect(store.tickets(includeClosed: false).first?.status == .inReview)
+        #expect(store.tickets(includeClosed: true).first?.comments.first?.author == "owner")
+        #expect(store.ticketRevision > before)
+        store.deleteTicket(t.id)
+        #expect(store.tickets(includeClosed: true).isEmpty)
+    }
+}

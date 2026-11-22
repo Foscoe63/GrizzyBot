@@ -74,6 +74,8 @@ public final class AppStore {
     public var appSettingsOpen: Bool = false
     public var appSettingsSection: AppSettingsSection = .general
     public var mainView: ShellMainView = .chat
+    /// Bumped whenever the ticket board changes, so views that read it redraw.
+    public var ticketRevision = 0
     public var activeGroupId: String?
     public var composerDrafts: [String: String] = [:]
     public var runLog: [RunLogLine] = []

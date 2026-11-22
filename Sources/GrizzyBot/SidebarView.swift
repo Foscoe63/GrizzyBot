@@ -175,6 +175,10 @@ struct SidebarView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 2)
 
+            ticketsButton
+                .padding(.horizontal, 12)
+                .padding(.bottom, 2)
+
             botChatButton
                 .padding(.horizontal, 12)
                 .padding(.bottom, 2)
@@ -401,6 +405,32 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private var ticketsButton: some View {
+        Button {
+            store.showTicketsPage()
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle().fill(Theme.bgCard).frame(width: 30, height: 30)
+                    Image(systemName: "checklist")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(store.mainView == .tickets ? Theme.orange : Theme.textLetter)
+                }
+                Text("Tickets")
+                    .font(.system(size: 14.5))
+                    .foregroundStyle(Theme.textGhost)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(store.mainView == .tickets ? Theme.bgHoverRow : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("sidebar.tickets")
     }
 
     private var teamMapButton: some View {

@@ -127,6 +127,12 @@ public struct TicketBoardStore: Sendable {
         }
     }
 
+    public func delete(_ id: String) {
+        var data = load()
+        data.tickets.removeAll { $0.id == id }
+        save(data)
+    }
+
     /// Open tickets first (urgent first, then oldest), optionally for one owner or one status.
     public func board(assignee: String? = nil, status: TicketStatus? = nil, includeClosed: Bool = false) -> [Ticket] {
         load().tickets

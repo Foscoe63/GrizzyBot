@@ -1,7 +1,7 @@
 import Foundation
 
 extension AppStore {
-    private func botName(_ id: String) -> String { bots.first { $0.id == id }?.name ?? "someone" }
+    public func botName(_ id: String) -> String { id == "owner" ? "the owner" : (bots.first { $0.id == id }?.name ?? "someone") }
 
     /// The bot a name or id points at, exactly. Nil when it names nobody or more than one bot.
     private func ticketAssignee(_ raw: String) -> (bot: Bot?, error: String?) {
@@ -18,7 +18,58 @@ extension AppStore {
         send(botId: assignee, text: "Ticket #\(ticket.number) was assigned to you by \(botName(botId)): \(ticket.title)\n\(ticket.detail)\n\nRead it with ticket_get, do the work, comment your progress and set the status when you finish.")
     }
 
+    // MARK: The person's side of the board
+
+    public func showTicketsPage() {
+        mainView = .tickets
+        panel = nil
+        activeGroupId = nil
+    }
+
+    public func tickets(includeClosed: Bool) -> [Ticket] {
+        _ = ticketRevision
+        return ticketBoard.board(includeClosed: includeClosed)
+    }
+
+    public func ticketAssigneeName(_ ticket: Ticket) -> String? { ticket.assigneeBotId.map { botName($0) } }
+
+    @discardableResult
+    public func createTicket(title: String, detail: String, priority: TicketPriority, assigneeId: String?) -> Bool {
+        guard let ticket = ticketBoard.create(title: title, detail: detail, priority: priority, assignee: assigneeId, by: "owner") else { return false }
+        ticketRevision += 1
+        wakeAssignee(ticket, by: "owner")
+        return true
+    }
+
+    public func setTicketStatus(_ id: String, _ status: TicketStatus) {
+        ticketBoard.update(id) { $0.status = status }
+        ticketRevision += 1
+    }
+
+    public func setTicketPriority(_ id: String, _ priority: TicketPriority) {
+        ticketBoard.update(id) { $0.priority = priority }
+        ticketRevision += 1
+    }
+
+    public func assignTicket(_ id: String, to botId: String?) {
+        let before = ticketBoard.find(id)?.assigneeBotId
+        guard let updated = ticketBoard.update(id, { $0.assigneeBotId = botId }) else { return }
+        ticketRevision += 1
+        if botId != before { wakeAssignee(updated, by: "owner") }
+    }
+
+    public func commentOnTicket(_ id: String, text: String) {
+        ticketBoard.comment(id, author: "owner", text: text)
+        ticketRevision += 1
+    }
+
+    public func deleteTicket(_ id: String) {
+        ticketBoard.delete(id)
+        ticketRevision += 1
+    }
+
     func handleTicketTool(name: String, args: [String: JSONValue], botId: String) -> AgentToolCallResult {
+        defer { ticketRevision += 1 }
         let object = JSONValue.object(args)
         func s(_ key: String) -> String { object.stringValue(key) ?? "" }
         func line(_ t: Ticket) -> String { TicketBoardStore.line(t) { self.botName($0) } }
