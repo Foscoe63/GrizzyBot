@@ -33,6 +33,9 @@ extension AppStore {
             await privateDesktop.setMountsProvider { botId in
                 await MainActor.run { self?.privateDesktopFolders(botId: botId).mounts ?? [] }
             }
+            await privateDesktop.setOfflineProvider { botId in
+                await MainActor.run { self?.bots.first { $0.id == botId }?.desktopNoNetwork ?? false }
+            }
         }
     }
 
@@ -96,6 +99,23 @@ extension AppStore {
         guard bot.desktopFolderIds.contains(folder.id) else { return nil }
         if bot.desktopFolderModes[folder.id] == .copy { return DesktopFolderCopy.guestPath(name: copyName(for: folder, bot: bot)) }
         return privateDesktopFolders(botId: bot.id).mounts.first { $0.source == PodmanDesktopMounts.canonical(BotHomeStore.expandPath(folder.path)) }?.guestPath
+    }
+
+    /// Cuts the Private desktop off from every network, or restores it. A running desktop is removed and the next use
+    /// makes one with the new setting; the bot's workspace is kept.
+    public func setDesktopNoNetwork(botId: String, _ on: Bool) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }), bots[idx].desktopNoNetwork != on else { return }
+        bots[idx].desktopNoNetwork = on
+        bots[idx].updatedAt = .now
+        save()
+        recordAudit(
+            type: .configurationChanged, botId: botId, tool: "private_desktop_network",
+            reason: on ? "Cut the Private desktop off from the network." : "Gave the Private desktop its network connection back.",
+            allowed: true, forwarded: false
+        )
+        if bots[idx].computerMode == .privateDesktop, privateDesktopStates[botId]?.status?.container != .missing {
+            resetPrivateDesktop(botId: botId)
+        }
     }
 
     /// Why a granted folder cannot be shown in a desktop, or nil when it can.

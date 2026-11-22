@@ -256,4 +256,16 @@ struct PrivateDesktopStoreTests {
         #expect(store.setDesktopFolderMode(botId: botId, folderId: folder.id, mode: nil) == nil)
         #expect(store.bots.first { $0.id == botId }?.desktopFolderModes.isEmpty == true)
     }
+
+    @Test("No network is a per-bot switch that is audited")
+    func noNetworkSwitch() throws {
+        let (store, botId) = store(StatefulPodman(botId: "", container: .missing))
+        store.patchBot(botId, computerMode: .privateDesktop)
+        #expect(store.bots.first { $0.id == botId }?.desktopNoNetwork == false)
+        store.setDesktopNoNetwork(botId: botId, true)
+        #expect(store.bots.first { $0.id == botId }?.desktopNoNetwork == true)
+        #expect(store.auditEvents.contains { $0.tool == "private_desktop_network" && $0.reason.contains("off from the network") })
+        store.setDesktopNoNetwork(botId: botId, false)
+        #expect(store.bots.first { $0.id == botId }?.desktopNoNetwork == false)
+    }
 }

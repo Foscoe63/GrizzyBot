@@ -672,13 +672,23 @@ extension RightPanelView {
             .font(.system(size: 13))
             .foregroundStyle(Theme.textSecondary)
             .padding(.top, 16)
-        Text("Read-only: the desktop can read the files, not change them. Writable: it can create, change and delete files in the real folder. Work on a copy: it edits a copy kept in its own workspace and the original is never touched. The desktop also has a network connection, so anything it can read it could send out. Changing this restarts the desktop.")
+        Text("Read-only: the desktop can read the files, not change them. Writable: it can create, change and delete files in the real folder. Work on a copy: it edits a copy kept in its own workspace and the original is never touched. Unless you turn on No network below, the desktop has a network connection, so anything it can read it could send out. Changing this restarts the desktop.")
             .font(.system(size: 12.5))
             .foregroundStyle(Theme.textMuted)
             .padding(.top, 4)
         ForEach(store.grantedFolders(for: bot)) { folder in
             DesktopFolderRow(bot: bot, folder: folder)
         }
+        settingsToggle(
+            title: "No network",
+            subtitle: bot.desktopNoNetwork
+                ? "The desktop cannot reach the internet, your network or this Mac, so nothing in your folders can be sent out. Its browser will not load pages."
+                : "Cut the desktop off from every network. Recommended when it can see private folders. Its browser will not load pages.",
+            isOn: bot.desktopNoNetwork
+        ) {
+            store.setDesktopNoNetwork(botId: bot.id, !bot.desktopNoNetwork)
+        }
+        .padding(.top, 8)
     }
 
     func settingsToggle(

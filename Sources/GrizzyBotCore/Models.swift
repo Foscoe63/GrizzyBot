@@ -73,6 +73,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var desktopFolderIds: [String]
     /// How each shown folder reaches the Private desktop. A folder not listed is read-only.
     public var desktopFolderModes: [String: DesktopFolderMode] = [:]
+    /// The Private desktop has no network at all, so nothing it can read can be sent out.
+    public var desktopNoNetwork: Bool = false
     /// `BotAvatarShape` raw value; nil is the default circle.
     public var avatarShape: String?
     /// Bumped whenever an uploaded avatar image changes; nil means no image.
@@ -180,7 +182,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case threadId, preview, status, updatedAt, createdAt
         case pinned, hidden, unread, autoApprove, shellNetwork, reviewApprovals, speakReplies, notifications, chiefOfStaff, managedDepartments
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
-        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, desktopFolderIds, desktopFolderModes, goal, goalState
+        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, desktopFolderIds, desktopFolderModes, desktopNoNetwork, goal, goalState
         case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable, toolSelection
     }
 
@@ -225,6 +227,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         grantedFolderIds = try c.decodeIfPresent([String].self, forKey: .grantedFolderIds) ?? []
         desktopFolderIds = try c.decodeIfPresent([String].self, forKey: .desktopFolderIds) ?? []
         desktopFolderModes = try c.decodeIfPresent([String: DesktopFolderMode].self, forKey: .desktopFolderModes) ?? [:]
+        desktopNoNetwork = try c.decodeIfPresent(Bool.self, forKey: .desktopNoNetwork) ?? false
         goal = try c.decodeIfPresent(String.self, forKey: .goal)
         goalState = try c.decodeIfPresent(GoalState.self, forKey: .goalState)
         avatarShape = try c.decodeIfPresent(String.self, forKey: .avatarShape)

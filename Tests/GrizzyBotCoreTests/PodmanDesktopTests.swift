@@ -375,6 +375,29 @@ struct PrivateDesktopFolderTests {
         #expect(result.mounts[0].argument == "type=bind,source=\(t.dirs[0]),target=/mnt/mac/Taxes-2025,ro=true")
     }
 
+    @Test("an offline desktop has no network and publishes no port; an online one is unchanged")
+    func offlineArguments() throws {
+        let target = PodmanDesktopTarget(botId: "bot-1", root: root)
+        let on = PodmanDesktop.runArguments(target: target, viewerPassword: "pw")
+        let off = PodmanDesktop.runArguments(target: target, viewerPassword: "pw", offline: true)
+        #expect(!on.contains("--network"))
+        #expect(off.firstIndex(of: "--network").map { off[$0 + 1] } == "none")
+        #expect(!off.contains("-p"))
+        #expect(off.last == PodmanDesktopImage.reference)
+        #expect(off.contains("\(PodmanDesktop.networkLabel)=none") && on.contains("\(PodmanDesktop.networkLabel)=on"))
+    }
+
+    @Test("an existing container only counts as offline when it has no network and no ports")
+    func offlineInspect() throws {
+        func inspect(_ mode: String, _ ports: String) throws -> PodmanInspect {
+            try #require(PodmanInspect.parse(#"[{"HostConfig":{"NetworkMode":"\#(mode)","PortBindings":\#(ports)}}]"#))
+        }
+        #expect(try inspect("none", "{}").networkMatches(offline: true))
+        #expect(try !inspect("bridge", "{}").networkMatches(offline: true))
+        #expect(try !inspect("none", #"{"6901/tcp":[{"HostIp":"127.0.0.1","HostPort":"5000"}]}"#).networkMatches(offline: true))
+        #expect(try inspect("bridge", "{}").networkMatches(offline: false))
+    }
+
     @Test("a writable folder mounts read-write, a copy needs no mount, and the mode changes the digest")
     func writableAndCopy() throws {
         let t = try tree(["Work", "Notes"])

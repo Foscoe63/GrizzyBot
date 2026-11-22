@@ -183,6 +183,7 @@ extension PodmanDesktop {
     public static let layerLabel = "com.grizzybot.private-desktop.layer"
     public static let flagsLabel = "com.grizzybot.private-desktop.flags"
     public static let mountsLabel = "com.grizzybot.private-desktop.mounts"
+    public static let networkLabel = "com.grizzybot.private-desktop.network"
     /// Bump when `runArguments` changes what a desktop is made with, so an older one is recreated.
     public static let flagsVersion = "1"
 
@@ -201,6 +202,7 @@ extension PodmanDesktop {
         resources: PodmanDesktopResources = PodmanDesktopResources(),
         viewerPassword: String,
         mounts: [PodmanDesktopMount] = [],
+        offline: Bool = false,
         image: String = PodmanDesktopImage.reference
     ) -> [String] {
         let memory = "\(resources.memoryGb)g"
@@ -212,6 +214,7 @@ extension PodmanDesktop {
             (managedLabel, "1"), (botLabel, target.botDigest),
             (baseLabel, PodmanDesktopImage.baseDigest), (layerLabel, PodmanDesktopImage.layerVersion),
             (flagsLabel, flagsVersion), (mountsLabel, PodmanDesktopMounts.digest(mounts)),
+            (networkLabel, offline ? "none" : "on"),
         ] {
             args += ["--label", "\(key)=\(value)"]
         }
@@ -225,11 +228,13 @@ extension PodmanDesktop {
                  "--restart", "no",
                  "--mount", "type=bind,source=\(target.workspaceDir.path),target=\(guestWorkspace),relabel=private"]
         for mount in mounts { args += ["--mount", mount.argument] }
-        args += [
-                 "-e", "VNC_PW=\(viewerPassword)",
-                 // Loopback only, on a port the host picks: the viewer is never reachable from the network.
-                 "-p", "127.0.0.1::\(viewerPort)",
-                 image]
+        // No network at all: nothing inside can reach the internet, the LAN or the Mac. GrizzyBot drives the desktop with
+        // `podman exec`, which needs none, so only the loopback viewer port (unused by the app) goes.
+        if offline { args += ["--network", "none"] }
+        args += ["-e", "VNC_PW=\(viewerPassword)"]
+        // Loopback only, on a port the host picks: the viewer is never reachable from the network.
+        if !offline { args += ["-p", "127.0.0.1::\(viewerPort)"] }
+        args.append(image)
         return args
     }
 }
@@ -323,6 +328,14 @@ struct PodmanInspect: Decodable {
         return true
     }
 
+    /// Whether the container's network is what was asked for. An offline desktop must have none at all.
+    func networkMatches(offline: Bool) -> Bool {
+        guard offline else { return true }
+        guard let host = HostConfig else { return false }
+        let published = (host.PortBindings ?? [:]).values.compactMap { $0 }.flatMap { $0 }
+        return host.NetworkMode == "none" && published.isEmpty
+    }
+
     var hardened: Bool {
         guard let host = HostConfig else { return false }
         let bindings = (host.PortBindings ?? [:]).values.compactMap { $0 }.flatMap { $0 }
@@ -347,6 +360,7 @@ public actor PodmanDesktop {
     private let locate: @Sendable () -> String?
     private var inFlight: [String: Task<Void, Error>] = [:]
     private var mountsProvider: (@Sendable (String) async -> [PodmanDesktopMount])?
+    private var offlineProvider: (@Sendable (String) async -> Bool)?
 
     public init(
         root: URL,
@@ -371,6 +385,12 @@ public actor PodmanDesktop {
     public func setMountsProvider(_ provider: (@Sendable (String) async -> [PodmanDesktopMount])?) {
         mountsProvider = provider
     }
+
+    public func setOfflineProvider(_ provider: (@Sendable (String) async -> Bool)?) {
+        offlineProvider = provider
+    }
+
+    func offline(for botId: String) async -> Bool { await offlineProvider?(botId) ?? false }
 
     func mounts(for botId: String) async -> [PodmanDesktopMount] { await mountsProvider?(botId) ?? [] }
 
@@ -429,14 +449,16 @@ public actor PodmanDesktop {
         let podman = try await requirePodman()
         let target = target(for: botId)
         let mounts = await mounts(for: botId)
+        let offline = await offline(for: botId)
         if let existing = await inspectContainer(podman, target) {
             try verifyOwnedByUs(existing, target)
             // Folders granted or taken back since it was made: a container cannot change its mounts, so it is replaced.
             // Its workspace folder stays, so nothing the bot kept is lost.
-            if (existing.labels[Self.mountsLabel] ?? "none") != PodmanDesktopMounts.digest(mounts) {
+            let networkChanged = (existing.labels[Self.networkLabel] ?? "on") != (offline ? "none" : "on")
+            if networkChanged || (existing.labels[Self.mountsLabel] ?? "none") != PodmanDesktopMounts.digest(mounts) {
                 try await check(podman, ["rm", "--force", "--time", "5", target.containerName], timeout: 60)
             } else {
-                try verifyOurs(existing, target, mounts: mounts)
+                try verifyOurs(existing, target, mounts: mounts, offline: offline)
                 return
             }
         }
@@ -444,7 +466,7 @@ public actor PodmanDesktop {
                                                 attributes: [.posixPermissions: 0o700])
         // A private workspace even if the folder already existed with looser permissions.
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: target.workspaceDir.path)
-        let args = ["create"] + Self.runArguments(target: target, resources: resources, viewerPassword: Self.randomPassword(), mounts: mounts)
+        let args = ["create"] + Self.runArguments(target: target, resources: resources, viewerPassword: Self.randomPassword(), mounts: mounts, offline: offline)
         try await check(podman, args, timeout: 120)
     }
 
@@ -539,9 +561,10 @@ public actor PodmanDesktop {
         }
     }
 
-    private func verifyOurs(_ inspect: PodmanInspect, _ target: PodmanDesktopTarget, mounts: [PodmanDesktopMount]) throws {
+    private func verifyOurs(_ inspect: PodmanInspect, _ target: PodmanDesktopTarget, mounts: [PodmanDesktopMount], offline: Bool) throws {
         try verifyOwnedByUs(inspect, target)
-        guard inspect.hardened, inspect.mountsMatch(workspace: target.workspaceDir.path, mounts: mounts) else {
+        guard inspect.hardened, inspect.networkMatches(offline: offline),
+              inspect.mountsMatch(workspace: target.workspaceDir.path, mounts: mounts) else {
             throw PodmanDesktopError.unsafeExisting(target.containerName)
         }
     }
