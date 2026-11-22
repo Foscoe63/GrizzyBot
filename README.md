@@ -57,6 +57,20 @@
 
 ## 🆕 What's new
 
+### Unreleased — Private desktop, queued hand-offs, tickets and more
+
+- **Private desktop.** A bot's browser and desktop can run in its own hardened Podman container ([details](#private-desktop)), with Mac folders shown **read-only, writable or as a private copy**, and an optional **No network** switch.
+- **Teach by demonstration.** Do a task once in the in-app browser; GrizzyBot writes the steps down as a skill proposal you review ([details](#teach-by-demonstration)).
+- **Ticket board.** A shared board for you and your bots, with a Tickets page in the sidebar ([details](#ticket-board)).
+- **Review actions before asking.** A per-bot switch lets a small model check each action that would stop for approval against what you last wrote; unsure means it still asks.
+- **Hand-offs to a busy bot wait in line** (up to five) instead of failing, and the answer comes back in the sender's thread.
+- **A `/goal` that checks itself.** After each turn a judge says done, continue or wait; unfinished goals carry on by themselves up to a turn budget. `/goal pause`, `/goal resume`, `/goal status`.
+- **Questions with buttons.** `clarify` can offer 2–6 choices as a card.
+- **Routines that stay honest.** Catch-up runs know how late they are, an approval nobody answers for 30 minutes is skipped, and each bot sees its own standing routines in its prompt.
+- **Failures grouped, prompts fingerprinted.** Repeated failures are clustered by a cleaned-up signature (no raw output kept) and each run records a short fingerprint of its prompt and tools.
+- **MCP guard rails.** Replies over 16 MB are dropped; a server that fails three times in a row is flagged in Settings.
+- **Managing other bots safely.** `get_bot_instructions` / `update_bot`: version-checked, owner-started runs only, always approved by you.
+
 ### 0.13.0 — teams as files
 
 - **Review before you import.** Every way of opening a team (file, link, library, Open With) shows one review sheet: what it adds, which departments to install, and an accounts checklist.
@@ -99,7 +113,20 @@ Documents, code, diagrams, and small React apps a bot builds and you keep. Versi
 ### 🖥️ Computer & canvas
 This Mac preview, in-app browser, or a hardened **Private desktop** (Podman). Resizable side panel (monitor icon). Screenshot → targets → click / type / key. Shared canvases. Exclusive takeover for login.
 
-### 🛡️ Governance
+#### Teach by demonstration
+
+In the in-app browser, a bot's computer panel has **Teach by demonstration**. It hands you the browser and writes down what you click, type, choose from menus and navigate to. **Stop and save** (name the task) turns the steps into a skill **proposal**: it stays switched off until you approve it in Skills.
+
+- Typed text is folded into one step per field and kept as an example value; addresses lose their query string and fragment.
+- Password and code fields, and anything that looks like a secret, are never recorded. That step tells the bot to ask you or request a takeover.
+- The recorder runs in its own page world, so a web page cannot see it or fake steps, and it ignores everything while the bot (not you) holds the browser. At most 150 steps.
+- Not available on This Mac or in a Private desktop: GrizzyBot cannot see what you do there.
+
+After a takeover request, the bot's next turn is told what happened: the screen came back (take a fresh screenshot, don't ask again for that step) or the request was skipped.
+
+---
+
+## 🛡️ Governance
 CEL policy, scoped "always allow" rules, MCP grant matrix, knowledge ACLs, published components, owner/operator roles, searchable hash-chained audit. Outside content fenced as untrusted, secret leak scanning both ways, memory that a poisoned page can't rewrite.
 
 ### 🔌 Connect
@@ -215,6 +242,13 @@ Type `/help` for the list. Skills with the same name win.
 | `/rollback` | Undoes the newest checkpoint of file changes; `/rollback list`, `/rollback <id>` |
 | `/learn [topic]` | The bot proposes a reusable skill from the work in this chat. It is saved switched off; you review it in Skills |
 | `/recipe [name key=value …]` | Runs a saved, parameterised task; `/recipe` alone lists them. See [Recipes](#-recipes) |
+
+### 🧐 Approvals, goals and questions
+
+- **Review actions before asking.** A per-bot switch (bot settings). A small model sees only your latest words and the action (never what the bot read) and holds each kind of action — commands, file changes, anything sent outside — to its own question. A clear fit runs once; anything unsure, an error or a slow answer still shows the card. Approvals only you can give are never reviewed, and every review is in the audit log.
+- **A `/goal` that checks itself.** After each finished turn a judge says `done`, `continue` or `wait`. Unfinished goals send the bot back to work on their own (6 turns by default, then it pauses and says so); `wait` parks without spending turns; a message from you cancels what was lined up. A judge that fails three times pauses the goal. `/goal pause`, `/goal resume`, `/goal status`.
+- **Questions with buttons.** `clarify` takes `options` (2–6 choices) and shows a card of buttons; the pick comes back as the next message.
+- **Failures grouped.** Repeated tool and run failures are clustered by a cleaned-up signature (paths, numbers, ids, URLs and quoted values removed) in `failure-clusters.json`; raw output is never stored. Each run also records a short fingerprint of its system prompt and tool list so outcomes can be compared across edits.
 
 ### 🔁 Agent loop
 
@@ -439,6 +473,14 @@ Bots can pass work to each other three ways, from most manual to most automatic.
 
 **What it can't do.** Candidates must be visible, willing (*May be handed work automatically*), able to run a model, and not busy. Only the Chief of Staff dispatches. A bot only ever uses its own tools, MCP grants, and policy — a hand-off never widens them, and nothing lets a bot grant itself a tool. If the sending bot had read outside content, the receiving bot is told and starts untrusted, so memory writes still need your approval.
 
+**When the other bot is busy.** `message_bot` no longer refuses: the job waits in line (up to five per bot), starts when the bot is free, and its answer is posted back in the sender's thread. A bot that stays busy for 30 minutes fails the job and tells the sender. Lending tools needs the bot free.
+
+**Managing other bots.** With `spawn_bot`, a bot gets `get_bot_instructions` and `update_bot`. An edit must quote the version it read (a stale edit is refused), only works in a run you started that read no outside content, is limited to 20,000 characters, and always shows you the exact new text to approve; "Always allow" never covers it.
+
+### Ticket board
+
+The sidebar's **Tickets** page is one board for you and every bot: a column each for To do, In progress, In review and Blocked (Done and Won't do behind *Show done*), with priority, owner and comments. Add a ticket, change its status, priority or owner, comment or delete it from the page. Bots always have `board_tickets`, `ticket_get`, `ticket_create`, `ticket_update` and `ticket_comment`; assigning a ticket to a bot wakes it with the ticket. The board is one file, `tickets.json`, so a routine running with the app closed sees the same tickets.
+
 ---
 
 ## 🔒 Privacy & local gateway
@@ -460,6 +502,7 @@ Cron jobs that send a prompt to a bot.
 - **Team check-ins** (Chief of Staff settings): heartbeat routines at fixed local times, skipped for 20 minutes after you last wrote, with a snapshot of waiting approvals, recent routines and the roster.
 - Menu bar lists upcoming routines and runs a specific one, not “whatever is first.”
 - Due routines with no model skip honestly and still advance `nextRunAt`.
+- **Reliability.** A catch-up run is told how late it is ("Started 40m late") and that missed ticks were folded into it; an approval left unanswered on a routine run for 30 minutes is skipped so the bot is not stuck overnight; each bot's prompt lists its own standing routines (bounded, information only).
 
 **Schedule.** All five cron fields are honored — minute, hour, day-of-month, month, day-of-week — so *Weekdays* skips the weekend and *Every month* waits for the 1st. When both day fields are restricted, a day matching either one qualifies, the way cron does. Clock times are read in the routine's own zone, which is this Mac's unless one is set: the picker says 7:00 AM and the routine runs at 7:00 AM.
 
@@ -603,6 +646,8 @@ Guide: [composio.dev/auth/twitter](https://composio.dev/auth/twitter). Paste-tok
 stdio, streamable HTTP, or legacy SSE. Settings → Tools probes each server (`tools/list`) and shows connected / failed. The parent toggle is `mcp:<serverId>`; each advertised tool is `mcp:<serverId>/<toolName>`. Homebrew is prepended on PATH for GUI-launched stdio servers. Calls go through the grant matrix and action policy.
 
 Connected catalogs are **promoted to first-class tools** the model can call by name (`fast-filesystem__write_file`, `gmail__messages_list`). Names that are already namespaced stay as advertised. Duplicate `server__tool` aliases of a name already in the list are collapsed — one Settings row and one model function; enablement still keys off the real MCP name.
+
+**Guard rails.** A reply larger than 16 MB is dropped rather than filling memory. Each server's recent health (failures in a row, last reason) is kept in `mcp-health.json` and shown in Settings → Tools once it has failed three times running.
 
 `fast-filesystem-mcp` ignores positional directory args. Extra roots must be `--allow /path` (GrizzyBot rewrites leftover paths on save and launch). Those flags add to the server’s defaults (`$HOME`, `/tmp`, `/Users`, `/home`); they do not replace them. MCP roots are account-wide, not per-bot.
 
