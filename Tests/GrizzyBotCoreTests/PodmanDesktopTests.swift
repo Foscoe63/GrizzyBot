@@ -30,6 +30,7 @@ private final class FakePodman: @unchecked Sendable {
         }
     }
 
+    func call(_ verb: String) -> [String]? { lock.withLock { calls.first { $0.first == verb } } }
     func verbs() -> [String] { lock.withLock { calls.compactMap(\.first) } }
 }
 
@@ -47,7 +48,8 @@ private func inspectJSON(
     let target = PodmanDesktopTarget(botId: botId, root: root)
     let labels = labels ?? [
         PodmanDesktop.managedLabel: "1", PodmanDesktop.botLabel: target.botDigest,
-        PodmanDesktop.baseLabel: PodmanDesktopImage.baseDigest, PodmanDesktop.flagsLabel: PodmanDesktop.flagsVersion,
+        PodmanDesktop.baseLabel: PodmanDesktopImage.baseDigest, PodmanDesktop.layerLabel: PodmanDesktopImage.layerVersion,
+        PodmanDesktop.flagsLabel: PodmanDesktop.flagsVersion,
     ]
     let labelJSON = labels.map { "\"\($0.key)\":\"\($0.value)\"" }.joined(separator: ",")
     let capJSON = caps.map { "\"\($0)\"" }.joined(separator: ",")
@@ -96,7 +98,8 @@ struct PodmanDesktopTests {
         #expect(value(after: "-p") == "127.0.0.1::6901")
         #expect(!args.contains("--network") && !args.contains("--pid"))
         #expect(args.last == PodmanDesktopImage.reference)
-        #expect(PodmanDesktopImage.reference.contains("@sha256:"))
+        #expect(PodmanDesktopImage.reference.hasPrefix("localhost/"))
+        #expect(PodmanDesktopImage.base.contains("@sha256:"))
 
         let caps = args.enumerated().filter { $0.element == "--cap-add" }.map { args[$0.offset + 1] }
         #expect(!caps.contains("SYS_ADMIN") && !caps.contains("NET_ADMIN") && !caps.contains("ALL"))
@@ -196,7 +199,8 @@ struct PodmanDesktopTests {
         let target = PodmanDesktopTarget(botId: "b", root: root)
         fake.inspectJSON = inspectJSON(botId: "b", labels: [
             PodmanDesktop.managedLabel: "1", PodmanDesktop.botLabel: target.botDigest,
-            PodmanDesktop.baseLabel: PodmanDesktopImage.baseDigest, PodmanDesktop.flagsLabel: "0",
+            PodmanDesktop.baseLabel: PodmanDesktopImage.baseDigest, PodmanDesktop.layerLabel: PodmanDesktopImage.layerVersion,
+            PodmanDesktop.flagsLabel: "0",
         ])
         let status = await desktop(fake).status(botId: "b")
         #expect(!status.currentFlags)
@@ -273,8 +277,39 @@ struct PodmanDesktopTests {
     @Test("a failing podman command surfaces its message")
     func commandFailure() async {
         let fake = FakePodman()
+        fake.imagePresent = false
         fake.failing = ["pull"]
         await #expect(throws: PodmanDesktopError.commandFailed("pull", "boom")) { try await desktop(fake).prepareImage() }
+    }
+
+    @Test("prepareImage does nothing when the image exists")
+    func imageAlreadyBuilt() async throws {
+        let fake = FakePodman()
+        try await desktop(fake).prepareImage()
+        #expect(!fake.verbs().contains("pull") && !fake.verbs().contains("build"))
+    }
+
+    @Test("prepareImage pulls the pinned base, then builds the layer from a Containerfile")
+    func buildsImage() async throws {
+        let fake = FakePodman()
+        fake.imagePresent = false
+        try await desktop(fake).prepareImage()
+        #expect(fake.verbs().contains("pull") && fake.verbs().last == "build")
+        let build = try #require(fake.call("build"))
+        #expect(build.contains("--force-rm"))
+        #expect(build[build.firstIndex(of: "-t")! + 1] == PodmanDesktopImage.reference)
+        #expect(fake.call("pull") == ["pull", PodmanDesktopImage.base])
+    }
+
+    @Test("the Containerfile builds on the pinned base, adds only xdotool, and ends as root for the supervisor")
+    func containerfile() {
+        let text = PodmanDesktopImage.containerfile
+        #expect(text.hasPrefix("FROM \(PodmanDesktopImage.base)\n"))
+        #expect(text.contains("@sha256:"))
+        #expect(text.contains("apt-get install -y --no-install-recommends xdotool"))
+        #expect(text.contains("\(PodmanDesktop.layerLabel)=\"\(PodmanDesktopImage.layerVersion)\""))
+        #expect(text.components(separatedBy: "apt-get install").count == 2)
+        #expect(!text.contains("curl") && !text.contains("wget"))
     }
 
     @Test("lifecycle calls report podman missing and the machine down distinctly")

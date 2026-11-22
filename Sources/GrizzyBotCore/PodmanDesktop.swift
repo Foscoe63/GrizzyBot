@@ -126,9 +126,26 @@ public enum PodmanDesktopImage {
     public static let baseRepository = "docker.io/trycua/xfce-cua"
     public static let baseDigest = "sha256:274eb636f5cf3fc58f705916ee72b7a701270b3877369d08533a385c5325be9b"
     public static let base = "\(baseRepository)@\(baseDigest)"
-    /// The image containers run. Today the base itself; a GrizzyBot layer (input and screenshot tools) replaces it later,
-    /// and the container labels below tell an old desktop from a current one.
-    public static let reference = base
+    /// Bump when `containerfile` changes what the image holds, so desktops made from an older image are recreated.
+    public static let layerVersion = "1"
+    /// `localhost/` is explicit: Podman may otherwise resolve an unqualified tag on a public registry.
+    public static let reference = "localhost/grizzybot/private-desktop:layer-\(layerVersion)"
+
+    /// The GrizzyBot layer over the base. The base already has X (`DISPLAY=:1`, 1280x900) and `ffmpeg` with `x11grab`, which
+    /// takes the screenshots; this adds `xdotool` for the mouse and keyboard, and nothing else.
+    public static var containerfile: String {
+        """
+        FROM \(base)
+        USER root
+        RUN set -eux; \\
+            apt-get update; \\
+            apt-get install -y --no-install-recommends xdotool; \\
+            rm -rf /var/lib/apt/lists/*; \\
+            xdotool --version
+        LABEL \(PodmanDesktop.layerLabel)="\(layerVersion)"
+
+        """
+    }
 }
 
 // MARK: - Labels and ports
@@ -138,6 +155,7 @@ extension PodmanDesktop {
     public static let managedLabel = "com.grizzybot.private-desktop"
     public static let botLabel = "com.grizzybot.private-desktop.bot"
     public static let baseLabel = "com.grizzybot.private-desktop.base"
+    public static let layerLabel = "com.grizzybot.private-desktop.layer"
     public static let flagsLabel = "com.grizzybot.private-desktop.flags"
     /// Bump when `runArguments` changes what a desktop is made with, so an older one is recreated.
     public static let flagsVersion = "1"
@@ -164,7 +182,8 @@ extension PodmanDesktop {
                     "--hostname", target.containerName]
         for (key, value) in [
             (managedLabel, "1"), (botLabel, target.botDigest),
-            (baseLabel, PodmanDesktopImage.baseDigest), (flagsLabel, flagsVersion),
+            (baseLabel, PodmanDesktopImage.baseDigest), (layerLabel, PodmanDesktopImage.layerVersion),
+            (flagsLabel, flagsVersion),
         ] {
             args += ["--label", "\(key)=\(value)"]
         }
@@ -207,7 +226,7 @@ public struct PodmanDesktopStatus: Sendable, Equatable {
     public var problem: String? {
         if podmanPath == nil { return PodmanDesktopError.podmanNotFound.errorDescription }
         if !machineRunning { return PodmanDesktopError.machineNotRunning.errorDescription }
-        if !imagePresent { return "The desktop image has not been downloaded yet." }
+        if !imagePresent { return "The desktop image has not been built yet." }
         guard container != .missing else { return nil }
         if !managed { return "A container with this name exists but GrizzyBot did not create it." }
         if !currentFlags { return "This desktop was made by an older GrizzyBot. Remove it and it will be recreated." }
@@ -304,22 +323,37 @@ public actor PodmanDesktop {
         // `podman info` fails on macOS while the machine is stopped, so it doubles as the liveness check.
         guard let info = try? await runner(podman, ["info", "--format", "{{.Host.Arch}}"], 20), info.succeeded else { return status }
         status.machineRunning = true
-        status.imagePresent = (try? await runner(podman, ["image", "exists", PodmanDesktopImage.reference], 20))?.succeeded == true
+        status.imagePresent = await imageExists(podman, PodmanDesktopImage.reference)
 
         guard let inspect = await inspectContainer(podman, target(for: botId)) else { return status }
         status.container = inspect.running ? .running : .stopped
         status.managed = inspect.labels[Self.managedLabel] == "1"
         status.currentFlags = inspect.labels[Self.flagsLabel] == Self.flagsVersion
             && inspect.labels[Self.baseLabel] == PodmanDesktopImage.baseDigest
+            && inspect.labels[Self.layerLabel] == PodmanDesktopImage.layerVersion
         status.hardened = inspect.hardened
         status.viewerHostPort = inspect.viewerHostPort
         return status
     }
 
-    /// Downloads the pinned base image. Large (over 1 GB), so the caller shows progress rather than blocking a turn.
+    /// Makes the desktop image: downloads the pinned base (over 1 GB) and builds GrizzyBot's layer over it. Does nothing when
+    /// the image is already there. Slow, so the caller shows progress rather than blocking a turn.
     public func prepareImage() async throws {
         let podman = try await requirePodman()
-        try await check(podman, ["pull", PodmanDesktopImage.reference], timeout: 15 * 60)
+        if await imageExists(podman, PodmanDesktopImage.reference) { return }
+        if !(await imageExists(podman, PodmanDesktopImage.base)) {
+            try await check(podman, ["pull", PodmanDesktopImage.base], timeout: 15 * 60)
+        }
+        // The build context is a private temp folder holding only the Containerfile.
+        let context = FileManager.default.temporaryDirectory.appendingPathComponent("grizzybot-image-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: context, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: context) }
+        let file = context.appendingPathComponent("Containerfile")
+        try Data(PodmanDesktopImage.containerfile.utf8).write(to: file, options: .atomic)
+        // --force-rm: a failed step must not leave its container behind.
+        try await check(podman, ["build", "--force-rm", "-t", PodmanDesktopImage.reference, "-f", file.path, context.path],
+                        timeout: 15 * 60)
     }
 
     /// Makes the bot's desktop and leaves it stopped. Does nothing when a current one exists.
@@ -381,6 +415,10 @@ public actor PodmanDesktop {
             throw PodmanDesktopError.machineNotRunning
         }
         return podman
+    }
+
+    private func imageExists(_ podman: String, _ reference: String) async -> Bool {
+        (try? await runner(podman, ["image", "exists", reference], 20))?.succeeded == true
     }
 
     private func inspectContainer(_ podman: String, _ target: PodmanDesktopTarget) async -> PodmanInspect? {
