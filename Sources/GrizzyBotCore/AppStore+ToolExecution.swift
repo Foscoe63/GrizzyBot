@@ -1789,6 +1789,9 @@ extension AppStore {
             if let blocked = computerBlockedIfHeadless(bot: bot) { return blocked }
             _ = await prepareComputerSurface(botId: botId, bot: bot)
             guard let snap = await computerRuntime?.snapshot(botId: botId) else {
+                if let why = await computerRuntime?.unavailableReason(botId: botId) {
+                    return AgentToolCallResult(output: why)
+                }
                 return AgentToolCallResult(output: "No computer surface is attached. Enable Screen Recording (This Mac) or open the in-app browser.")
             }
             if ScreenshotQuality.isBlankJPEG(snap.jpeg) {

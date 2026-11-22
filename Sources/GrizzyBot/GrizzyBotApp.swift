@@ -83,7 +83,7 @@ struct GrizzyBotApp: App {
             return AppStore(dataDirectory: dir, delayScale: 0.01)
         }
         let store = AppStore(dataDirectory: UITestLaunch.dataDirectory())
-        store.computerRuntime = AppComputerRuntime.shared
+        store.installComputerRuntime(primary: AppComputerRuntime.shared)
         store.openExternalURL = { url in
             // Always hop async so Connect never opens a browser inside a SwiftUI update.
             DispatchQueue.main.async {

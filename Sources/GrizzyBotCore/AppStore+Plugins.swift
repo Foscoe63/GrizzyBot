@@ -916,6 +916,13 @@ extension AppStore {
         }
     }
 
+    /// Installs `primary` (the app's browser and This Mac runtime) together with the Private desktop's, so each bot reaches
+    /// the one its mode names. Desktop files live under this account's data folder, apart from every bot's own files.
+    public func installComputerRuntime(primary: any ComputerRuntime) {
+        let desktop = PodmanDesktop(root: globalRoot)
+        computerRuntime = RoutingComputerRuntime(primary: primary, privateDesktop: ContainerComputerRuntime(desktop: desktop))
+    }
+
     private func resolvedComputerMode(for bot: Bot) -> ComputerMode {
         if bot.computerMode != .auto { return bot.computerMode }
         if appConfig.defaultComputerMode != .auto { return appConfig.defaultComputerMode }
@@ -941,6 +948,7 @@ extension AppStore {
     func prepareComputerSurface(botId: String, bot: Bot) async -> URL {
         let home = (try? botHome.homeURL(botId: botId)) ?? userPersistence.root
         let mode = resolvedComputerMode(for: bot)
+        await computerRuntime?.setMode(botId: botId, mode: mode)
         await computerRuntime?.setSession(
             botId: botId,
             thisMac: mode == .thisMac,

@@ -8,16 +8,18 @@ import Foundation
 // MARK: - Command runner
 
 public struct PodmanCommandResult: Sendable, Equatable {
-    public var stdout: String
+    /// The raw bytes, so a screenshot survives; `stdout` is the same output as text.
+    public var stdoutData: Data
     public var stderr: String
     public var exitCode: Int32
 
-    public init(stdout: String = "", stderr: String = "", exitCode: Int32 = 0) {
-        self.stdout = stdout
+    public init(stdout: String = "", stdoutData: Data? = nil, stderr: String = "", exitCode: Int32 = 0) {
+        self.stdoutData = stdoutData ?? Data(stdout.utf8)
         self.stderr = stderr
         self.exitCode = exitCode
     }
 
+    public var stdout: String { String(decoding: stdoutData, as: UTF8.self) }
     public var succeeded: Bool { exitCode == 0 }
 }
 
@@ -53,7 +55,7 @@ public enum PodmanProcess {
             let stdout = await outTask.value, stderr = await errTask.value
             if timedOut { throw PodmanDesktopError.timedOut(args.first ?? "command") }
             return PodmanCommandResult(
-                stdout: String(decoding: stdout, as: UTF8.self),
+                stdoutData: stdout,
                 stderr: String(decoding: stderr, as: UTF8.self),
                 exitCode: process.terminationStatus
             )
@@ -71,6 +73,8 @@ public enum PodmanDesktopError: LocalizedError, Equatable {
     case commandFailed(String, String)
     case notOurs(String)
     case unsafeExisting(String)
+    case imageNotBuilt
+    case displayNotReady
 
     public var errorDescription: String? {
         switch self {
@@ -88,6 +92,10 @@ public enum PodmanDesktopError: LocalizedError, Equatable {
             return "The container \(name) was not created by GrizzyBot, so it was left alone."
         case .unsafeExisting(let name):
             return "The Private desktop \(name) is missing safety limits. Remove it and create it again."
+        case .imageNotBuilt:
+            return "The Private desktop image has not been built yet. Build it from Settings → Computer."
+        case .displayNotReady:
+            return "The Private desktop started but its screen did not come up in time."
         }
     }
 }
@@ -160,6 +168,7 @@ extension PodmanDesktop {
     /// Bump when `runArguments` changes what a desktop is made with, so an older one is recreated.
     public static let flagsVersion = "1"
 
+    public static let display = ":1"
     public static let guestWorkspace = "/home/cua/workspace"
     public static let viewerPort = 6901
     public static let pidsLimit = 4096
@@ -396,6 +405,29 @@ public actor PodmanDesktop {
         guard let existing = await inspectContainer(podman, target) else { return }
         try verifyOwnedByUs(existing, target)
         try await check(podman, ["rm", "--force", "--time", "5", target.containerName], timeout: 60)
+    }
+
+    /// Runs a command inside the bot's desktop as the `cua` user on its X display. Arguments go straight to the program,
+    /// never through a shell, so text from a bot cannot become a command.
+    public func exec(botId: String, _ command: [String], detached: Bool = false, timeout: TimeInterval = 30) async throws
+        -> PodmanCommandResult {
+        guard let podman = locate() else { throw PodmanDesktopError.podmanNotFound }
+        let name = target(for: botId).containerName
+        return try await runner(podman, Self.execArguments(containerName: name, command: command, detached: detached), timeout)
+    }
+
+    /// Waits for the desktop's X server to answer. A started container takes a few seconds before it does.
+    public func waitUntilDisplayReady(botId: String, attempts: Int = 30, interval: TimeInterval = 1) async throws {
+        for attempt in 0..<max(1, attempts) {
+            if let result = try? await exec(botId: botId, ["xdotool", "getdisplaygeometry"], timeout: 10), result.succeeded { return }
+            if attempt < attempts - 1, interval > 0 { try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000)) }
+        }
+        throw PodmanDesktopError.displayNotReady
+    }
+
+    /// `podman exec` arguments. The container's own X display, and the unprivileged user the desktop runs as.
+    public static func execArguments(containerName: String, command: [String], detached: Bool = false) -> [String] {
+        ["exec"] + (detached ? ["-d"] : []) + ["-u", "1000", "-e", "DISPLAY=\(display)", containerName] + command
     }
 
     // MARK: Internals

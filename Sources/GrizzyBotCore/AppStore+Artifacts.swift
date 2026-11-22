@@ -433,6 +433,7 @@ extension AppStore {
             if let home = try? self.botHome.homeURL(botId: botId) {
                 let bot = self.bots.first(where: { $0.id == botId })
                 let mode = (bot?.computerMode == .auto ? self.appConfig.defaultComputerMode : bot?.computerMode) ?? .auto
+                await self.computerRuntime?.setMode(botId: botId, mode: mode)
                 await self.computerRuntime?.setSession(
                     botId: botId,
                     thisMac: mode == .thisMac,
