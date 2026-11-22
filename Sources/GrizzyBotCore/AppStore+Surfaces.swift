@@ -72,7 +72,9 @@ extension AppStore {
 
     func saveAppConfig(_ config: AppConfig, source: String) {
         recordConfigChange(old: appConfig, new: config, source: source)
+        let leavingPrivateDesktop = appConfig.defaultComputerMode == .privateDesktop && config.defaultComputerMode != .privateDesktop
         appConfig = config
+        defer { if leavingPrivateDesktop { stopUnusedPrivateDesktops() } }
         if var session {
             if !config.profileName.isEmpty { session.name = config.profileName }
             if !config.profileEmail.isEmpty { session.email = config.profileEmail }
@@ -844,6 +846,7 @@ extension AppStore {
         if let shellNetwork { bots[idx].shellNetwork = shellNetwork }
         if let speakReplies { bots[idx].speakReplies = speakReplies }
         if let notifications { bots[idx].notifications = notifications }
+        let leavingPrivateDesktop = computerMode != nil && bots[idx].computerMode == .privateDesktop && computerMode != .privateDesktop
         if let computerMode { bots[idx].computerMode = computerMode }
         if let modelProvider { bots[idx].modelProvider = modelProvider }
         if let modelId { bots[idx].modelId = modelId }
@@ -856,6 +859,7 @@ extension AppStore {
         if let enabledComponents { bots[idx].enabledComponents = enabledComponents }
         bots[idx].updatedAt = .now
         save()
+        if leavingPrivateDesktop { stopUnusedPrivateDesktops() }
     }
 
     public func setBotModel(_ botId: String, choice: BotModelChoice) {

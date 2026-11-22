@@ -21,6 +21,8 @@ extension RightPanelView {
                         .foregroundStyle(Theme.textMuted)
                         .multilineTextAlignment(.center)
                         .padding(16)
+                } else if let bot, store.isPrivateDesktop(botId: bot.id) {
+                    PrivateDesktopScreen(botId: bot.id, fill: true)
                 } else if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
                     if isResizing {
                         Theme.bgScreen
@@ -51,6 +53,11 @@ extension RightPanelView {
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .onTapGesture { store.openComputerOverlay() }
 
+            if let bot, store.isPrivateDesktop(botId: bot.id) {
+                PrivateDesktopControls(botId: bot.id)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 12)
+            } else {
             VStack(alignment: .leading, spacing: 10) {
                 Text(statusCaption)
                     .font(.system(size: 13.5))
@@ -71,6 +78,7 @@ extension RightPanelView {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 12)
+            }
 
             if let bot, store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
                 Text("Preview only — the bot clicks your real Mac. Take control to type passwords yourself.")

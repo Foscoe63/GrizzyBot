@@ -350,7 +350,9 @@ private struct ComputerFullWindowOverlay: View {
             ZStack {
                 Theme.bgScreen
                 if let bot {
-                    if store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+                    if store.isPrivateDesktop(botId: bot.id) {
+                        PrivateDesktopScreen(botId: bot.id, fill: false)
+                    } else if store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
                         ThisMacComputerSurface(
                             botId: bot.id,
                             botName: bot.name,

@@ -920,10 +920,11 @@ extension AppStore {
     /// the one its mode names. Desktop files live under this account's data folder, apart from every bot's own files.
     public func installComputerRuntime(primary: any ComputerRuntime) {
         let desktop = PodmanDesktop(root: globalRoot)
+        privateDesktop = desktop
         computerRuntime = RoutingComputerRuntime(primary: primary, privateDesktop: ContainerComputerRuntime(desktop: desktop))
     }
 
-    private func resolvedComputerMode(for bot: Bot) -> ComputerMode {
+    func resolvedComputerMode(for bot: Bot) -> ComputerMode {
         if bot.computerMode != .auto { return bot.computerMode }
         if appConfig.defaultComputerMode != .auto { return appConfig.defaultComputerMode }
         return deployment.normalizedHost == .thisMac ? .thisMac : .inAppBrowser

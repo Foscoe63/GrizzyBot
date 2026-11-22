@@ -253,7 +253,7 @@ extension AppSettingsOverlayView {
             subtitle: "Used when a bot’s computer mode is Auto."
         ) {
             GrizzySelect(options: ComputerMode.selectableCases, selection: $computerMode)
-            Text("Auto follows your host choice (in-app browser or This Mac). In-app browser keeps cookies per bot.")
+            Text("Auto follows your host choice (in-app browser or This Mac); it never picks Private desktop. In-app browser keeps cookies per bot.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.top, 10)
@@ -263,6 +263,36 @@ extension AppSettingsOverlayView {
             config.defaultComputerMode = mode
             store.saveAppConfig(config)
         }
+
+        settingsCard(
+            title: "Private desktop",
+            subtitle: "A Linux desktop in a Podman container, one per bot. It cannot see your Mac’s files; only the bot’s own workspace folder is shared."
+        ) {
+            let environment = store.privateDesktopEnvironment
+            Text(environment?.podmanPath != nil ? "Podman is installed" : "Podman is not installed")
+                .font(.system(size: 13.5))
+                .foregroundStyle(environment?.podmanPath != nil ? Theme.green : Theme.orange)
+            if environment?.podmanPath != nil {
+                Text(environment?.machineRunning == true ? "Podman is running" : "Podman is not running. Start it with `podman machine start`.")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(environment?.machineRunning == true ? Theme.green : Theme.orange)
+                    .padding(.top, 6)
+            }
+            if environment?.machineRunning == true {
+                Text(environment?.imagePresent == true ? "The desktop image is ready" : "The desktop image has not been built yet")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(environment?.imagePresent == true ? Theme.green : Theme.orange)
+                    .padding(.top, 6)
+                if environment?.imagePresent != true {
+                    PrivateDesktopImageButton().padding(.top, 12)
+                }
+            } else if environment == nil {
+                Text("Checking Podman…")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .task { await store.refreshPrivateDesktopEnvironment() }
 
         settingsCard(
             title: "This Mac permissions",

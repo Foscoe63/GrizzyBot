@@ -325,7 +325,8 @@ public actor PodmanDesktop {
 
     public func target(for botId: String) -> PodmanDesktopTarget { PodmanDesktopTarget(botId: botId, root: root) }
 
-    public func status(botId: String) async -> PodmanDesktopStatus {
+    /// Podman and the image, which no one bot owns: what Settings shows before any desktop exists.
+    public func environment() async -> PodmanDesktopStatus {
         guard let podman = locate() else { return .unavailable }
         var status = PodmanDesktopStatus.unavailable
         status.podmanPath = podman
@@ -333,6 +334,13 @@ public actor PodmanDesktop {
         guard let info = try? await runner(podman, ["info", "--format", "{{.Host.Arch}}"], 20), info.succeeded else { return status }
         status.machineRunning = true
         status.imagePresent = await imageExists(podman, PodmanDesktopImage.reference)
+        return status
+    }
+
+    public func status(botId: String) async -> PodmanDesktopStatus {
+        var status = await environment()
+        guard status.podmanPath != nil, status.machineRunning else { return status }
+        guard let podman = locate() else { return status }
 
         guard let inspect = await inspectContainer(podman, target(for: botId)) else { return status }
         status.container = inspect.running ? .running : .stopped
@@ -414,6 +422,13 @@ public actor PodmanDesktop {
         guard let podman = locate() else { throw PodmanDesktopError.podmanNotFound }
         let name = target(for: botId).containerName
         return try await runner(podman, Self.execArguments(containerName: name, command: command, detached: detached), timeout)
+    }
+
+    /// The screen as a JPEG, or nil. Never starts the desktop.
+    public func screenshot(botId: String) async -> Data? {
+        guard let result = try? await exec(botId: botId, XdotoolCommands.screenshot, timeout: 20),
+              result.succeeded, !result.stdoutData.isEmpty else { return nil }
+        return result.stdoutData
     }
 
     /// Waits for the desktop's X server to answer. A started container takes a few seconds before it does.

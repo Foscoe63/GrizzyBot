@@ -300,6 +300,13 @@ public final class AppStore {
     var providerCredentials: [String: ProviderCredential] = [:]
     public var connectionSecrets: [String: String] = [:]
     public var computerRuntime: (any ComputerRuntime)?
+    /// The Podman side of the Private desktop; set by `installComputerRuntime`.
+    @ObservationIgnored public var privateDesktop: PodmanDesktop?
+    public var privateDesktopStates: [String: PrivateDesktopBotState] = [:]
+    /// Podman, its machine and the image, as last looked at. Nil until Settings or a panel has asked.
+    public var privateDesktopEnvironment: PodmanDesktopStatus?
+    public var privateDesktopImageWorking = false
+    public var privateDesktopImageError: String?
     public var pluginClient: any PluginConnecting = PluginClient.shared
     public var composioClient: (any ComposioConnecting)?
     public var googleOAuthClient: (any GoogleOAuthConnecting)?

@@ -323,13 +323,13 @@ struct PodmanDesktopTests {
 
 @Suite("Private desktop mode")
 struct PrivateDesktopModeTests {
-    @Test("the new mode round-trips and is not offered until something can drive it")
+    @Test("the new mode round-trips and is offered in Settings")
     func mode() throws {
         #expect(ComputerMode.parse("private-desktop") == .privateDesktop)
         #expect(ComputerMode.privateDesktop.label == "Private desktop")
         #expect(String(data: try JSONEncoder().encode(ComputerMode.privateDesktop), encoding: .utf8) == #""private-desktop""#)
         #expect(try JSONDecoder().decode(ComputerMode.self, from: Data(#""private-desktop""#.utf8)) == .privateDesktop)
-        #expect(!ComputerMode.selectableCases.contains(.privateDesktop))
+        #expect(ComputerMode.selectableCases.contains(.privateDesktop))
         // Saved bots from before this mode keep meaning what they meant.
         #expect(ComputerMode.parse("vm") == .inAppBrowser)
     }

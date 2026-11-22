@@ -6,17 +6,16 @@ public enum ComputerMode: String, Sendable, CaseIterable, Identifiable, CustomSt
     case auto
     case inAppBrowser = "in-app-browser"
     case thisMac = "local"
-    /// A bot-owned Linux desktop in a Podman container. Not yet offered in Settings: see `selectableCases`.
+    /// A bot-owned Linux desktop in a Podman container.
     case privateDesktop = "private-desktop"
     case off
 
     public var id: String { rawValue }
     public var description: String { label }
 
-    /// Modes shown in Settings and bot panels. `.privateDesktop` joins once a runtime can drive it, so a person
-    /// can never pick a mode that silently does nothing.
+    /// Modes shown in Settings and bot panels.
     public static var selectableCases: [ComputerMode] {
-        [.auto, .inAppBrowser, .thisMac, .off]
+        [.auto, .inAppBrowser, .thisMac, .privateDesktop, .off]
     }
 
     public var label: String {
