@@ -7,6 +7,7 @@ struct TicketBoardView: View {
     @State private var showClosed = false
     @State private var selectedId: String?
     @State private var composing = false
+    @State private var dropTarget: TicketStatus?
 
     private var tickets: [Ticket] { store.tickets(includeClosed: true) }
     private var columns: [TicketStatus] {
@@ -86,6 +87,21 @@ struct TicketBoardView: View {
             }
         }
         .frame(width: 240, alignment: .topLeading)
+        // The whole column accepts a card, empty or not.
+        .frame(minHeight: 320, alignment: .top)
+        .padding(6)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(dropTarget == status ? Theme.orange.opacity(0.10) : Color.clear))
+        .dropDestination(for: String.self) { ids, _ in
+            var moved = false
+            for id in ids where tickets.contains(where: { $0.id == id && $0.status != status }) {
+                store.setTicketStatus(id, status)
+                moved = true
+            }
+            return moved
+        } isTargeted: { over in
+            if over { dropTarget = status } else if dropTarget == status { dropTarget = nil }
+        }
     }
 
     private func card(_ ticket: Ticket) -> some View {
@@ -115,6 +131,7 @@ struct TicketBoardView: View {
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.bgCard))
         }
         .buttonStyle(.plain)
+        .draggable(ticket.id)
     }
 }
 
