@@ -540,6 +540,22 @@ public enum AgentLoop {
             "You are a fully capable agent: think, use tools, and keep going until the user's request is done or you must wait for them."
         }
 
+        /// Tells a bot it can operate GrizzyBot itself, so "add a routine", "make a ticket" or "what teams are
+        /// there" go to the app's own tools instead of a script. Lists only tools the bot actually has.
+        public static func appControl(tools: [ChatTool]) -> String? {
+            let have = Set(tools.map(\.function.name))
+            let lines: [(String, String)] = [
+                ("routine_manage", "Routines page: create, list, pause or delete scheduled routines"),
+                ("team_map", "Team map: list teams and their bots, create/rename/delete teams, move bots, set team instructions"),
+                ("board_tickets", "Ticket board: list tickets (also ticket_get, ticket_create, ticket_update, ticket_comment)"),
+                ("config_manage", "App settings: list, read or change safe settings"),
+                ("get_bot_instructions", "Other bots: read and update their instructions (update_bot)"),
+            ].filter { have.contains($0.0) }
+            guard !lines.isEmpty else { return nil }
+            return "You can operate GrizzyBot itself. When the person asks about or wants to change something in the app, use these tools — never a shell script, crontab or a file that only imitates it. Changes that matter stop on an approval card; say so and wait.\n"
+                + lines.map { "- \($0.0): \($0.1)" }.joined(separator: "\n")
+        }
+
         public static func honesty() -> String {
             "Be concise. Prefer tools over guessing. Never claim you wrote a file, saved a canvas, ran a command, searched, signed in, or called a plugin unless a tool result says so."
         }
@@ -695,6 +711,7 @@ public enum AgentLoop {
             utcDateLine(now: now),
             PromptSection.agency(),
             PromptSection.honesty(),
+            PromptSection.appControl(tools: request.tools + request.deferredTools) ?? "",
             PromptSection.sandbox(),
             PromptSection.memory(),
             PromptSection.untrustedContent(),

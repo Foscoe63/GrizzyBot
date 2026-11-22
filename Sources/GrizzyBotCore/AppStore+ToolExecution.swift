@@ -1073,6 +1073,9 @@ extension AppStore {
         case "config_manage":
             return configManage(bot: bot, argumentsJSON: argumentsJSON, approved: approved, taint: taint)
 
+        case "team_map":
+            return teamMapManage(bot: bot, argumentsJSON: argumentsJSON, approved: approved, taint: taint)
+
         case "workflow_run":
             return await workflowRun(bot: bot, argumentsJSON: argumentsJSON)
 

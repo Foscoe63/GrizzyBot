@@ -342,6 +342,7 @@ public enum AgentToolCatalog {
         .init(id: "skill_propose", label: "Propose skill", subtitle: "Draft a reusable skill for you to review"),
         .init(id: "routine_manage", label: "Routines", subtitle: "Create, list, pause, or delete this bot's scheduled routines"),
         .init(id: "config_manage", label: "App settings", subtitle: "Change a few safe app settings for you, after you approve each change"),
+        .init(id: "team_map", label: "Team map", subtitle: "See and organize departments and which bot sits in each, after you approve changes"),
         .init(id: "workflow_run", label: "Workflows", subtitle: "Run saved multi-step workflows"),
         .init(id: "generate_image", label: "Make images", subtitle: "Create pictures on this Mac with Apple Image Playground"),
         .init(id: "search_knowledge", label: "Search knowledge", subtitle: "Search granted knowledge sources"),
@@ -966,6 +967,18 @@ extension AgentToolCatalog {
                 "key": stringProp("Setting key (get, set)"),
                 "value": stringProp("New value (set)"),
                 "id": stringProp("History id (revert)"),
+            ],
+            required: ["action"]
+        )
+        add(
+            "team_map",
+            description: "Look at or organize the Team map: the departments (teams) and which bot is in each. Use this whenever the person asks what teams exist, who is on a team, or to create, rename or delete a team, move a bot, or set a team's shared instructions. Actions: list (every team with its bots), get (one team with its instructions), create, rename, delete, assign (move a bot into a team; empty department = General), set_instructions. Every change stops on an approval card the person must answer.",
+            properties: [
+                "action": stringProp("list, get, create, rename, delete, assign, or set_instructions"),
+                "department": stringProp("Team name (get, create, rename, delete, set_instructions, assign)"),
+                "new_name": stringProp("New team name (rename)"),
+                "bot": stringProp("Bot name or id (assign; optional bot to place on create)"),
+                "text": stringProp("Shared instructions text (set_instructions); blank clears them"),
             ],
             required: ["action"]
         )

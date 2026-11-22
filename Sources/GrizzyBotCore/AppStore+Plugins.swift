@@ -906,6 +906,7 @@ extension AppStore {
         case DraftPreview.tool: return "plugin_call"
         case "routine.change", "routine.untrusted": return "routine_manage"
         case "config.change": return "config_manage"
+        case "team.change": return "team_map"
         case "delegate.lend": return "message_bot"
         case "external_agent.run": return "delegate_external"
         case "memory.untrusted_write": return "remember"
