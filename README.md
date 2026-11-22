@@ -57,6 +57,10 @@
 
 ## 🆕 What's new
 
+### 0.19.0 — Update check
+
+- **Check for updates.** *GrizzyBot → Check for Updates…* (and a quiet check at launch) compares your version with the latest GitHub release and links to its page.
+
 ### 0.18.0 — Bots can run the app
 
 - **Bots operate the app.** Ask a bot what teams are on the Team map, or to add a routine or a ticket, and it uses the app's own tools (`team_map`, `routine_manage`, `board_tickets`, …) instead of a script. Changes stop on an approval card.

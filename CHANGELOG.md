@@ -2,6 +2,10 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## 0.19.0 — Update check
+
+- **Check for updates.** *GrizzyBot → Check for Updates…* asks GitHub for the latest release and tells you whether you are up to date. If a newer version exists, *Open Release Page* takes you to it. GrizzyBot also checks quietly once at launch and only speaks up when there is something new. Nothing is downloaded or installed for you.
+
 ## 0.18.0 — Bots can run the app
 
 - **Bots operate GrizzyBot itself.** Every bot's prompt now says it can use the app's own tools — routines, tickets, the Team map, settings and other bots — instead of writing a script that only imitates them. Only tools the bot actually has are listed.
