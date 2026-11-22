@@ -57,6 +57,10 @@
 
 ## 🆕 What's new
 
+### 0.18.0 — Bots can run the app
+
+- **Bots operate the app.** Ask a bot what teams are on the Team map, or to add a routine or a ticket, and it uses the app's own tools (`team_map`, `routine_manage`, `board_tickets`, …) instead of a script. Changes stop on an approval card.
+
 ### 0.17.0 — Sidebar categories
 
 - **Sidebar categories.** Group bots into collapsible categories of your own: sidebar **+** → *New category…*, then drag a bot onto a header (or right-click it → *Move to category*). The Orchestrator stays on its own.

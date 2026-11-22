@@ -2,6 +2,11 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## 0.18.0 — Bots can run the app
+
+- **Bots operate GrizzyBot itself.** Every bot's prompt now says it can use the app's own tools — routines, tickets, the Team map, settings and other bots — instead of writing a script that only imitates them. Only tools the bot actually has are listed.
+- **Team map tool.** `team_map` lets a bot list teams and who is on each, read a team's instructions, and (after you approve each change) create, rename or delete a team, move a bot, or set a team's shared instructions.
+
 ## 0.17.0 — Sidebar categories and notarized builds
 
 - **Sidebar categories.** Bots sit in collapsible categories under the Orchestrator (the Chief of Staff stays on its own). Sidebar **+** → *New category…* adds one; drag a bot onto a category header, or right-click it → *Move to category*, to file it. Right-click a header to rename or delete it (its bots become Uncategorized). New bots start Uncategorized; bots from before this version start in *Coding*. Open or closed state is remembered, and search expands categories that match.
