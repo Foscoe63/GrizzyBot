@@ -297,6 +297,7 @@ struct GrizzyBotApp: App {
         if store.appConfig.menuBarOnly {
             MainWindowController.applyMenuBarOnly(true)
         }
+        KeepAwakeController.set(store.appConfig.keepAwake)
     }
 
     @MainActor

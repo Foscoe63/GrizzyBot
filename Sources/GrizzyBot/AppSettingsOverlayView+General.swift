@@ -99,6 +99,9 @@ extension AppSettingsOverlayView {
             configToggle("Background routines", "Lets due routines wake the app even when it is closed.", \.backgroundRoutines) { on in
                 applyBackgroundService(RoutineAgentController.setEnabled(on), on: on, keyPath: \.backgroundRoutines, name: "Background routines")
             }
+            configToggle("Keep computer awake", "Stops the Mac from sleeping while GrizzyBot is open. Off follows your system Energy settings.", \.keepAwake) { on in
+                KeepAwakeController.set(on)
+            }
             #if DEBUG
             Text("Launch at login and background routines require a signed Release build. SMAppService rejects ad-hoc Debug bundles.")
                 .font(.system(size: 11))

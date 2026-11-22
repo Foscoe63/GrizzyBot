@@ -105,6 +105,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var menuBarOnly: Bool
     /// Register the LaunchAgent helper so due routines wake the app in the background.
     public var backgroundRoutines: Bool
+    /// Hold a power assertion so the Mac doesn't idle-sleep while GrizzyBot runs.
+    public var keepAwake: Bool
     /// System / light / dark appearance for built-in themes.
     public var themeAppearanceMode: ThemeAppearanceMode
     /// Active built-in theme preset id (Osaurus-compatible gallery).
@@ -166,6 +168,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         showMenuBar: Bool = true,
         menuBarOnly: Bool = false,
         backgroundRoutines: Bool = false,
+        keepAwake: Bool = false,
         themeAppearanceMode: ThemeAppearanceMode = .dark,
         activeThemePresetId: String? = "grizzy-default",
         agentStallTimeoutMs: Int = 60_000,
@@ -217,6 +220,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         self.showMenuBar = showMenuBar
         self.menuBarOnly = menuBarOnly
         self.backgroundRoutines = backgroundRoutines
+        self.keepAwake = keepAwake
         self.themeAppearanceMode = themeAppearanceMode
         self.activeThemePresetId = activeThemePresetId
         self.agentStallTimeoutMs = agentStallTimeoutMs
@@ -233,7 +237,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case profileName, profileEmail, composioConnectKey, composioApiKey
         case googleClientId, googleClientSecret, boxToken
-        case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, impliedToolsGranted, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
+        case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, impliedToolsGranted, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines, keepAwake
         case themeAppearanceMode, activeThemePresetId, agentStallTimeoutMs
         case privacyFilter, memoryRelevanceMode, queueMode, webhooksEnabled, webhookPort, telegram, localGateway, enableFolderWatchers, botCategories
         case controlPlaneEnabled, controlPlanePort, otlpEndpoint, teamLibraryURL, routerTimeoutSeconds, botColoredChats
@@ -262,6 +266,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         showMenuBar = try c.decodeIfPresent(Bool.self, forKey: .showMenuBar) ?? true
         menuBarOnly = try c.decodeIfPresent(Bool.self, forKey: .menuBarOnly) ?? false
         backgroundRoutines = try c.decodeIfPresent(Bool.self, forKey: .backgroundRoutines) ?? false
+        keepAwake = try c.decodeIfPresent(Bool.self, forKey: .keepAwake) ?? false
         themeAppearanceMode = try c.decodeIfPresent(ThemeAppearanceMode.self, forKey: .themeAppearanceMode) ?? .dark
         activeThemePresetId = try c.decodeIfPresent(String.self, forKey: .activeThemePresetId) ?? "grizzy-default"
         agentStallTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .agentStallTimeoutMs) ?? 60_000
@@ -307,6 +312,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encode(showMenuBar, forKey: .showMenuBar)
         try c.encode(menuBarOnly, forKey: .menuBarOnly)
         try c.encode(backgroundRoutines, forKey: .backgroundRoutines)
+        try c.encode(keepAwake, forKey: .keepAwake)
         try c.encode(themeAppearanceMode, forKey: .themeAppearanceMode)
         try c.encodeIfPresent(activeThemePresetId, forKey: .activeThemePresetId)
         try c.encode(agentStallTimeoutMs, forKey: .agentStallTimeoutMs)
