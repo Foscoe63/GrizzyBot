@@ -801,6 +801,7 @@
 		8FB6C6A9C3F6B29A303F3F7E /* BotMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotMesh.swift; sourceTree = "<group>"; };
 		8FBF7160779740AB7BD7CB62 /* AppleFoundationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationProvider.swift; sourceTree = "<group>"; };
 		904560CA14B33862F906E94E /* EvalScoreboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvalScoreboard.swift; sourceTree = "<group>"; };
+		904C2DBECDF509B2FDC13C4C /* GrizzyBot.NoiCloud.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GrizzyBot.NoiCloud.entitlements; sourceTree = "<group>"; };
 		9073EF84B672BC0253421319 /* ProductSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductSurface.swift; sourceTree = "<group>"; };
 		908EFBCD4ABBF9BEF564761C /* FleetGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetGuardTests.swift; sourceTree = "<group>"; };
 		90E608627E9ED8C81E3D90D8 /* LocalProvidersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProvidersTests.swift; sourceTree = "<group>"; };
@@ -1296,6 +1297,7 @@
 				C5B914DF8F85E011F107015E /* FolderWatchersSettingsBlock.swift */,
 				A5EFDEC3C012580D78F069B7 /* GovernanceSettingsView.swift */,
 				D5F5BBB7F1FC532399DE8DE2 /* GrizzyBot.entitlements */,
+				904C2DBECDF509B2FDC13C4C /* GrizzyBot.NoiCloud.entitlements */,
 				399CF9C4F90564BD9E964847 /* GrizzyBot.Release.entitlements */,
 				C9A422AE0345B5E77B84BA2E /* GrizzyBotApp.swift */,
 				95CA7AD23A206B7E0DB1696D /* GrizzyThemePalette.swift */,
