@@ -266,7 +266,7 @@ extension AppSettingsOverlayView {
 
         settingsCard(
             title: "Private desktop",
-            subtitle: "A Linux desktop in a Podman container, one per bot. It cannot see your Mac’s files; only the bot’s own workspace folder is shared."
+            subtitle: "A Linux desktop in a Podman container, one per bot. It cannot see your Mac’s files; only the bot’s own workspace folder is shared. A person cannot take it over, so a bot cannot ask you to sign in there."
         ) {
             let environment = store.privateDesktopEnvironment
             Text(environment?.podmanPath != nil ? "Podman is installed" : "Podman is not installed")
@@ -291,6 +291,11 @@ extension AppSettingsOverlayView {
                     .font(.system(size: 13.5))
                     .foregroundStyle(Theme.textSecondary)
             }
+            Text("Its browser is blocked from this Mac’s localhost and from the Podman gateway. The desktop can still reach the internet and other devices on your network, so keep bots that browse untrusted pages away from anything on your network you would not expose.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
         }
         .task { await store.refreshPrivateDesktopEnvironment() }
 

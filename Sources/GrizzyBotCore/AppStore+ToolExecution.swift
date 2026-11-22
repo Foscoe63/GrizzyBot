@@ -1202,6 +1202,21 @@ extension AppStore {
 
         case "request_takeover":
             let reason = s("reason")
+            if isPrivateDesktop(botId: botId) {
+                let refusal = AppStore.privateDesktopTakeoverRefusal
+                recordAudit(
+                    type: .computerActionRefused,
+                    botId: botId,
+                    tool: "request_takeover",
+                    reason: refusal.reason,
+                    allowed: false,
+                    forwarded: false
+                )
+                return AgentToolCallResult(
+                    output: refusal.output,
+                    blocks: [.card(lines: [CardLine(k: "refused", v: refusal.reason)])]
+                )
+            }
             if var computer = computers[botId] {
                 computer.controlHolder = .user
                 computers[botId] = computer

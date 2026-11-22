@@ -323,7 +323,7 @@ private struct ComputerFullWindowOverlay: View {
                         GrizzyButton(title: "Release", variant: .outline, size: .sm) {
                             store.release(botId: bot.id)
                         }
-                    } else {
+                    } else if !store.isPrivateDesktop(botId: bot.id) {
                         GrizzyButton(title: "Take control", variant: .outline, size: .sm) {
                             store.takeControl(botId: bot.id)
                         }

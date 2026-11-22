@@ -135,12 +135,26 @@ public enum PodmanDesktopImage {
     public static let baseDigest = "sha256:274eb636f5cf3fc58f705916ee72b7a701270b3877369d08533a385c5325be9b"
     public static let base = "\(baseRepository)@\(baseDigest)"
     /// Bump when `containerfile` changes what the image holds, so desktops made from an older image are recreated.
-    public static let layerVersion = "1"
+    public static let layerVersion = "2"
     /// `localhost/` is explicit: Podman may otherwise resolve an unqualified tag on a public registry.
     public static let reference = "localhost/grizzybot/private-desktop:layer-\(layerVersion)"
 
+    /// Where a container reaches services on the Mac: Podman maps this name, and the address behind it, to the host's own
+    /// localhost. A page the bot opens must not be able to talk to a Mac service that only listens on localhost.
+    static let blockedBrowserHosts = [
+        "localhost", "*.localhost", "127.0.0.1", "[::1]",
+        "host.containers.internal", "host.docker.internal", "192.168.127.254", "192.168.127.1",
+    ]
+
+    /// Firefox's enterprise policy that blocks those hosts.
+    static var browserPolicy: String {
+        let block = blockedBrowserHosts.map { "\"*://\($0)/*\"" }.joined(separator: ",")
+        return "{\"policies\":{\"WebsiteFilter\":{\"Block\":[\(block)]}}}"
+    }
+
     /// The GrizzyBot layer over the base. The base already has X (`DISPLAY=:1`, 1280x900) and `ffmpeg` with `x11grab`, which
-    /// takes the screenshots; this adds `xdotool` for the mouse and keyboard, and nothing else.
+    /// takes the screenshots; this adds `xdotool` for the mouse and keyboard, and a Firefox policy that keeps the desktop's
+    /// browser off the Mac's localhost.
     public static var containerfile: String {
         """
         FROM \(base)
@@ -150,6 +164,9 @@ public enum PodmanDesktopImage {
             apt-get install -y --no-install-recommends xdotool; \\
             rm -rf /var/lib/apt/lists/*; \\
             xdotool --version
+        RUN set -eux; \\
+            install -d /usr/lib/firefox-esr/distribution; \\
+            printf '%s\\n' '\(browserPolicy)' > /usr/lib/firefox-esr/distribution/policies.json
         LABEL \(PodmanDesktop.layerLabel)="\(layerVersion)"
 
         """

@@ -357,8 +357,10 @@ public final class AppStore {
         self.destinations = DestinationStore(root: root)
         self.canvasBoard = CanvasBoardStore(root: root)
         self.artifactStore = ArtifactStore(root: root)
-        self.computerRuntime = FileDesktopRuntime()
         self.delayScale = delayScale
+        // The app swaps in its own browser and This Mac runtime; everything else (the CLI, a headless tick) still
+        // reaches a bot's Private desktop, rather than a placeholder screen that would report clicks that never happened.
+        installComputerRuntime(primary: FileDesktopRuntime())
         bootstrap()
         reloadSkills()
         reloadCanvases()

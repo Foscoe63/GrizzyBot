@@ -8,6 +8,14 @@ extension AppStore {
         return resolvedComputerMode(for: bot) == .privateDesktop
     }
 
+    /// What a bot is told when it asks a person to take over a desktop the person cannot drive.
+    static let privateDesktopTakeoverRefusal: (output: String, reason: String) = (
+        "Refused request_takeover: this is a Private desktop, which a person cannot take over or type into. Do not ask for a sign-in, "
+            + "captcha or two-factor code here. Tell the person in your reply what is blocking you and stop; they can switch this bot to "
+            + "the In-app browser or This Mac if you need to sign in.",
+        "A Private desktop cannot be taken over by a person."
+    )
+
     public func privateDesktopState(botId: String) -> PrivateDesktopBotState {
         privateDesktopStates[botId] ?? PrivateDesktopBotState()
     }

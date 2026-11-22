@@ -78,6 +78,13 @@ struct PrivateDesktopControls: View {
                     .foregroundStyle(Theme.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if store.computers[botId]?.controlHolder == .user {
+                Text("Control was left with you from before this bot moved to a Private desktop. Release it so the bot can work.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                GrizzyButton(title: "Release", variant: .outline, size: .sm) { store.release(botId: botId) }
+            }
             if status?.imagePresent == false, status?.machineRunning == true {
                 PrivateDesktopImageButton()
             } else {

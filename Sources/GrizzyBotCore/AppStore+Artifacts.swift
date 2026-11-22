@@ -463,6 +463,9 @@ extension AppStore {
     }
 
     public func takeControl(botId: String) {
+        // A person cannot drive a Private desktop (its panel is a preview), so handing it over would only lock the bot
+        // out of its own computer with no way to use it.
+        if isPrivateDesktop(botId: botId) { return }
         guard var computer = computers[botId] else { return }
         computer.controlHolder = .user
         if computer.state == .suspended {

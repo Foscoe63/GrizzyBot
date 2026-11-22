@@ -312,6 +312,18 @@ struct PodmanDesktopTests {
         #expect(!text.contains("curl") && !text.contains("wget"))
     }
 
+    @Test("the layer installs a Firefox policy that blocks the Mac's loopback and the host alias")
+    func browserPolicy() throws {
+        #expect(PodmanDesktopImage.containerfile.contains("/usr/lib/firefox-esr/distribution/policies.json"))
+        let data = Data(PodmanDesktopImage.browserPolicy.utf8)
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let filter = try #require((json["policies"] as? [String: Any])?["WebsiteFilter"] as? [String: Any])
+        let block = try #require(filter["Block"] as? [String])
+        for host in ["localhost", "127.0.0.1", "host.containers.internal"] {
+            #expect(block.contains("*://\(host)/*"))
+        }
+    }
+
     @Test("lifecycle calls report podman missing and the machine down distinctly")
     func requireErrors() async {
         await #expect(throws: PodmanDesktopError.podmanNotFound) { try await desktop(FakePodman(), podman: nil).ensureRunning(botId: "b") }

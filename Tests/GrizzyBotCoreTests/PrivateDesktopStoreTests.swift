@@ -176,4 +176,27 @@ struct PrivateDesktopStoreTests {
         #expect(await eventually { leaverPodman.verbs().contains("stop") })
         #expect(!stayerPodman.verbs().contains("stop"))
     }
+
+    @Test("a person cannot take over a Private desktop: request_takeover is refused and audited, and control stays with the bot")
+    func takeoverRefused() async {
+        let (store, botId) = store(StatefulPodman(botId: "", container: .missing))
+        store.patchBot(botId, computerMode: .privateDesktop)
+        let result = await store.executeAgentTool(
+            name: "request_takeover", argumentsJSON: #"{"reason":"sign in"}"#, botId: botId, depth: 0,
+            endpoint: ModelEndpoint(provider: "p", model: "m", baseURL: "https://localhost", apiKey: ""),
+            client: ByBotClient([:]), taint: RunTaint()
+        )
+        #expect(result.output.hasPrefix("Refused request_takeover"))
+        #expect(result.pause == nil)
+        #expect(store.computers[botId]?.controlHolder != .user)
+        #expect(store.auditEvents.contains { $0.type == .computerActionRefused && $0.botId == botId && $0.tool == "request_takeover" })
+    }
+
+    @Test("take control does nothing for a Private desktop")
+    func takeControlNoop() {
+        let (store, botId) = store(StatefulPodman(botId: "", container: .missing))
+        store.patchBot(botId, computerMode: .privateDesktop)
+        store.takeControl(botId: botId)
+        #expect(store.computers[botId]?.controlHolder != .user)
+    }
 }
