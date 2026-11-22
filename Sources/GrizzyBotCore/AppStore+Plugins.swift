@@ -982,6 +982,8 @@ extension AppStore {
             return "Computer is off for this bot."
         case .inAppBrowser:
             return "Persistent in-app browser for this bot. Cookies survive relaunch."
+        case .privateDesktop:
+            return "Private Linux desktop in a Podman container. It cannot see this Mac's files; only the bot's own workspace folder is shared."
         default:
             return "Follows workspace default computer mode."
         }
