@@ -2,6 +2,10 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## Unreleased
+
+- **Private desktop.** A new computer mode runs a bot's browser and desktop in its own hardened Podman container (XFCE + Firefox, rootless, minimal capabilities, loopback-only viewer, per-bot workspace). Settings → Computer builds the image and shows Podman status; the bot's panel has a live preview with Start / Stop / Reset, and leaving the mode stops the container. A person cannot take over this desktop, so `request_takeover` is refused and audited, and Firefox blocks the Mac's loopback addresses. Terminal and LAN access from inside the container are not blocked. Auto never picks it.
+
 ## 0.15.0 — team map and external coding agents
 
 - **Team map.** A Team screen groups bots into departments on a canvas: drag bots between panels, drag panels to place them, pick a lead per department, and message a department or the whole team from the box under the map. Departments carry shared instructions that go into every member's prompt, shared memory notes you accept, reject, edit, pin or undo (a proposed note shows as a card in the chat), a Chief of Staff whose authority follows departments, and usage by department. Team notes are included in past-chat search.

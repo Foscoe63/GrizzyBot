@@ -19,7 +19,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Apple_Silicon-Local_MLX-5E5CE6?logo=apple&logoColor=white" alt="Local MLX">
   <img src="https://img.shields.io/badge/Plugins-Google_·_Composio_·_MCP-34A853?logo=google&logoColor=white" alt="Plugins">
-  <img src="https://img.shields.io/badge/Computer-This_Mac_·_Browser-111827?logo=safari&logoColor=white" alt="Computer">
+  <img src="https://img.shields.io/badge/Computer-This_Mac_·_Browser_·_Private_desktop-111827?logo=safari&logoColor=white" alt="Computer">
   <img src="https://img.shields.io/badge/Governance-CEL_·_Audit-B45309" alt="Governance">
 </p>
 
@@ -97,7 +97,7 @@ Documents, code, diagrams, and small React apps a bot builds and you keep. Versi
 <td width="33%" valign="top">
 
 ### 🖥️ Computer & canvas
-This Mac preview or in-app browser. Resizable side panel (monitor icon). Screenshot → targets → click / type / key. Shared canvases. Exclusive takeover for login.
+This Mac preview, in-app browser, or a hardened **Private desktop** (Podman). Resizable side panel (monitor icon). Screenshot → targets → click / type / key. Shared canvases. Exclusive takeover for login.
 
 ### 🛡️ Governance
 CEL policy, scoped "always allow" rules, MCP grant matrix, knowledge ACLs, published components, owner/operator roles, searchable hash-chained audit. Outside content fenced as untrusted, secret leak scanning both ways, memory that a poisoned page can't rewrite.
@@ -288,13 +288,14 @@ The `type` argument also accepts Claude Desktop's media types (`application/vnd.
 
 ## 🖥️ Computer
 
-Two real hosts — no cloud VM or Docker.
+Three hosts, all local — no cloud VM. The Private desktop needs [Podman](https://podman.io) installed; GrizzyBot never installs it.
 
 | | Mode | What it is |
 |:--:|---|---|
 | ✨ | **Auto** | In-app browser unless the bot is set otherwise |
 | 🧭 | **In-app browser** | Persistent WKWebView, Safari-like user agent, http/https only |
 | 🍎 | **This Mac** | Live screenshot preview + Accessibility clicks on the main display (OpenMaus-style: preview is not a remote desktop) |
+| 📦 | **Private desktop** | A Linux desktop (XFCE + Firefox) in a per-bot Podman container: its own files and browser profile, no access to your Mac's screen. Never chosen by Auto |
 | ⛔ | **Off** | Computer tools disabled |
 
 **Computer mode** (bot Settings) is *how* this bot may use a computer. It is **not** where you Release control. For mail-only work, prefer **Off** or **In-app browser** so the bot does not reach for This Mac tools.
@@ -308,6 +309,14 @@ Two real hosts — no cloud VM or Docker.
 | 🔐 **Exclusive takeover** | Login, captcha, or 2FA: the bot calls `request_takeover` and you drive. Headless routine ticks skip This Mac tools (no Screen Recording session). |
 
 Settings → Computer shows Accessibility and Screen Recording status with deep links to System Settings.
+
+### Private desktop
+
+Settings → Computer → **Private desktop** shows Podman and image status. **Build image** (once, a few minutes) layers `xdotool` onto a digest-pinned XFCE base; the bot's panel then has **Start / Stop / Reset**, and the preview is a live screenshot. Each bot gets its own container, a 0700 workspace folder, and a viewer port bound to loopback only. The container runs rootless with a minimal capability set (verified on start; an unsafe existing container is refused, not reused). Leaving the mode stops the container; **Reset** removes it.
+
+- **No person takeover.** The preview is not interactive, so `request_takeover` is refused (audited as a refused computer action) and Take control is hidden. Switch the bot to In-app browser or This Mac for sign-ins.
+- **Browser blocked from your Mac.** Firefox refuses `localhost`, `127.0.0.1`, `[::1]` and `host.containers.internal`.
+- **Not a full sandbox.** A terminal inside the container can still reach your Mac's loopback services and your LAN, and containers keep running if the app quits (Stop takes ~10 s). Treat it as isolation from your files and screen, not from the network.
 
 ---
 
@@ -671,7 +680,7 @@ Fallback when nothing is promoted yet: search once → `mcp_call` with the exact
 | 🛡️ | Shell write seatbelt stays inside the bot home (and the working folder when set) unless approved. |
 | 🌐 | In-app browser: http/https/about only; desktop HTML escapes filenames. |
 | 🧩 | Artifact frames run with the network closed (`connect-src 'none'`), no script bridge into the app, and every off-scheme navigation cancelled. Their runtimes are bundled, not fetched. |
-| 🖥️ | Computer-use is local only (WKWebView or Accessibility). No remote desktop VM. |
+| 🖥️ | Computer-use is local only (WKWebView, Accessibility, or a Podman container on this Mac). No remote desktop VM. |
 | ⚖️ | Action policy and MCP grants run **before** the tool acts. Audit records both permits and refusals. |
 | 🔗 | Audit events are hash-chained; *Verify audit trail* flags edits, deletions, or reordering in the middle of the log (it cannot stop someone who rewrites the whole file). |
 | 🪝 | The webhook receiver binds to loopback only, authenticates with a per-routine secret compared in constant time, caps bodies at 64 KB, and passes payloads to the bot as untrusted data. |
