@@ -111,7 +111,7 @@ Documents, code, diagrams, and small React apps a bot builds and you keep. Versi
 <td width="33%" valign="top">
 
 ### 🖥️ Computer & canvas
-This Mac preview, in-app browser, or a hardened **Private desktop** (Podman). Resizable side panel (monitor icon). Screenshot → targets → click / type / key. Shared canvases. Exclusive takeover for login.
+This Mac preview, in-app browser, or a hardened **Private desktop** (Podman). Resizable side panel (monitor icon). Screenshot → targets → click / type / key. Shared canvases. Exclusive takeover for login. When you hold the in-app browser, the full-window view has an **address bar**: type a web address or search words (DuckDuckGo); only http/https open, and `javascript:`, `file:` and similar are refused.
 
 #### Teach by demonstration
 
@@ -327,7 +327,7 @@ Three hosts, all local — no cloud VM. The Private desktop needs [Podman](https
 | | Mode | What it is |
 |:--:|---|---|
 | ✨ | **Auto** | In-app browser unless the bot is set otherwise |
-| 🧭 | **In-app browser** | Persistent WKWebView, Safari-like user agent, http/https only |
+| 🧭 | **In-app browser** | Persistent WKWebView, Safari-like user agent, http/https only; an address bar (back, forward, reload) while you hold it |
 | 🍎 | **This Mac** | Live screenshot preview + Accessibility clicks on the main display (OpenMaus-style: preview is not a remote desktop) |
 | 📦 | **Private desktop** | A Linux desktop (XFCE + Firefox) in a per-bot Podman container: its own files and browser profile, no access to your Mac's screen. Never chosen by Auto |
 | ⛔ | **Off** | Computer tools disabled |
