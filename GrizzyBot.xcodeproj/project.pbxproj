@@ -398,6 +398,7 @@
 		DF2C74B29BD049BB11E489A9 /* RoutineTriggerOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F889D39D0ABBAF81DCC5D65 /* RoutineTriggerOptions.swift */; };
 		DFC0921670DBE569E167D650 /* DepartmentMemoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E113F29CEAAC0B7A2E5C58 /* DepartmentMemoryTests.swift */; };
 		E00627B414708FA9623A3199 /* LoginItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31AAC2F56EC52FC99A5DC171 /* LoginItem.swift */; };
+		E04E80956A59DF7910F8EE39 /* KeepAwakeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAF5B98EE66E3B445C11E90D /* KeepAwakeController.swift */; };
 		E06758F1CD11E18D1E5496C2 /* LocalProvidersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90E608627E9ED8C81E3D90D8 /* LocalProvidersTests.swift */; };
 		E10C6AF2C1681F0B50C3D221 /* AppStore+Plugins.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A6F60EEC9A41081BF19C4A7 /* AppStore+Plugins.swift */; };
 		E14ABE92B3E2DA522F5236A7 /* TeamMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66BEA47CE6307E744F7EEA2E /* TeamMapView.swift */; };
@@ -980,6 +981,7 @@
 		FA05D2793FE7F8D05A12EACF /* AppStore+DelegateTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore+DelegateTools.swift"; sourceTree = "<group>"; };
 		FA5D6EE7C823EEDF23F4C9F6 /* GrizzyBotMLXBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrizzyBotMLXBootstrap.swift; sourceTree = "<group>"; };
 		FAAAF7AB908DE6EBB68D5394 /* McpGatewayCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpGatewayCall.swift; sourceTree = "<group>"; };
+		FAF5B98EE66E3B445C11E90D /* KeepAwakeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepAwakeController.swift; sourceTree = "<group>"; };
 		FB44D631A1BFEC6A49332CEF /* CronTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronTests.swift; sourceTree = "<group>"; };
 		FBB065DE9073A8C4BC8BDAA7 /* MLXChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXChatClient.swift; sourceTree = "<group>"; };
 		FD9716795AB7F5B6DE4F4868 /* PrivateDesktopFolders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateDesktopFolders.swift; sourceTree = "<group>"; };
@@ -1307,6 +1309,7 @@
 				95CA7AD23A206B7E0DB1696D /* GrizzyThemePalette.swift */,
 				651BA04CFFEDE89994A982D7 /* HandsFreeListener.swift */,
 				BED9B320C808B307D93EB780 /* HostComputerPromptView.swift */,
+				FAF5B98EE66E3B445C11E90D /* KeepAwakeController.swift */,
 				565A4434AC3151A847CD0BF9 /* LibraryPanelView.swift */,
 				123816BD5C1D3CE3C8AB8F50 /* LocalMLXView.swift */,
 				EB834714BC7F97072BEFE5A3 /* LocalSplashView.swift */,
@@ -2227,6 +2230,7 @@
 				39DC507D72B1ACAB2C75D899 /* GrizzyThemePalette.swift in Sources */,
 				5A62DB818ACB3CAD019A139D /* HandsFreeListener.swift in Sources */,
 				10C6F1583A6F593B003B67CB /* HostComputerPromptView.swift in Sources */,
+				E04E80956A59DF7910F8EE39 /* KeepAwakeController.swift in Sources */,
 				537CBB270727CDD7801A874D /* LibraryPanelView.swift in Sources */,
 				BD7FD21B84E4978A19C4A474 /* LocalMLXView.swift in Sources */,
 				444D3B577A4CE808890DA36C /* LocalSplashView.swift in Sources */,
