@@ -43,7 +43,8 @@ private func inspectJSON(
     caps: [String] = PodmanDesktop.capabilities.map { "CAP_\($0)" },
     privileged: Bool = false,
     host: String = "127.0.0.1",
-    memory: Int = 4_294_967_296
+    memory: Int = 4_294_967_296,
+    extraMounts: String = ""
 ) -> String {
     let target = PodmanDesktopTarget(botId: botId, root: root)
     let labels = labels ?? [
@@ -55,6 +56,7 @@ private func inspectJSON(
     let capJSON = caps.map { "\"\($0)\"" }.joined(separator: ",")
     return """
     [{"EffectiveCaps":[\(capJSON)],"BoundingCaps":[\(capJSON)],
+      "Mounts":[{"Type":"bind","Source":"\(target.workspaceDir.path)","Destination":"\(PodmanDesktop.guestWorkspace)","RW":true}\(extraMounts)],
       "State":{"Running":\(running)},"Config":{"Labels":{\(labelJSON)}},
       "HostConfig":{"Privileged":\(privileged),"PidMode":"private","IpcMode":"private",
       "Memory":\(memory),"PortBindings":{"6901/tcp":[{"HostIp":"\(host)","HostPort":"49321"}]}}}]
@@ -344,5 +346,153 @@ struct PrivateDesktopModeTests {
         #expect(ComputerMode.selectableCases.contains(.privateDesktop))
         // Saved bots from before this mode keep meaning what they meant.
         #expect(ComputerMode.parse("vm") == .inAppBrowser)
+    }
+}
+
+@Suite("Private desktop Mac folders")
+struct PrivateDesktopFolderTests {
+    /// A folder tree under a temporary "home", with that folder as the one place a desktop may see.
+    private func tree(_ names: [String]) throws -> (home: String, visible: [String], dirs: [String]) {
+        let base = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pd-folders-\(UUID().uuidString)")
+        let home = base.appendingPathComponent("home")
+        var dirs: [String] = []
+        for name in names {
+            let url = home.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            dirs.append(PodmanDesktopMounts.canonical(url.path))
+        }
+        return (PodmanDesktopMounts.canonical(home.path), [PodmanDesktopMounts.canonical(base.path)], dirs)
+    }
+
+    @Test("a plain folder under the visible roots becomes a mount named after it")
+    func resolves() throws {
+        let t = try tree(["Taxes", "Photos"])
+        let folders = [GrantedFolder(name: "Taxes 2025", path: t.dirs[0]), GrantedFolder(name: "Photos", path: t.dirs[1])]
+        let result = PodmanDesktopMounts.resolve(folders, home: t.home, visibleRoots: t.visible)
+        #expect(result.skipped.isEmpty)
+        #expect(result.mounts.map(\.name) == ["Taxes-2025", "Photos"])
+        #expect(result.mounts[0].guestPath == "/mnt/mac/Taxes-2025")
+        #expect(result.mounts[0].argument == "type=bind,source=\(t.dirs[0]),target=/mnt/mac/Taxes-2025,ro=true")
+    }
+
+    @Test("two folders with one name get different guest folders, and one folder twice is one mount")
+    func names() throws {
+        let t = try tree(["a/Docs", "b/Docs"])
+        let folders = [GrantedFolder(name: "Docs", path: t.dirs[0]), GrantedFolder(name: "Docs", path: t.dirs[1]),
+                       GrantedFolder(name: "Again", path: t.dirs[0])]
+        let result = PodmanDesktopMounts.resolve(folders, home: t.home, visibleRoots: t.visible)
+        #expect(result.mounts.map(\.name) == ["Docs", "Docs-2"])
+    }
+
+    @Test("what must never be shown is refused with a reason")
+    func refusals() throws {
+        let t = try tree([".ssh", "Library/Mail", "Work", "GrizzyData"])
+        let file = URL(fileURLWithPath: t.home).appendingPathComponent("note.txt")
+        try "x".write(to: file, atomically: true, encoding: .utf8)
+        let cases: [(String, String)] = [
+            (t.dirs[0], "secrets"), (t.dirs[1], "Library"), (t.home, "home folder"),
+            (URL(fileURLWithPath: t.home).deletingLastPathComponent().path, "parent"), ("/", "parent"),
+            (file.path, "not a folder"), (t.home + "/missing", "missing"), ("relative/path", "absolute"),
+            (t.dirs[3], "GrizzyBot's own data"),
+        ]
+        for (path, word) in cases {
+            let result = PodmanDesktopMounts.resolve([GrantedFolder(name: "x", path: path)], home: t.home,
+                                                     protectedPaths: [t.dirs[3]], visibleRoots: t.visible)
+            #expect(result.mounts.isEmpty, "\(path)")
+            #expect(result.skipped.first?.reason.contains(word) == true, "\(path): \(result.skipped.first?.reason ?? "")")
+        }
+        // Outside what Podman's VM can see.
+        let outside = PodmanDesktopMounts.resolve([GrantedFolder(name: "x", path: t.dirs[2])], home: t.home, visibleRoots: ["/Users"])
+        #expect(outside.skipped.first?.reason.contains("/Users") == true)
+    }
+
+    @Test("a symlink cannot name a place outside what is allowed")
+    func symlink() throws {
+        let t = try tree(["Work"])
+        let link = URL(fileURLWithPath: t.home).appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: URL(fileURLWithPath: "/etc"))
+        let result = PodmanDesktopMounts.resolve([GrantedFolder(name: "x", path: link.path)], home: t.home, visibleRoots: t.visible)
+        #expect(result.mounts.isEmpty)
+    }
+
+    @Test("a comma in a path cannot add mount options")
+    func comma() throws {
+        let t = try tree(["a,b"])
+        let result = PodmanDesktopMounts.resolve([GrantedFolder(name: "x", path: t.dirs[0])], home: t.home, visibleRoots: t.visible)
+        #expect(result.mounts.isEmpty)
+    }
+
+    @Test("the digest changes with the folders and is 'none' without any")
+    func digest() {
+        let a = PodmanDesktopMount(source: "/Users/x/a", name: "a")
+        let b = PodmanDesktopMount(source: "/Users/x/b", name: "b")
+        #expect(PodmanDesktopMounts.digest([]) == "none")
+        #expect(PodmanDesktopMounts.digest([a]) != PodmanDesktopMounts.digest([a, b]))
+        #expect(PodmanDesktopMounts.digest([a, b]) == PodmanDesktopMounts.digest([b, a]))
+    }
+
+    @Test("create passes each mount read-only and labels the container with the set")
+    func runArgs() {
+        let mount = PodmanDesktopMount(source: "/Users/x/Taxes", name: "Taxes")
+        let args = PodmanDesktop.runArguments(target: PodmanDesktopTarget(botId: "b", root: root), viewerPassword: "p", mounts: [mount])
+        #expect(args.contains("type=bind,source=/Users/x/Taxes,target=/mnt/mac/Taxes,ro=true"))
+        #expect(args.contains("\(PodmanDesktop.mountsLabel)=\(PodmanDesktopMounts.digest([mount]))"))
+        let plain = PodmanDesktop.runArguments(target: PodmanDesktopTarget(botId: "b", root: root), viewerPassword: "p")
+        #expect(plain.filter { $0 == "--mount" }.count == 1)
+        #expect(plain.contains("\(PodmanDesktop.mountsLabel)=none"))
+    }
+
+    @Test("a container is safe only when its mounts are exactly the workspace and the granted folders, read-only")
+    func mountsMatch() throws {
+        let target = PodmanDesktopTarget(botId: "b", root: root)
+        let mount = PodmanDesktopMount(source: "/Users/x/Taxes", name: "Taxes")
+        func inspect(_ extra: String) throws -> PodmanInspect {
+            try #require(PodmanInspect.parse("""
+            [{"Mounts":[{"Type":"bind","Source":"\(target.workspaceDir.path)","Destination":"\(PodmanDesktop.guestWorkspace)","RW":true}\(extra)]}]
+            """))
+        }
+        let granted = #",{"Type":"bind","Source":"/Users/x/Taxes","Destination":"/mnt/mac/Taxes","RW":false}"#
+        #expect(try inspect("").mountsMatch(workspace: target.workspaceDir.path, mounts: []))
+        #expect(try inspect(granted).mountsMatch(workspace: target.workspaceDir.path, mounts: [mount]))
+        // Writable, extra, missing, or from somewhere else: all unsafe.
+        #expect(try !inspect(granted.replacingOccurrences(of: "false", with: "true")).mountsMatch(workspace: target.workspaceDir.path, mounts: [mount]))
+        #expect(try !inspect(granted).mountsMatch(workspace: target.workspaceDir.path, mounts: []))
+        #expect(try !inspect("").mountsMatch(workspace: target.workspaceDir.path, mounts: [mount]))
+        #expect(try !inspect(granted.replacingOccurrences(of: "/Users/x/Taxes\"", with: "/Users/x/Other\"")).mountsMatch(workspace: target.workspaceDir.path, mounts: [mount]))
+        #expect(try !inspect(#",{"Type":"bind","Source":"/","Destination":"/host","RW":true}"#).mountsMatch(workspace: target.workspaceDir.path, mounts: []))
+        #expect(try !inspect(#",{"Type":"volume","Destination":"/v","RW":true}"#).mountsMatch(workspace: target.workspaceDir.path, mounts: []))
+    }
+
+    @Test("a desktop made before a folder was granted is replaced; one that already matches is left alone")
+    func recreatesOnChange() async throws {
+        let t = try tree(["Taxes"])
+        let mount = PodmanDesktopMount(source: t.dirs[0], name: "Taxes")
+        let fake = FakePodman()
+        fake.inspectJSON = inspectJSON(botId: "b", running: false)
+        let desktop = PodmanDesktop(root: root, runner: fake.runner, locate: { "/opt/homebrew/bin/podman" })
+        await desktop.setMountsProvider { _ in [mount] }
+        try await desktop.create(botId: "b")
+        #expect(fake.verbs().contains("rm"))
+        #expect(fake.verbs().contains("create"))
+        let create = try #require(fake.call("create"))
+        #expect(create.contains(mount.argument))
+
+        let quiet = FakePodman()
+        quiet.inspectJSON = inspectJSON(botId: "b", running: false)
+        try await PodmanDesktop(root: root, runner: quiet.runner, locate: { "/opt/homebrew/bin/podman" }).create(botId: "b")
+        #expect(!quiet.verbs().contains("rm") && !quiet.verbs().contains("create"))
+    }
+
+    @Test("a desktop whose label matches but whose mounts do not is refused, not reused")
+    func refusesWrongMounts() async throws {
+        let fake = FakePodman()
+        let target = PodmanDesktopTarget(botId: "b", root: root)
+        // Labelled as having no folders, yet holding an extra bind of the Mac's root.
+        fake.inspectJSON = inspectJSON(botId: "b", running: true,
+            extraMounts: #",{"Type":"bind","Source":"/","Destination":"/host","RW":true}"#)
+        _ = target
+        await #expect(throws: PodmanDesktopError.unsafeExisting(target.containerName)) {
+            try await PodmanDesktop(root: root, runner: fake.runner, locate: { "p" }).create(botId: "b")
+        }
     }
 }

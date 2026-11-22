@@ -4,7 +4,7 @@ User-visible changes, newest first. The current version lives in `project.yml`.
 
 ## Unreleased
 
-- **Private desktop.** A new computer mode runs a bot's browser and desktop in its own hardened Podman container (XFCE + Firefox, rootless, minimal capabilities, loopback-only viewer, per-bot workspace). Settings → Computer builds the image and shows Podman status; the bot's panel has a live preview with Start / Stop / Reset, and leaving the mode stops the container. A person cannot take over this desktop, so `request_takeover` is refused and audited, and Firefox blocks the Mac's loopback addresses. Terminal and LAN access from inside the container are not blocked. Auto never picks it.
+- **Private desktop.** A new computer mode runs a bot's browser and desktop in its own hardened Podman container (XFCE + Firefox, rootless, minimal capabilities, loopback-only viewer, per-bot workspace). Settings → Computer builds the image and shows Podman status; the bot's panel has a live preview with Start / Stop / Reset, and leaving the mode stops the container. Granted Mac folders can be shown inside it read-only (bot settings → Show in the Private desktop). A person cannot take over this desktop, so `request_takeover` is refused and audited, and Firefox blocks the Mac's loopback addresses. Terminal and LAN access from inside the container are not blocked. Auto never picks it.
 
 ## 0.15.0 — team map and external coding agents
 

@@ -105,7 +105,7 @@ private final class FakeDesktop: @unchecked Sendable {
         let target = PodmanDesktopTarget(botId: botId, root: URL(fileURLWithPath: "/tmp/gb-fake"))
         let caps = PodmanDesktop.capabilities.map { "\"CAP_\($0)\"" }.joined(separator: ",")
         return """
-        [{"EffectiveCaps":[\(caps)],"BoundingCaps":[\(caps)],"State":{"Running":\(running)},
+        [{"EffectiveCaps":[\(caps)],"BoundingCaps":[\(caps)],"Mounts":[{"Type":"bind","Source":"\(target.workspaceDir.path)","Destination":"\(PodmanDesktop.guestWorkspace)","RW":true}],"State":{"Running":\(running)},
           "Config":{"Labels":{"\(PodmanDesktop.managedLabel)":"1","\(PodmanDesktop.botLabel)":"\(target.botDigest)",
           "\(PodmanDesktop.baseLabel)":"\(PodmanDesktopImage.baseDigest)","\(PodmanDesktop.layerLabel)":"\(PodmanDesktopImage.layerVersion)",
           "\(PodmanDesktop.flagsLabel)":"\(PodmanDesktop.flagsVersion)"}},

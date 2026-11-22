@@ -21,7 +21,7 @@ private final class StatefulPodman: @unchecked Sendable {
         let target = PodmanDesktopTarget(botId: botId, root: URL(fileURLWithPath: "/tmp/gb-store-tests"))
         let caps = PodmanDesktop.capabilities.map { "\"CAP_\($0)\"" }.joined(separator: ",")
         return """
-        [{"EffectiveCaps":[\(caps)],"BoundingCaps":[\(caps)],"State":{"Running":\(running)},
+        [{"EffectiveCaps":[\(caps)],"BoundingCaps":[\(caps)],"Mounts":[{"Type":"bind","Source":"\(target.workspaceDir.path)","Destination":"\(PodmanDesktop.guestWorkspace)","RW":true}],"State":{"Running":\(running)},
           "Config":{"Labels":{"\(PodmanDesktop.managedLabel)":"1","\(PodmanDesktop.botLabel)":"\(target.botDigest)",
           "\(PodmanDesktop.baseLabel)":"\(PodmanDesktopImage.baseDigest)","\(PodmanDesktop.layerLabel)":"\(PodmanDesktopImage.layerVersion)",
           "\(PodmanDesktop.flagsLabel)":"\(PodmanDesktop.flagsVersion)"}},
@@ -198,5 +198,34 @@ struct PrivateDesktopStoreTests {
         store.patchBot(botId, computerMode: .privateDesktop)
         store.takeControl(botId: botId)
         #expect(store.computers[botId]?.controlHolder != .user)
+    }
+
+    @Test("a granted folder can be shown in the desktop; one the bot is not granted, or that is unsafe, cannot")
+    func desktopFolders() throws {
+        let (store, botId) = store(StatefulPodman(botId: "", container: .missing))
+        store.patchBot(botId, computerMode: .privateDesktop)
+        let dir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("gb-desktop-folder-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let folder = try #require(store.addGrantedFolder(path: dir.path, name: "Taxes"))
+
+        store.setDesktopFolder(botId: botId, folderId: folder.id, shown: true)
+        #expect(store.bots.first { $0.id == botId }?.desktopFolderIds == [], "not granted to the bot yet")
+
+        store.setBotFolder(botId, folderId: folder.id, granted: true)
+        store.setDesktopFolder(botId: botId, folderId: folder.id, shown: true)
+        #expect(store.bots.first { $0.id == botId }?.desktopFolderIds == [folder.id])
+        #expect(store.privateDesktopFolders(botId: botId).mounts.map(\.name) == ["Taxes"])
+        #expect(store.auditEvents.contains { $0.tool == "private_desktop_folder" && $0.botId == botId })
+
+        let home = try #require(store.addGrantedFolder(path: NSHomeDirectory(), name: "Home"))
+        store.setBotFolder(botId, folderId: home.id, granted: true)
+        store.setDesktopFolder(botId: botId, folderId: home.id, shown: true)
+        #expect(store.bots.first { $0.id == botId }?.desktopFolderIds == [folder.id], "the home folder is refused")
+
+        // Taking the grant away takes it out of the desktop too.
+        store.setBotFolder(botId, folderId: folder.id, granted: false)
+        #expect(store.bots.first { $0.id == botId }?.desktopFolderIds == [])
+        #expect(store.privateDesktopFolders(botId: botId).mounts.isEmpty)
     }
 }

@@ -64,6 +64,9 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var goal: String?
     /// Ids of `GrantedFolder`s (Settings → Folders) this bot may read and write.
     public var grantedFolderIds: [String]
+    /// Granted folders also shown, read-only, inside this bot's Private desktop. A subset of `grantedFolderIds`: the desktop has
+    /// a network connection, so a folder reaching it is its own decision.
+    public var desktopFolderIds: [String]
     /// `BotAvatarShape` raw value; nil is the default circle.
     public var avatarShape: String?
     /// Bumped whenever an uploaded avatar image changes; nil means no image.
@@ -118,6 +121,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         enabledComponents: [String] = AgentComponentCatalog.allIds,
         workingFolder: String? = nil,
         grantedFolderIds: [String] = [],
+        desktopFolderIds: [String] = [],
         avatarShape: String? = nil,
         avatarImageRev: Int? = nil
     ) {
@@ -157,6 +161,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.enabledComponents = enabledComponents
         self.workingFolder = workingFolder
         self.grantedFolderIds = grantedFolderIds
+        self.desktopFolderIds = desktopFolderIds
         self.avatarShape = avatarShape
         self.avatarImageRev = avatarImageRev
     }
@@ -167,7 +172,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case threadId, preview, status, updatedAt, createdAt
         case pinned, hidden, unread, autoApprove, shellNetwork, speakReplies, notifications, chiefOfStaff, managedDepartments
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
-        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, goal
+        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, desktopFolderIds, goal
         case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable, toolSelection
     }
 
@@ -209,6 +214,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         enabledComponents = try c.decodeIfPresent([String].self, forKey: .enabledComponents) ?? AgentComponentCatalog.allIds
         workingFolder = try c.decodeIfPresent(String.self, forKey: .workingFolder)
         grantedFolderIds = try c.decodeIfPresent([String].self, forKey: .grantedFolderIds) ?? []
+        desktopFolderIds = try c.decodeIfPresent([String].self, forKey: .desktopFolderIds) ?? []
         goal = try c.decodeIfPresent(String.self, forKey: .goal)
         avatarShape = try c.decodeIfPresent(String.self, forKey: .avatarShape)
         avatarImageRev = try c.decodeIfPresent(Int.self, forKey: .avatarImageRev)

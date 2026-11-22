@@ -182,6 +182,7 @@ extension PodmanDesktop {
     public static let baseLabel = "com.grizzybot.private-desktop.base"
     public static let layerLabel = "com.grizzybot.private-desktop.layer"
     public static let flagsLabel = "com.grizzybot.private-desktop.flags"
+    public static let mountsLabel = "com.grizzybot.private-desktop.mounts"
     /// Bump when `runArguments` changes what a desktop is made with, so an older one is recreated.
     public static let flagsVersion = "1"
 
@@ -199,6 +200,7 @@ extension PodmanDesktop {
         target: PodmanDesktopTarget,
         resources: PodmanDesktopResources = PodmanDesktopResources(),
         viewerPassword: String,
+        mounts: [PodmanDesktopMount] = [],
         image: String = PodmanDesktopImage.reference
     ) -> [String] {
         let memory = "\(resources.memoryGb)g"
@@ -209,7 +211,7 @@ extension PodmanDesktop {
         for (key, value) in [
             (managedLabel, "1"), (botLabel, target.botDigest),
             (baseLabel, PodmanDesktopImage.baseDigest), (layerLabel, PodmanDesktopImage.layerVersion),
-            (flagsLabel, flagsVersion),
+            (flagsLabel, flagsVersion), (mountsLabel, PodmanDesktopMounts.digest(mounts)),
         ] {
             args += ["--label", "\(key)=\(value)"]
         }
@@ -221,7 +223,9 @@ extension PodmanDesktop {
         for cap in capabilities { args += ["--cap-add", cap] }
         args += ["--shm-size", "512m",
                  "--restart", "no",
-                 "--mount", "type=bind,source=\(target.workspaceDir.path),target=\(guestWorkspace),relabel=private",
+                 "--mount", "type=bind,source=\(target.workspaceDir.path),target=\(guestWorkspace),relabel=private"]
+        for mount in mounts { args += ["--mount", mount.argument] }
+        args += [
                  "-e", "VNC_PW=\(viewerPassword)",
                  // Loopback only, on a port the host picks: the viewer is never reachable from the network.
                  "-p", "127.0.0.1::\(viewerPort)",
@@ -283,6 +287,11 @@ struct PodmanInspect: Decodable {
     /// container actually holds are these two.
     var EffectiveCaps: [String]?
     var BoundingCaps: [String]?
+    struct MountBlock: Decodable {
+        var kind: String?; var Source: String?; var Destination: String?; var RW: Bool?
+        enum CodingKeys: String, CodingKey { case kind = "Type", Source, Destination, RW }
+    }
+    var Mounts: [MountBlock]?
     var State: StateBlock?
     var Config: ConfigBlock?
     var HostConfig: HostBlock?
@@ -296,6 +305,22 @@ struct PodmanInspect: Decodable {
 
     var viewerHostPort: Int? {
         HostConfig?.PortBindings?["\(PodmanDesktop.viewerPort)/tcp"].flatMap { $0 }?.first.flatMap { Int($0.HostPort ?? "") }
+    }
+
+    /// Whether the container shows the Mac exactly what was granted: its own workspace writable, each granted folder
+    /// read-only, and nothing else. Anything extra is a way for the bot to see more than it was given.
+    func mountsMatch(workspace: String, mounts expected: [PodmanDesktopMount]) -> Bool {
+        let actual = Mounts ?? []
+        let bindings = actual.filter { $0.kind == "bind" }
+        guard actual.count == bindings.count else { return false }
+        guard bindings.count == expected.count + 1 else { return false }
+        guard let work = bindings.first(where: { $0.Destination == PodmanDesktop.guestWorkspace }),
+              work.Source == workspace, work.RW != false else { return false }
+        for mount in expected {
+            guard let found = bindings.first(where: { $0.Destination == mount.guestPath }),
+                  found.Source == mount.source, found.RW == false else { return false }
+        }
+        return true
     }
 
     var hardened: Bool {
@@ -321,6 +346,7 @@ public actor PodmanDesktop {
     private let runner: PodmanCommandRunner
     private let locate: @Sendable () -> String?
     private var inFlight: [String: Task<Void, Error>] = [:]
+    private var mountsProvider: (@Sendable (String) async -> [PodmanDesktopMount])?
 
     public init(
         root: URL,
@@ -339,6 +365,14 @@ public actor PodmanDesktop {
         ["/opt/homebrew/bin/podman", "/usr/local/bin/podman", "/usr/bin/podman"]
             .first { FileManager.default.isExecutableFile(atPath: $0) }
     }
+
+    /// Where each bot's granted Mac folders come from. Asked when a desktop is made, so a change to the grants reaches the
+    /// next desktop without anyone remembering to push it here.
+    public func setMountsProvider(_ provider: (@Sendable (String) async -> [PodmanDesktopMount])?) {
+        mountsProvider = provider
+    }
+
+    func mounts(for botId: String) async -> [PodmanDesktopMount] { await mountsProvider?(botId) ?? [] }
 
     public func target(for botId: String) -> PodmanDesktopTarget { PodmanDesktopTarget(botId: botId, root: root) }
 
@@ -394,15 +428,23 @@ public actor PodmanDesktop {
     public func create(botId: String) async throws {
         let podman = try await requirePodman()
         let target = target(for: botId)
+        let mounts = await mounts(for: botId)
         if let existing = await inspectContainer(podman, target) {
-            try verifyOurs(existing, target)
-            return
+            try verifyOwnedByUs(existing, target)
+            // Folders granted or taken back since it was made: a container cannot change its mounts, so it is replaced.
+            // Its workspace folder stays, so nothing the bot kept is lost.
+            if (existing.labels[Self.mountsLabel] ?? "none") != PodmanDesktopMounts.digest(mounts) {
+                try await check(podman, ["rm", "--force", "--time", "5", target.containerName], timeout: 60)
+            } else {
+                try verifyOurs(existing, target, mounts: mounts)
+                return
+            }
         }
         try FileManager.default.createDirectory(at: target.workspaceDir, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         // A private workspace even if the folder already existed with looser permissions.
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: target.workspaceDir.path)
-        let args = ["create"] + Self.runArguments(target: target, resources: resources, viewerPassword: Self.randomPassword())
+        let args = ["create"] + Self.runArguments(target: target, resources: resources, viewerPassword: Self.randomPassword(), mounts: mounts)
         try await check(podman, args, timeout: 120)
     }
 
@@ -497,9 +539,11 @@ public actor PodmanDesktop {
         }
     }
 
-    private func verifyOurs(_ inspect: PodmanInspect, _ target: PodmanDesktopTarget) throws {
+    private func verifyOurs(_ inspect: PodmanInspect, _ target: PodmanDesktopTarget, mounts: [PodmanDesktopMount]) throws {
         try verifyOwnedByUs(inspect, target)
-        guard inspect.hardened else { throw PodmanDesktopError.unsafeExisting(target.containerName) }
+        guard inspect.hardened, inspect.mountsMatch(workspace: target.workspaceDir.path, mounts: mounts) else {
+            throw PodmanDesktopError.unsafeExisting(target.containerName)
+        }
     }
 
     @discardableResult

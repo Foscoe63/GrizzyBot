@@ -75,6 +75,9 @@ extension RightPanelView {
                         }
                     }
                 }
+                if store.isPrivateDesktop(botId: bot.id), !bot.grantedFolderIds.isEmpty {
+                    desktopFoldersSection(bot)
+                }
                 GrizzyField(
                     label: "Memory",
                     placeholder: "Facts this bot should keep. Standing rules go under ## Pin.",
@@ -652,6 +655,30 @@ extension RightPanelView {
         settingsLoadedFor = bot.id
         confirmDelete = false
         settingsError = nil
+    }
+
+    /// Which of the bot's granted folders its Private desktop also shows. Read-only inside the desktop.
+    @ViewBuilder
+    func desktopFoldersSection(_ bot: Bot) -> some View {
+        Text("Show in the Private desktop")
+            .font(.system(size: 13))
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.top, 16)
+        Text("The desktop sees these folders read-only, so it can open and read the files but not change or delete them. It also has a network connection: anything it can read it could send out. Changing this restarts the desktop.")
+            .font(.system(size: 12.5))
+            .foregroundStyle(Theme.textMuted)
+            .padding(.top, 4)
+        ForEach(store.grantedFolders(for: bot)) { folder in
+            let shown = bot.desktopFolderIds.contains(folder.id)
+            settingsToggle(
+                title: folder.name,
+                subtitle: store.desktopFolderRefusal(folder).map { "Cannot be shown: \($0)" }
+                    ?? (shown ? "\(folder.path) → /mnt/mac, read-only" : folder.path),
+                isOn: shown
+            ) {
+                store.setDesktopFolder(botId: bot.id, folderId: folder.id, shown: !shown)
+            }
+        }
     }
 
     func settingsToggle(

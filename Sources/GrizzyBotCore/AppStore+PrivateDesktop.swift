@@ -16,6 +16,69 @@ extension AppStore {
         "A Private desktop cannot be taken over by a person."
     )
 
+    // MARK: Mac folders
+
+    /// The folders this bot's desktop shows, and the ones left out with the reason. Only folders the bot is also granted.
+    public func privateDesktopFolders(botId: String)
+        -> (mounts: [PodmanDesktopMount], skipped: [PodmanDesktopMountSkip]) {
+        guard let bot = bots.first(where: { $0.id == botId }) else { return ([], []) }
+        let chosen = grantedFolders(for: bot).filter { bot.desktopFolderIds.contains($0.id) }
+        return PodmanDesktopMounts.resolve(chosen, protectedPaths: [globalRoot.path])
+    }
+
+    /// Lets the desktop ask this store which folders a bot may show, whenever it makes one.
+    func installPrivateDesktopMounts() {
+        guard let privateDesktop else { return }
+        Task { [weak self] in
+            await privateDesktop.setMountsProvider { botId in
+                await MainActor.run { self?.privateDesktopFolders(botId: botId).mounts ?? [] }
+            }
+        }
+    }
+
+    /// Shows (or stops showing) one granted folder inside the bot's Private desktop. A desktop cannot change its mounts,
+    /// so a running one is removed and the next use makes a new one; the bot's workspace folder is kept.
+    public func setDesktopFolder(botId: String, folderId: String, shown: Bool) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }),
+              let folder = grantedFolders.first(where: { $0.id == folderId }) else { return }
+        let was = bots[idx].desktopFolderIds.contains(folderId)
+        guard shown != was else { return }
+        // A folder can only be shown if the bot is granted it, and a refused one is not turned on at all.
+        if shown {
+            guard bots[idx].grantedFolderIds.contains(folderId), desktopFolderRefusal(folder) == nil else { return }
+        }
+        bots[idx].desktopFolderIds.removeAll { $0 == folderId }
+        if shown { bots[idx].desktopFolderIds.append(folderId) }
+        bots[idx].updatedAt = .now
+        save()
+        recordAudit(
+            type: .configurationChanged, botId: botId, tool: "private_desktop_folder",
+            reason: shown ? "Showed \(folder.name) in the Private desktop, read-only." : "Stopped showing \(folder.name) in the Private desktop.",
+            allowed: true, forwarded: false
+        )
+        if bots[idx].computerMode == .privateDesktop, privateDesktopStates[botId]?.status?.container != .missing {
+            resetPrivateDesktop(botId: botId)
+        }
+    }
+
+    /// Why a granted folder cannot be shown in a desktop, or nil when it can.
+    public func desktopFolderRefusal(_ folder: GrantedFolder) -> String? {
+        PodmanDesktopMounts.refusal(for: folder.path, home: PodmanDesktopMounts.canonical(NSHomeDirectory()),
+                                    protectedPaths: [PodmanDesktopMounts.canonical(globalRoot.path)],
+                                    visibleRoots: ["/Users", "/Volumes"])
+    }
+
+    /// Takes a folder out of every desktop when it is no longer granted to the bot, or removed.
+    func pruneDesktopFolders() {
+        let granted = Set(grantedFolders.map(\.id))
+        for idx in bots.indices {
+            let kept = bots[idx].desktopFolderIds.filter { granted.contains($0) && bots[idx].grantedFolderIds.contains($0) }
+            guard kept != bots[idx].desktopFolderIds else { continue }
+            bots[idx].desktopFolderIds = kept
+            if bots[idx].computerMode == .privateDesktop { resetPrivateDesktop(botId: bots[idx].id) }
+        }
+    }
+
     public func privateDesktopState(botId: String) -> PrivateDesktopBotState {
         privateDesktopStates[botId] ?? PrivateDesktopBotState()
     }

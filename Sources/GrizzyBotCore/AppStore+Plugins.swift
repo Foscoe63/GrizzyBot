@@ -921,6 +921,7 @@ extension AppStore {
     public func installComputerRuntime(primary: any ComputerRuntime) {
         let desktop = PodmanDesktop(root: globalRoot)
         privateDesktop = desktop
+        installPrivateDesktopMounts()
         computerRuntime = RoutingComputerRuntime(primary: primary, privateDesktop: ContainerComputerRuntime(desktop: desktop))
     }
 
