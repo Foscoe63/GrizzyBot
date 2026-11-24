@@ -2,6 +2,10 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## 0.19.4 — Clearer disabled toggles
+
+- **Disabled switches stand out.** Off toggles in Settings → Tools now show red instead of blending in, and a turned-off MCP server's status dot is grey rather than green or red.
+
 ## 0.19.3 — No more doubled questions
 
 - **Questions and answers no longer appear twice.** When a bot asks a question with choices, the card shows once, and tapping an option sends a single reply instead of two.

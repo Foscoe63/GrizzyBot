@@ -57,6 +57,10 @@
 
 ## 🆕 What's new
 
+### 0.19.4 — Clearer disabled toggles
+
+- **Off switches are red** in *Settings → Tools*, and a disabled MCP server shows a grey status dot.
+
 ### 0.19.3 — No more doubled questions
 
 - **Questions and answers show once.** A bot's multiple-choice question is one card, and picking an option sends one reply.
