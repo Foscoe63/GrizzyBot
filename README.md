@@ -57,6 +57,10 @@
 
 ## 🆕 What's new
 
+### 0.19.6 — Newer MLX engine
+
+- **Local MLX models use MLX 0.32/0.33**, with upstream fixes for GPU-engine crashes seen on macOS 27.
+
 ### 0.19.5 — MCP servers reconnect on their own
 
 - **Failed MCP servers are re-checked every 30 seconds**, so Obsidian and others come back after a restart without opening Settings.

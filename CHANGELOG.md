@@ -2,6 +2,10 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## 0.19.6 — Newer MLX engine
+
+- **Local MLX models run on MLX 0.32/0.33** (mlx-swift 0.33.0, mlx-swift-lm 3.33.0). This picks up upstream fixes for crashes inside the GPU engine (a custom Metal kernel use-after-free, the compile cache, and macOS 27 shader support) that had been closing GrizzyBot during local model runs.
+
 ## 0.19.5 — MCP servers reconnect on their own
 
 - **Dropped MCP servers recover.** If a server such as Obsidian goes away (Obsidian restarts, a plugin reloads), GrizzyBot re-checks failed servers every 30 seconds and reconnects without a visit to Settings.
