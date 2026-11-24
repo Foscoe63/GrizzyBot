@@ -89,6 +89,8 @@ public struct AgentLoopRequest: Sendable {
     public var departmentMemory: String = ""
     /// What a Chief of Staff is in charge of (empty for every other bot).
     public var authorityNote: String = ""
+    /// The bot's own active routines, bounded. Information only.
+    public var routinesNote: String = ""
 
     public init(
         endpoint: ModelEndpoint,
@@ -535,6 +537,7 @@ public enum AgentLoop {
             utcDateLine(now: now),
             PromptSection.agency(),
             PromptSection.honesty(),
+            PromptSection.appControl(tools: request.tools + request.deferredTools) ?? "",
             PromptSection.sandbox(),
             PromptSection.memory(),
             PromptSection.untrustedContent(),
@@ -594,6 +597,10 @@ public enum AgentLoop {
         let authority = request.authorityNote.trimmingCharacters(in: .whitespacesAndNewlines)
         if !authority.isEmpty {
             lines.append(authority)
+        }
+        let routinesNote = request.routinesNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !routinesNote.isEmpty {
+            lines.append(routinesNote)
         }
         let memory = request.memory.trimmingCharacters(in: .whitespacesAndNewlines)
         if !memory.isEmpty {

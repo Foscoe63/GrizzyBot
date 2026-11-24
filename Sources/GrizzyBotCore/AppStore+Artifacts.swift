@@ -108,7 +108,6 @@ extension AppStore {
             saved = (try? artifactStore.link(id: id, skillId: skill.id)) ?? saved
         }
 
-        skillsOpen = false
         reloadArtifacts()
         activeArtifactId = saved.id
         artifactVersionIndex = nil
@@ -433,6 +432,7 @@ extension AppStore {
             if let home = try? self.botHome.homeURL(botId: botId) {
                 let bot = self.bots.first(where: { $0.id == botId })
                 let mode = (bot?.computerMode == .auto ? self.appConfig.defaultComputerMode : bot?.computerMode) ?? .auto
+                await self.computerRuntime?.setMode(botId: botId, mode: mode)
                 await self.computerRuntime?.setSession(
                     botId: botId,
                     thisMac: mode == .thisMac,
@@ -462,8 +462,12 @@ extension AppStore {
     }
 
     public func takeControl(botId: String) {
+        // A person cannot drive a Private desktop (its panel is a preview), so handing it over would only lock the bot
+        // out of its own computer with no way to use it.
+        if isPrivateDesktop(botId: botId) { return }
         guard var computer = computers[botId] else { return }
         computer.controlHolder = .user
+        if takeoverProgress[botId] != nil { takeoverProgress[botId]?.taken = true }
         if computer.state == .suspended {
             computer.state = .running
             computer.screenAvailable = true

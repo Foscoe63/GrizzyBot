@@ -208,9 +208,13 @@ struct RoutinesPageView: View {
     }
 
     private func dayColumn(_ day: Date) -> some View {
+        let now = Date()
         let items = filteredRoutines.filter { routine in
-            guard let next = routine.nextRunAt else { return false }
-            return Calendar.current.isDate(next, inSameDayAs: day)
+            // A routine already queued for this day (a retry, a manual "run now")
+            // counts too, besides the days its schedule says it runs.
+            if let next = routine.nextRunAt, next < Date.distantFuture - 1, Calendar.current.isDate(next, inSameDayAs: day) { return true }
+            guard routine.active else { return false }
+            return Cron.firstRun(on: day, cron: routine.cron, notBefore: now, timezone: routine.timezone) != nil
         }
         return VStack(alignment: .leading, spacing: 8) {
             Text(dayHeader(day))

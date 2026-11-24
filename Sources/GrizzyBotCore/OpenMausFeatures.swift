@@ -6,6 +6,8 @@ public enum ComputerMode: String, Sendable, CaseIterable, Identifiable, CustomSt
     case auto
     case inAppBrowser = "in-app-browser"
     case thisMac = "local"
+    /// A bot-owned Linux desktop in a Podman container.
+    case privateDesktop = "private-desktop"
     case off
 
     public var id: String { rawValue }
@@ -13,7 +15,7 @@ public enum ComputerMode: String, Sendable, CaseIterable, Identifiable, CustomSt
 
     /// Modes shown in Settings and bot panels.
     public static var selectableCases: [ComputerMode] {
-        [.auto, .inAppBrowser, .thisMac, .off]
+        [.auto, .inAppBrowser, .thisMac, .privateDesktop, .off]
     }
 
     public var label: String {
@@ -21,6 +23,7 @@ public enum ComputerMode: String, Sendable, CaseIterable, Identifiable, CustomSt
         case .auto: return "Auto"
         case .inAppBrowser: return "In-app browser"
         case .thisMac: return "This Mac"
+        case .privateDesktop: return "Private desktop"
         case .off: return "Off"
         }
     }
@@ -31,6 +34,7 @@ public enum ComputerMode: String, Sendable, CaseIterable, Identifiable, CustomSt
         case "in-app-browser", "cloud", "browser", "docker": return .inAppBrowser
         case "vm", "localVM": return .inAppBrowser
         case "local", "this-mac", "thisMac": return .thisMac
+        case "private-desktop", "privateDesktop": return .privateDesktop
         case "off": return .off
         default: return .auto
         }
@@ -54,6 +58,7 @@ public enum ShellMainView: String, Codable, Sendable, Equatable {
     case routines
     case botChat
     case teamMap
+    case tickets
 }
 
 public enum ThemeAppearanceMode: String, Codable, Sendable, CaseIterable, Identifiable {
@@ -100,6 +105,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var menuBarOnly: Bool
     /// Register the LaunchAgent helper so due routines wake the app in the background.
     public var backgroundRoutines: Bool
+    /// Hold a power assertion so the Mac doesn't idle-sleep while GrizzyBot runs.
+    public var keepAwake: Bool
     /// System / light / dark appearance for built-in themes.
     public var themeAppearanceMode: ThemeAppearanceMode
     /// Active built-in theme preset id (Osaurus-compatible gallery).
@@ -112,6 +119,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var memoryRelevanceMode: MemoryRelevanceGateMode
     /// What a message sent mid-run does: steer the run, or wait for it.
     public var queueMode: QueueMode
+    /// Sidebar bot categories, in display order.
+    public var botCategories: [String] = ["Coding"]
     /// Run the loopback webhook receiver so outside systems can fire routines.
     public var webhooksEnabled: Bool
     public var webhookPort: Int
@@ -159,6 +168,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         showMenuBar: Bool = true,
         menuBarOnly: Bool = false,
         backgroundRoutines: Bool = false,
+        keepAwake: Bool = false,
         themeAppearanceMode: ThemeAppearanceMode = .dark,
         activeThemePresetId: String? = "grizzy-default",
         agentStallTimeoutMs: Int = 60_000,
@@ -210,6 +220,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         self.showMenuBar = showMenuBar
         self.menuBarOnly = menuBarOnly
         self.backgroundRoutines = backgroundRoutines
+        self.keepAwake = keepAwake
         self.themeAppearanceMode = themeAppearanceMode
         self.activeThemePresetId = activeThemePresetId
         self.agentStallTimeoutMs = agentStallTimeoutMs
@@ -226,9 +237,9 @@ public struct AppConfig: Codable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case profileName, profileEmail, composioConnectKey, composioApiKey
         case googleClientId, googleClientSecret, boxToken
-        case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, impliedToolsGranted, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines
+        case ttsKey, sentryDSN, braveSearchKey, ttsVoice, defaultComputerMode, defaultEnabledTools, seenToolIds, impliedToolsGranted, launchAtLogin, showMenuBar, menuBarOnly, backgroundRoutines, keepAwake
         case themeAppearanceMode, activeThemePresetId, agentStallTimeoutMs
-        case privacyFilter, memoryRelevanceMode, queueMode, webhooksEnabled, webhookPort, telegram, localGateway, enableFolderWatchers
+        case privacyFilter, memoryRelevanceMode, queueMode, webhooksEnabled, webhookPort, telegram, localGateway, enableFolderWatchers, botCategories
         case controlPlaneEnabled, controlPlanePort, otlpEndpoint, teamLibraryURL, routerTimeoutSeconds, botColoredChats
         case companionEnabled, companionPort, companionAllowNetwork, routerModel
     }
@@ -255,12 +266,14 @@ public struct AppConfig: Codable, Sendable, Equatable {
         showMenuBar = try c.decodeIfPresent(Bool.self, forKey: .showMenuBar) ?? true
         menuBarOnly = try c.decodeIfPresent(Bool.self, forKey: .menuBarOnly) ?? false
         backgroundRoutines = try c.decodeIfPresent(Bool.self, forKey: .backgroundRoutines) ?? false
+        keepAwake = try c.decodeIfPresent(Bool.self, forKey: .keepAwake) ?? false
         themeAppearanceMode = try c.decodeIfPresent(ThemeAppearanceMode.self, forKey: .themeAppearanceMode) ?? .dark
         activeThemePresetId = try c.decodeIfPresent(String.self, forKey: .activeThemePresetId) ?? "grizzy-default"
         agentStallTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .agentStallTimeoutMs) ?? 60_000
         privacyFilter = try c.decodeIfPresent(PrivacyFilterSettings.self, forKey: .privacyFilter) ?? .default
         memoryRelevanceMode = try c.decodeIfPresent(MemoryRelevanceGateMode.self, forKey: .memoryRelevanceMode) ?? .heuristic
         queueMode = try c.decodeIfPresent(QueueMode.self, forKey: .queueMode) ?? .steer
+        botCategories = try c.decodeIfPresent([String].self, forKey: .botCategories) ?? ["Coding"]
         webhooksEnabled = try c.decodeIfPresent(Bool.self, forKey: .webhooksEnabled) ?? false
         webhookPort = try c.decodeIfPresent(Int.self, forKey: .webhookPort) ?? WebhookReceiver.defaultPort
         telegram = try c.decodeIfPresent(TelegramSettings.self, forKey: .telegram) ?? .default
@@ -299,12 +312,14 @@ public struct AppConfig: Codable, Sendable, Equatable {
         try c.encode(showMenuBar, forKey: .showMenuBar)
         try c.encode(menuBarOnly, forKey: .menuBarOnly)
         try c.encode(backgroundRoutines, forKey: .backgroundRoutines)
+        try c.encode(keepAwake, forKey: .keepAwake)
         try c.encode(themeAppearanceMode, forKey: .themeAppearanceMode)
         try c.encodeIfPresent(activeThemePresetId, forKey: .activeThemePresetId)
         try c.encode(agentStallTimeoutMs, forKey: .agentStallTimeoutMs)
         try c.encode(privacyFilter, forKey: .privacyFilter)
         try c.encode(memoryRelevanceMode, forKey: .memoryRelevanceMode)
         try c.encode(queueMode, forKey: .queueMode)
+        try c.encode(botCategories, forKey: .botCategories)
         try c.encode(webhooksEnabled, forKey: .webhooksEnabled)
         try c.encode(webhookPort, forKey: .webhookPort)
         try c.encode(telegram, forKey: .telegram)

@@ -86,6 +86,20 @@ rm -rf "$APP"
 # ditto rather than cp -R: it preserves the signature's extended attributes.
 ditto "$PRODUCT" "$APP"
 
+# xcodebuild leaves the embedded routine agent signed ad-hoc, without hardened
+# runtime or a secure timestamp, which the notary service rejects. When the app
+# itself is Developer ID signed, sign the helper the same way, then re-seal the
+# app around it, keeping the app's own entitlements and runtime flag.
+SIGNED_INFO="$(codesign -dvv "$APP" 2>&1 || true)"
+IDENTITY="$(printf '%s\n' "$SIGNED_INFO" | sed -n 's/^Authority=\(Developer ID Application.*\)$/\1/p' | head -1)"
+if [[ -n "$IDENTITY" ]]; then
+  echo "Signing GrizzyBotRoutineAgent with $IDENTITY"
+  codesign --force --sign "$IDENTITY" --timestamp --options runtime \
+    "$APP/Contents/MacOS/GrizzyBotRoutineAgent"
+  codesign --force --sign "$IDENTITY" --timestamp \
+    --preserve-metadata=entitlements,flags "$APP"
+fi
+
 # Everything below is a check, not a build step. Each one stands for a way this
 # bundle has actually shipped broken before.
 fail() { echo "error: $1" >&2; exit 1; }

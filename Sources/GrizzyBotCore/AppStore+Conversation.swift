@@ -186,19 +186,7 @@ extension AppStore {
     }
 
     public func answerChoice(botId: String, messageId: String, option: ChoiceOption) {
-        let key = threadKey(for: botId)
-        guard var thread = threads[key] else { return }
-        let msg = ThreadMessage(
-            id: Ids.new(),
-            threadId: thread.threadId,
-            seq: thread.nextSeq,
-            role: .user,
-            blocks: [.text(option.label)]
-        )
-        thread.messages.append(msg)
-        thread.cursor = msg.seq
-        threads[key] = thread
-        save()
+        // send() records the user's message itself.
         send(botId: botId, text: option.label)
         _ = messageId
     }

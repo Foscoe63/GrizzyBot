@@ -30,6 +30,8 @@ struct ShellView: View {
                 Group {
                     if store.mainView == .routines {
                         RoutinesPageView()
+                    } else if store.mainView == .tickets {
+                        TicketBoardView()
                     } else if store.mainView == .teamMap {
                         TeamMapView()
                     } else if store.mainView == .botChat {
@@ -50,14 +52,6 @@ struct ShellView: View {
             if store.showHostPrompt {
                 HostComputerPromptView()
                     .zIndex(10)
-            }
-            if store.pluginsOpen {
-                PluginsOverlayView()
-                    .zIndex(20)
-            }
-            if store.skillsOpen {
-                SkillsOverlayView()
-                    .zIndex(21)
             }
             if store.modelSettingsOpen {
                 ModelSettingsOverlayView()
@@ -97,14 +91,6 @@ struct ShellView: View {
             }
             if store.modelSettingsOpen {
                 store.closeModelSettings()
-                return .handled
-            }
-            if store.pluginsOpen {
-                store.pluginsOpen = false
-                return .handled
-            }
-            if store.skillsOpen {
-                store.skillsOpen = false
                 return .handled
             }
             if store.mainView == .routines || store.mainView == .botChat {
@@ -323,7 +309,7 @@ private struct ComputerFullWindowOverlay: View {
                         GrizzyButton(title: "Release", variant: .outline, size: .sm) {
                             store.release(botId: bot.id)
                         }
-                    } else {
+                    } else if !store.isPrivateDesktop(botId: bot.id) {
                         GrizzyButton(title: "Take control", variant: .outline, size: .sm) {
                             store.takeControl(botId: bot.id)
                         }
@@ -347,10 +333,17 @@ private struct ComputerFullWindowOverlay: View {
                 Rectangle().fill(Theme.borderSidebar).frame(height: 1)
             }
 
+            if let bot, computer?.controlHolder == .user, computer?.state == .running,
+               !store.isPrivateDesktop(botId: bot.id), !store.isThisMacComputer(botId: bot.id), computer?.kind != .desktop {
+                BrowserAddressBar(botId: bot.id)
+            }
+
             ZStack {
                 Theme.bgScreen
                 if let bot {
-                    if store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
+                    if store.isPrivateDesktop(botId: bot.id) {
+                        PrivateDesktopScreen(botId: bot.id, fill: false)
+                    } else if store.isThisMacComputer(botId: bot.id) || computer?.kind == .desktop {
                         ThisMacComputerSurface(
                             botId: bot.id,
                             botName: bot.name,

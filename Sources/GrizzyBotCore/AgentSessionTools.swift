@@ -95,14 +95,63 @@ public enum AgentSessionTools {
         )
     }
 
-    public static func handleClarify(question: String) -> AgentToolCallResult {
+    public static let maxChoices = 6
+    public static let maxChoiceChars = 80
+
+    /// The choices a bot offered, as short unique labels. Models send them as a JSON array, or as one string split by `|`,
+    /// `;` or new lines (commas only when nothing else is there, since a choice may hold one).
+    public static func parseChoices(_ value: JSONValue?) -> [String] {
+        var labels: [String] = []
+        switch value {
+        case .array(let items):
+            labels = items.compactMap { $0.stringValue() }
+        case .string(let text):
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("["), let data = trimmed.data(using: .utf8),
+               let decoded = try? JSONSerialization.jsonObject(with: data) as? [Any] {
+                labels = decoded.compactMap { $0 as? String }
+            } else {
+                for separator in ["|", ";", "\n", ","] where trimmed.contains(separator) {
+                    labels = trimmed.components(separatedBy: separator)
+                    break
+                }
+            }
+        default:
+            break
+        }
+        var seen = Set<String>()
+        var result: [String] = []
+        for label in labels {
+            let clean = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !clean.isEmpty, seen.insert(clean.lowercased()).inserted else { continue }
+            result.append(String(clean.prefix(maxChoiceChars)))
+            if result.count == maxChoices { break }
+        }
+        return result
+    }
+
+    /// Asks the person something and pauses until they answer. With two or more `options` it is a card of buttons (their
+    /// pick comes back as the next message); otherwise a plain question they answer in their own words.
+    public static func handleClarify(question: String, detail: String = "", options: [String] = []) -> AgentToolCallResult {
         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else {
             return AgentToolCallResult(output: "`question` is required.")
         }
+        let note = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard options.count >= 2 else {
+            return AgentToolCallResult(
+                output: "Waiting for your answer.",
+                blocks: [.ask(text: q, detail: note.isEmpty ? nil : note)],
+                pause: .waitingInput
+            )
+        }
+        let letters = Array("ABCDEFGHIJ")
+        let choices = options.enumerated().map { index, label in
+            ChoiceOption(id: "opt-\(index + 1)", letter: String(letters[index]), label: label)
+        }
         return AgentToolCallResult(
-            output: "Waiting for your answer.",
-            blocks: [.ask(text: q, detail: nil)],
+            output: "Waiting for your pick. Their answer arrives as the next message: one of the options, or their own words.",
+            blocks: [.choice(question: q, subtitle: note.isEmpty ? nil : note, options: choices)],
             pause: .waitingInput
         )
     }

@@ -266,7 +266,7 @@ struct ComputerModeMigrationTests {
         #expect(ComputerMode.parse("docker") == .inAppBrowser)
         #expect(ComputerMode.parse("vm") == .inAppBrowser)
         #expect(ComputerMode.parse("local") == .thisMac)
-        #expect(ComputerMode.selectableCases == [.auto, .inAppBrowser, .thisMac, .off])
+        #expect(ComputerMode.selectableCases == [.auto, .inAppBrowser, .thisMac, .privateDesktop, .off])
         #expect(ComputerMode.inAppBrowser.label == "In-app browser")
 
         let data = Data(#""cloud""#.utf8)

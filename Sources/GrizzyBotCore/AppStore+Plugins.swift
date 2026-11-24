@@ -6,8 +6,7 @@ extension AppStore {
     // MARK: - Plugins
 
     public func openPlugins() {
-        pluginsOpen = true
-        Task { await refreshPluginCatalog() }
+        openAppSettings(section: .plugins)
     }
 
     public func refreshPluginCatalog() async {
@@ -906,6 +905,7 @@ extension AppStore {
         case DraftPreview.tool: return "plugin_call"
         case "routine.change", "routine.untrusted": return "routine_manage"
         case "config.change": return "config_manage"
+        case "team.change": return "team_map"
         case "delegate.lend": return "message_bot"
         case "external_agent.run": return "delegate_external"
         case "memory.untrusted_write": return "remember"
@@ -916,7 +916,16 @@ extension AppStore {
         }
     }
 
-    private func resolvedComputerMode(for bot: Bot) -> ComputerMode {
+    /// Installs `primary` (the app's browser and This Mac runtime) together with the Private desktop's, so each bot reaches
+    /// the one its mode names. Desktop files live under this account's data folder, apart from every bot's own files.
+    public func installComputerRuntime(primary: any ComputerRuntime) {
+        let desktop = PodmanDesktop(root: globalRoot)
+        privateDesktop = desktop
+        installPrivateDesktopMounts()
+        computerRuntime = RoutingComputerRuntime(primary: primary, privateDesktop: ContainerComputerRuntime(desktop: desktop))
+    }
+
+    func resolvedComputerMode(for bot: Bot) -> ComputerMode {
         if bot.computerMode != .auto { return bot.computerMode }
         if appConfig.defaultComputerMode != .auto { return appConfig.defaultComputerMode }
         return deployment.normalizedHost == .thisMac ? .thisMac : .inAppBrowser
@@ -941,6 +950,7 @@ extension AppStore {
     func prepareComputerSurface(botId: String, bot: Bot) async -> URL {
         let home = (try? botHome.homeURL(botId: botId)) ?? userPersistence.root
         let mode = resolvedComputerMode(for: bot)
+        await computerRuntime?.setMode(botId: botId, mode: mode)
         await computerRuntime?.setSession(
             botId: botId,
             thisMac: mode == .thisMac,
@@ -982,6 +992,8 @@ extension AppStore {
             return "Computer is off for this bot."
         case .inAppBrowser:
             return "Persistent in-app browser for this bot. Cookies survive relaunch."
+        case .privateDesktop:
+            return "Private Linux desktop in a Podman container. It cannot see this Mac's files; only the bot's own workspace folder is shared."
         default:
             return "Follows workspace default computer mode."
         }
@@ -990,6 +1002,18 @@ extension AppStore {
     func appendLiveTool(threadKey: String, runId: String, name: String, result: AgentToolCallResult) {
         guard var thread = threads[threadKey], thread.run?.id == runId else { return }
         var blocks = result.blocks
+        // Questions are carried by the run's closing message; showing them here too would render them twice.
+        blocks.removeAll {
+            switch $0 {
+            case .choice, .ask: return true
+            default: return false
+            }
+        }
+        if blocks.isEmpty, result.blocks.contains(where: {
+            if case .choice = $0 { return true }
+            if case .ask = $0 { return true }
+            return false
+        }) { return }
         // A pause ends the run in the same breath, and the run's closing message carries the approval card
         // along with the pending tool it resumes. A second card here would be answerable before that tool
         // is recorded, and would be left waiting after the first was answered.
@@ -1036,6 +1060,7 @@ extension AppStore {
 
     public func tickDueRoutines() {
         let now = Date.now
+        expireUnattendedApprovals(now: now)
         recoverStuckRoutines(now: now)
         var activeRoutineRuns = 0
         for (botId, _) in routines {

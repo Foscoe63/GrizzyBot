@@ -44,7 +44,7 @@ public enum ActionGateway {
              // A proposal changes nothing until the person accepts it, so it is no side effect.
              "search_team_memory", "propose_team_memory":
             return .read
-        case "shell", "shell.exec", "remember", "forget", "import_skills", "skill_propose", "routine_manage", "config_manage", "workflow_run",
+        case "shell", "shell.exec", "remember", "forget", "import_skills", "skill_propose", "routine_manage", "config_manage", "team_map", "workflow_run",
              "plugin_call", "spawn_bot", "message_bot", "delete_bot":
             return .writeFile
         case "mcp_call":

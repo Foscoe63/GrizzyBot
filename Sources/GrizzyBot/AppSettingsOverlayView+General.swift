@@ -99,6 +99,9 @@ extension AppSettingsOverlayView {
             configToggle("Background routines", "Lets due routines wake the app even when it is closed.", \.backgroundRoutines) { on in
                 applyBackgroundService(RoutineAgentController.setEnabled(on), on: on, keyPath: \.backgroundRoutines, name: "Background routines")
             }
+            configToggle("Keep computer awake", "Stops the Mac from sleeping while GrizzyBot is open. Off follows your system Energy settings.", \.keepAwake) { on in
+                KeepAwakeController.set(on)
+            }
             #if DEBUG
             Text("Launch at login and background routines require a signed Release build. SMAppService rejects ad-hoc Debug bundles.")
                 .font(.system(size: 11))
@@ -253,7 +256,7 @@ extension AppSettingsOverlayView {
             subtitle: "Used when a bot’s computer mode is Auto."
         ) {
             GrizzySelect(options: ComputerMode.selectableCases, selection: $computerMode)
-            Text("Auto follows your host choice (in-app browser or This Mac). In-app browser keeps cookies per bot.")
+            Text("Auto follows your host choice (in-app browser or This Mac); it never picks Private desktop. In-app browser keeps cookies per bot.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.top, 10)
@@ -263,6 +266,41 @@ extension AppSettingsOverlayView {
             config.defaultComputerMode = mode
             store.saveAppConfig(config)
         }
+
+        settingsCard(
+            title: "Private desktop",
+            subtitle: "A Linux desktop in a Podman container, one per bot. It cannot see your Mac’s files; only the bot’s own workspace folder is shared. A person cannot take it over, so a bot cannot ask you to sign in there."
+        ) {
+            let environment = store.privateDesktopEnvironment
+            Text(environment?.podmanPath != nil ? "Podman is installed" : "Podman is not installed")
+                .font(.system(size: 13.5))
+                .foregroundStyle(environment?.podmanPath != nil ? Theme.green : Theme.orange)
+            if environment?.podmanPath != nil {
+                Text(environment?.machineRunning == true ? "Podman is running" : "Podman is not running. Start it with `podman machine start`.")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(environment?.machineRunning == true ? Theme.green : Theme.orange)
+                    .padding(.top, 6)
+            }
+            if environment?.machineRunning == true {
+                Text(environment?.imagePresent == true ? "The desktop image is ready" : "The desktop image has not been built yet")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(environment?.imagePresent == true ? Theme.green : Theme.orange)
+                    .padding(.top, 6)
+                if environment?.imagePresent != true {
+                    PrivateDesktopImageButton().padding(.top, 12)
+                }
+            } else if environment == nil {
+                Text("Checking Podman…")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            Text("Its browser is blocked from this Mac’s localhost and from the Podman gateway. The desktop can still reach the internet and other devices on your network, so keep bots that browse untrusted pages away from anything on your network you would not expose.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+        }
+        .task { await store.refreshPrivateDesktopEnvironment() }
 
         settingsCard(
             title: "This Mac permissions",

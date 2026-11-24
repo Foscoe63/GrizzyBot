@@ -20,9 +20,9 @@ struct OverlaySnapshotTests {
     @Test("plugins overlay matches golden")
     func pluginsSnapshot() throws {
         let store = makeStore()
-        store.pluginsOpen = true
+        store.appSettingsSection = .plugins
         try assertGolden(
-            try render(PluginsOverlayView(), store: store, size: CGSize(width: 1080, height: 760)),
+            try render(PluginsPageView(), store: store, size: CGSize(width: 1080, height: 760)),
             name: "plugins-overlay"
         )
     }
@@ -30,9 +30,9 @@ struct OverlaySnapshotTests {
     @Test("skills overlay matches golden")
     func skillsSnapshot() throws {
         let store = makeStore()
-        store.skillsOpen = true
+        store.appSettingsSection = .skills
         try assertGolden(
-            try render(SkillsOverlayView(), store: store, size: CGSize(width: 720, height: 640)),
+            try render(SkillsPageView(), store: store, size: CGSize(width: 720, height: 640)),
             name: "skills-overlay"
         )
     }

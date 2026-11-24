@@ -127,6 +127,10 @@ public protocol ComputerRuntime: AnyObject, Sendable {
     func sessionDescription(botId: String) async -> String
     /// Ready the surface for the full-window overlay (load browser page / refresh This Mac preview).
     func prepareForDisplay(botId: String) async
+    /// Which computer mode this bot resolved to, announced before `setSession`, so one runtime can serve several kinds.
+    func setMode(botId: String, mode: ComputerMode) async
+    /// Why the surface cannot be used right now, in a sentence a person can act on, or nil.
+    func unavailableReason(botId: String) async -> String?
 }
 
 public extension ComputerRuntime {
@@ -148,6 +152,16 @@ public extension ComputerRuntime {
 
     func prepareForDisplay(botId: String) async {
         _ = botId
+    }
+
+    func setMode(botId: String, mode: ComputerMode) async {
+        _ = botId
+        _ = mode
+    }
+
+    func unavailableReason(botId: String) async -> String? {
+        _ = botId
+        return nil
     }
 }
 

@@ -19,7 +19,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Apple_Silicon-Local_MLX-5E5CE6?logo=apple&logoColor=white" alt="Local MLX">
   <img src="https://img.shields.io/badge/Plugins-Google_·_Composio_·_MCP-34A853?logo=google&logoColor=white" alt="Plugins">
-  <img src="https://img.shields.io/badge/Computer-This_Mac_·_Browser-111827?logo=safari&logoColor=white" alt="Computer">
+  <img src="https://img.shields.io/badge/Computer-This_Mac_·_Browser_·_Private_desktop-111827?logo=safari&logoColor=white" alt="Computer">
   <img src="https://img.shields.io/badge/Governance-CEL_·_Audit-B45309" alt="Governance">
 </p>
 
@@ -56,6 +56,55 @@
 ---
 
 ## 🆕 What's new
+
+### 0.19.5 — MCP servers reconnect on their own
+
+- **Failed MCP servers are re-checked every 30 seconds**, so Obsidian and others come back after a restart without opening Settings.
+- **Steadier agent runs and MCP sign-in:** loop guard, reply recovery, model-written compaction, MCP questions and OAuth.
+
+### 0.19.4 — Clearer disabled toggles
+
+- **Off switches are red** in *Settings → Tools*, and a disabled MCP server shows a grey status dot.
+
+### 0.19.3 — No more doubled questions
+
+- **Questions and answers show once.** A bot's multiple-choice question is one card, and picking an option sends one reply.
+
+### 0.19.2 — Keep awake
+
+- **Keep computer awake.** *Settings → General → Background* has a toggle that holds the Mac awake while GrizzyBot is open; off follows your system settings.
+
+### 0.19.1 — Plugins and Skills in Settings
+
+- **Plugins and Skills are Settings pages.** *Settings → Customize → Plugins* and *Skills* replace the sidebar buttons and their pop-out windows.
+
+### 0.19.0 — Update check
+
+- **Check for updates.** *GrizzyBot → Check for Updates…* (and a quiet check at launch) compares your version with the latest GitHub release and links to its page.
+
+### 0.18.0 — Bots can run the app
+
+- **Bots operate the app.** Ask a bot what teams are on the Team map, or to add a routine or a ticket, and it uses the app's own tools (`team_map`, `routine_manage`, `board_tickets`, …) instead of a script. Changes stop on an approval card.
+
+### 0.17.0 — Sidebar categories
+
+- **Sidebar categories.** Group bots into collapsible categories of your own: sidebar **+** → *New category…*, then drag a bot onto a header (or right-click it → *Move to category*). The Orchestrator stays on its own.
+
+### 0.16.0 — Private desktop, tickets, demonstrations and a browser address bar
+
+- **Private desktop.** A bot's browser and desktop can run in its own hardened Podman container ([details](#private-desktop)), with Mac folders shown **read-only, writable or as a private copy**, and an optional **No network** switch.
+- **Teach by demonstration.** Do a task once in the in-app browser; GrizzyBot writes the steps down as a skill proposal you review ([details](#teach-by-demonstration)).
+- **Ticket board.** A shared board for you and your bots, with a Tickets page in the sidebar; drag a card between columns to change its status ([details](#ticket-board)).
+- **Address bar in the in-app browser.** Back, forward, reload and an address field while you hold a bot's browser; only http and https open.
+- **Routines calendar shows every run.** A daily routine now appears on each day it will run, not only its next one.
+- **Review actions before asking.** A per-bot switch lets a small model check each action that would stop for approval against what you last wrote; unsure means it still asks.
+- **Hand-offs to a busy bot wait in line** (up to five) instead of failing, and the answer comes back in the sender's thread.
+- **A `/goal` that checks itself.** After each turn a judge says done, continue or wait; unfinished goals carry on by themselves up to a turn budget. `/goal pause`, `/goal resume`, `/goal status`.
+- **Questions with buttons.** `clarify` can offer 2–6 choices as a card.
+- **Routines that stay honest.** Catch-up runs know how late they are, an approval nobody answers for 30 minutes is skipped, and each bot sees its own standing routines in its prompt.
+- **Failures grouped, prompts fingerprinted.** Repeated failures are clustered by a cleaned-up signature (no raw output kept) and each run records a short fingerprint of its prompt and tools.
+- **MCP guard rails.** Replies over 16 MB are dropped; a server that fails three times in a row is flagged in Settings.
+- **Managing other bots safely.** `get_bot_instructions` / `update_bot`: version-checked, owner-started runs only, always approved by you.
 
 ### 0.13.0 — teams as files
 
@@ -97,9 +146,22 @@ Documents, code, diagrams, and small React apps a bot builds and you keep. Versi
 <td width="33%" valign="top">
 
 ### 🖥️ Computer & canvas
-This Mac preview or in-app browser. Resizable side panel (monitor icon). Screenshot → targets → click / type / key. Shared canvases. Exclusive takeover for login.
+This Mac preview, in-app browser, or a hardened **Private desktop** (Podman). Resizable side panel (monitor icon). Screenshot → targets → click / type / key. Shared canvases. Exclusive takeover for login. When you hold the in-app browser, the full-window view has an **address bar**: type a web address or search words (DuckDuckGo); only http/https open, and `javascript:`, `file:` and similar are refused.
 
-### 🛡️ Governance
+#### Teach by demonstration
+
+In the in-app browser, a bot's computer panel has **Teach by demonstration**. It hands you the browser and writes down what you click, type, choose from menus and navigate to. **Stop and save** (name the task) turns the steps into a skill **proposal**: it stays switched off until you approve it in Skills.
+
+- Typed text is folded into one step per field and kept as an example value; addresses lose their query string and fragment.
+- Password and code fields, and anything that looks like a secret, are never recorded. That step tells the bot to ask you or request a takeover.
+- The recorder runs in its own page world, so a web page cannot see it or fake steps, and it ignores everything while the bot (not you) holds the browser. At most 150 steps.
+- Not available on This Mac or in a Private desktop: GrizzyBot cannot see what you do there.
+
+After a takeover request, the bot's next turn is told what happened: the screen came back (take a fresh screenshot, don't ask again for that step) or the request was skipped.
+
+---
+
+## 🛡️ Governance
 CEL policy, scoped "always allow" rules, MCP grant matrix, knowledge ACLs, published components, owner/operator roles, searchable hash-chained audit. Outside content fenced as untrusted, secret leak scanning both ways, memory that a poisoned page can't rewrite.
 
 ### 🔌 Connect
@@ -216,6 +278,13 @@ Type `/help` for the list. Skills with the same name win.
 | `/learn [topic]` | The bot proposes a reusable skill from the work in this chat. It is saved switched off; you review it in Skills |
 | `/recipe [name key=value …]` | Runs a saved, parameterised task; `/recipe` alone lists them. See [Recipes](#-recipes) |
 
+### 🧐 Approvals, goals and questions
+
+- **Review actions before asking.** A per-bot switch (bot settings). A small model sees only your latest words and the action (never what the bot read) and holds each kind of action — commands, file changes, anything sent outside — to its own question. A clear fit runs once; anything unsure, an error or a slow answer still shows the card. Approvals only you can give are never reviewed, and every review is in the audit log.
+- **A `/goal` that checks itself.** After each finished turn a judge says `done`, `continue` or `wait`. Unfinished goals send the bot back to work on their own (6 turns by default, then it pauses and says so); `wait` parks without spending turns; a message from you cancels what was lined up. A judge that fails three times pauses the goal. `/goal pause`, `/goal resume`, `/goal status`.
+- **Questions with buttons.** `clarify` takes `options` (2–6 choices) and shows a card of buttons; the pick comes back as the next message.
+- **Failures grouped.** Repeated tool and run failures are clustered by a cleaned-up signature (paths, numbers, ids, URLs and quoted values removed) in `failure-clusters.json`; raw output is never stored. Each run also records a short fingerprint of its system prompt and tool list so outcomes can be compared across edits.
+
 ### 🔁 Agent loop
 
 When a model is connected, each send runs a tool-calling loop (up to 48 steps) with context compaction on long threads. Screenshots and composer images attach only when the model can actually see images. Empty web searches stop instead of retrying forever. Transient 429/5xx errors retry. MCP dead ends (no route, missing args, expired cursors, connection failures) get recovery hints and stop looping after a few strikes. Identical MCP calls in the same step are skipped. A **stall watchdog** (default 60s, configurable) ends a turn when the stream goes silent, and every tool call has a hard time limit so a tool that never answers cannot freeze a run — Stop returns within seconds even if the tool ignores cancellation.
@@ -288,13 +357,14 @@ The `type` argument also accepts Claude Desktop's media types (`application/vnd.
 
 ## 🖥️ Computer
 
-Two real hosts — no cloud VM or Docker.
+Three hosts, all local — no cloud VM. The Private desktop needs [Podman](https://podman.io) installed; GrizzyBot never installs it.
 
 | | Mode | What it is |
 |:--:|---|---|
 | ✨ | **Auto** | In-app browser unless the bot is set otherwise |
-| 🧭 | **In-app browser** | Persistent WKWebView, Safari-like user agent, http/https only |
+| 🧭 | **In-app browser** | Persistent WKWebView, Safari-like user agent, http/https only; an address bar (back, forward, reload) while you hold it |
 | 🍎 | **This Mac** | Live screenshot preview + Accessibility clicks on the main display (OpenMaus-style: preview is not a remote desktop) |
+| 📦 | **Private desktop** | A Linux desktop (XFCE + Firefox) in a per-bot Podman container: its own files and browser profile, no access to your Mac's screen. Never chosen by Auto |
 | ⛔ | **Off** | Computer tools disabled |
 
 **Computer mode** (bot Settings) is *how* this bot may use a computer. It is **not** where you Release control. For mail-only work, prefer **Off** or **In-app browser** so the bot does not reach for This Mac tools.
@@ -308,6 +378,15 @@ Two real hosts — no cloud VM or Docker.
 | 🔐 **Exclusive takeover** | Login, captcha, or 2FA: the bot calls `request_takeover` and you drive. Headless routine ticks skip This Mac tools (no Screen Recording session). |
 
 Settings → Computer shows Accessibility and Screen Recording status with deep links to System Settings.
+
+### Private desktop
+
+Settings → Computer → **Private desktop** shows Podman and image status. **Build image** (once, a few minutes) layers `xdotool` onto a digest-pinned XFCE base; the bot's panel then has **Start / Stop / Reset**, and the preview is a live screenshot. Each bot gets its own container, a 0700 workspace folder, and a viewer port bound to loopback only. The container runs rootless with a minimal capability set (verified on start; an unsafe existing container is refused, not reused). Leaving the mode stops the container; **Reset** removes it.
+
+- **Mac folders.** Folders you have granted a bot (Settings → Folders) can also be shown in its desktop: bot settings → *Show in the Private desktop*. Each appears at `/mnt/mac/<name>` and is **read-only** by default, so the bot can read the files but not change or delete them. Switch one to **Writable** and the bot can change and delete files in the real folder, or to **Work on a copy** and it edits a copy under its workspace (`~/workspace/copies/<name>`, up to 20,000 files / 1 GB) while the original is never touched. Your home folder, `~/Library`, secret folders (`.ssh`, `.env`), GrizzyBot\'s own data and anything outside `/Users` and `/Volumes` are refused. Unless you switch on **No network** for that bot (no internet, LAN or route to the Mac; its browser cannot load pages), the desktop has a network connection, so anything it can read it could send out; share only what you would let that bot read. Changing the folders restarts the desktop, and a desktop whose mounts do not match what you granted is refused.
+- **No person takeover.** The preview is not interactive, so `request_takeover` is refused (audited as a refused computer action) and Take control is hidden. Switch the bot to In-app browser or This Mac for sign-ins.
+- **Browser blocked from your Mac.** Firefox refuses `localhost`, `127.0.0.1`, `[::1]` and `host.containers.internal`.
+- **Not a full sandbox.** A terminal inside the container can still reach your Mac's loopback services and your LAN, and containers keep running if the app quits (Stop takes ~10 s). Treat it as isolation from your files and screen, not from the network.
 
 ---
 
@@ -429,6 +508,14 @@ Bots can pass work to each other three ways, from most manual to most automatic.
 
 **What it can't do.** Candidates must be visible, willing (*May be handed work automatically*), able to run a model, and not busy. Only the Chief of Staff dispatches. A bot only ever uses its own tools, MCP grants, and policy — a hand-off never widens them, and nothing lets a bot grant itself a tool. If the sending bot had read outside content, the receiving bot is told and starts untrusted, so memory writes still need your approval.
 
+**When the other bot is busy.** `message_bot` no longer refuses: the job waits in line (up to five per bot), starts when the bot is free, and its answer is posted back in the sender's thread. A bot that stays busy for 30 minutes fails the job and tells the sender. Lending tools needs the bot free.
+
+**Managing other bots.** With `spawn_bot`, a bot gets `get_bot_instructions` and `update_bot`. An edit must quote the version it read (a stale edit is refused), only works in a run you started that read no outside content, is limited to 20,000 characters, and always shows you the exact new text to approve; "Always allow" never covers it.
+
+### Ticket board
+
+The sidebar's **Tickets** page is one board for you and every bot: a column each for To do, In progress, In review and Blocked (Done and Won't do behind *Show done*), with priority, owner and comments. Add a ticket, drag a card to another column (or use its status menu), change its priority or owner, comment or delete it from the page. Bots always have `board_tickets`, `ticket_get`, `ticket_create`, `ticket_update` and `ticket_comment`; assigning a ticket to a bot wakes it with the ticket. The board is one file, `tickets.json`, so a routine running with the app closed sees the same tickets.
+
 ---
 
 ## 🔒 Privacy & local gateway
@@ -450,6 +537,7 @@ Cron jobs that send a prompt to a bot.
 - **Team check-ins** (Chief of Staff settings): heartbeat routines at fixed local times, skipped for 20 minutes after you last wrote, with a snapshot of waiting approvals, recent routines and the roster.
 - Menu bar lists upcoming routines and runs a specific one, not “whatever is first.”
 - Due routines with no model skip honestly and still advance `nextRunAt`.
+- **Reliability.** A catch-up run is told how late it is ("Started 40m late") and that missed ticks were folded into it; an approval left unanswered on a routine run for 30 minutes is skipped so the bot is not stuck overnight; each bot's prompt lists its own standing routines (bounded, information only).
 
 **Schedule.** All five cron fields are honored — minute, hour, day-of-month, month, day-of-week — so *Weekdays* skips the weekend and *Every month* waits for the 1st. When both day fields are restricted, a day matching either one qualifies, the way cron does. Clock times are read in the routine's own zone, which is this Mac's unless one is set: the picker says 7:00 AM and the routine runs at 7:00 AM.
 
@@ -594,6 +682,8 @@ stdio, streamable HTTP, or legacy SSE. Settings → Tools probes each server (`t
 
 Connected catalogs are **promoted to first-class tools** the model can call by name (`fast-filesystem__write_file`, `gmail__messages_list`). Names that are already namespaced stay as advertised. Duplicate `server__tool` aliases of a name already in the list are collapsed — one Settings row and one model function; enablement still keys off the real MCP name.
 
+**Guard rails.** A reply larger than 16 MB is dropped rather than filling memory. Each server's recent health (failures in a row, last reason) is kept in `mcp-health.json` and shown in Settings → Tools once it has failed three times running.
+
 `fast-filesystem-mcp` ignores positional directory args. Extra roots must be `--allow /path` (GrizzyBot rewrites leftover paths on save and launch). Those flags add to the server’s defaults (`$HOME`, `/tmp`, `/Users`, `/home`); they do not replace them. MCP roots are account-wide, not per-bot.
 
 <details>
@@ -671,7 +761,7 @@ Fallback when nothing is promoted yet: search once → `mcp_call` with the exact
 | 🛡️ | Shell write seatbelt stays inside the bot home (and the working folder when set) unless approved. |
 | 🌐 | In-app browser: http/https/about only; desktop HTML escapes filenames. |
 | 🧩 | Artifact frames run with the network closed (`connect-src 'none'`), no script bridge into the app, and every off-scheme navigation cancelled. Their runtimes are bundled, not fetched. |
-| 🖥️ | Computer-use is local only (WKWebView or Accessibility). No remote desktop VM. |
+| 🖥️ | Computer-use is local only (WKWebView, Accessibility, or a Podman container on this Mac). No remote desktop VM. |
 | ⚖️ | Action policy and MCP grants run **before** the tool acts. Audit records both permits and refusals. |
 | 🔗 | Audit events are hash-chained; *Verify audit trail* flags edits, deletions, or reordering in the middle of the log (it cannot stop someone who rewrites the whole file). |
 | 🪝 | The webhook receiver binds to loopback only, authenticates with a per-routine secret compared in constant time, caps bodies at 64 KB, and passes payloads to the bot as untrusted data. |

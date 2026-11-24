@@ -385,6 +385,9 @@ extension AppStore {
         if routine.continuity {
             prompt = RoutineContinuity.compose(prompt: prompt, previous: routine.lastOutput)
         }
+        if trigger == RoutineTrigger.scheduled {
+            prompt = RoutineReliability.composeLate(prompt: prompt, plannedAt: routine.nextRunAt)
+        }
         runInboxes[runId] = RunInbox()
         let task = Task { [weak self] in
             guard let self else { return }
