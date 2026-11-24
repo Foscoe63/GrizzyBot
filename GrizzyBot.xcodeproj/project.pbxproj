@@ -2954,8 +2954,10 @@
 			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 3.31.4;
+				minimumVersion = 3.33.0;
 			};
+			traits = (
+			);
 		};
 		901944A92FD37F58FD7F4A8B /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
 			isa = XCRemoteSwiftPackageReference;
