@@ -657,6 +657,38 @@ extension AppStore {
         }
     }
 
+    /// Re-probes servers whose last probe failed, so a backend that was down at launch (or
+    /// went away and came back) recovers without opening Settings. Returns the ids probed.
+    @discardableResult
+    public func reprobeFailedMcpServers() -> [String] {
+        var probed: [String] = []
+        for server in mcpServers {
+            guard case .failed = mcpProbeStatus[server.id] else { continue }
+            probeMcpServer(server.id)
+            probed.append(server.id)
+        }
+        return probed
+    }
+
+    /// Starts a background loop that probes every server once, then retries failed ones
+    /// every `interval` seconds. Safe to call repeatedly.
+    public func startMcpReprobeLoop(interval: TimeInterval = 30) {
+        guard mcpReprobeTask == nil else { return }
+        mcpReprobeTask = Task { @MainActor [weak self] in
+            self?.probeAllMcpServers()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(interval))
+                guard let self, !Task.isCancelled else { return }
+                self.reprobeFailedMcpServers()
+            }
+        }
+    }
+
+    public func stopMcpReprobeLoop() {
+        mcpReprobeTask?.cancel()
+        mcpReprobeTask = nil
+    }
+
     @discardableResult
     public func addMcpServer(
         name: String,

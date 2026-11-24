@@ -70,6 +70,7 @@ public final class AppStore {
     /// Last successful `tools/list` payloads for UI subtitles (not persisted).
     public var mcpListedTools: [String: [McpToolInfo]] = [:]
     var mcpProbeGeneration: [String: UInt64] = [:]
+    @ObservationIgnored var mcpReprobeTask: Task<Void, Never>?
     public var auditEvents: [AuditEvent] = []
     public var appSettingsOpen: Bool = false
     public var appSettingsSection: AppSettingsSection = .general

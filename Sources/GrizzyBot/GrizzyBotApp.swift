@@ -110,6 +110,7 @@ struct GrizzyBotApp: App {
                 themeManager.load(from: store.appConfig)
                 appDelegate.onRoutineTick = { store.tickDueRoutines() }
                 MacBridge.indexBots(store.bots)
+                if !store.headlessRoutineTick { store.startMcpReprobeLoop() }
             }
             .onOpenURL { url in
                 if url.isFileURL {
