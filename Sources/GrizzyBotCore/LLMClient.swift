@@ -205,6 +205,10 @@ public struct ChatMessage: Sendable, Equatable, Codable {
     public var name: String?
     /// JPEG base64 for vision models (computer screenshots).
     public var imageJPEGBase64: String?
+    /// For a system message: how many characters at the start are the same from one request to the
+    /// next. Anthropic caches that much and reads the rest fresh; everything else ignores it. Not
+    /// saved: it describes one request.
+    public var cacheBoundary: Int?
 
     public init(
         role: String,
