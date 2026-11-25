@@ -2,7 +2,8 @@ import AppKit
 import GrizzyBotCore
 import SwiftUI
 
-struct PluginsOverlayView: View {
+/// Settings → Plugins: the connected-apps page.
+struct PluginsPageView: View {
     @Environment(AppStore.self) private var store
     @State private var search = ""
     @State private var tokenDraft = ""
@@ -19,37 +20,14 @@ struct PluginsOverlayView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color(red: 4 / 255, green: 4 / 255, blue: 5 / 255).opacity(0.62)
-                .ignoresSafeArea()
-                .onTapGesture { store.pluginsOpen = false }
-
-            VStack(spacing: 0) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Plugins")
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundStyle(Theme.textBrightAlt)
-                        Text("\(store.connections.count) apps in GrizzyBot")
-                            .font(.system(size: 13.5))
-                            .foregroundStyle(Theme.textPluginsSub)
-                    }
-                    Spacer()
-                    Button {
-                        store.pluginsOpen = false
-                    } label: {
-                        Text("✕")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 32)
-                .padding(.top, 28)
+        VStack(spacing: 0) {
+                Text("\(store.connections.count) apps in GrizzyBot")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Theme.textPluginsSub)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 oauthBanner
-                    .padding(.horizontal, 32)
-                    .padding(.top, 14)
+                        .padding(.top, 14)
 
                 if let err = store.pluginError {
                     VStack(alignment: .leading, spacing: 8) {
@@ -81,8 +59,7 @@ struct PluginsOverlayView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 32)
-                    .padding(.top, 10)
+                        .padding(.top, 10)
                 }
 
                 TextField("Search apps or Composio toolkits", text: $search)
@@ -97,14 +74,12 @@ struct PluginsOverlayView: View {
                         RoundedRectangle(cornerRadius: 13, style: .continuous)
                             .stroke(Theme.borderInputsDark, lineWidth: 1)
                     }
-                    .padding(.horizontal, 32)
-                    .padding(.top, 16)
+                        .padding(.top, 16)
 
                 addToolkitRow
-                    .padding(.horizontal, 32)
-                    .padding(.top, 10)
+                        .padding(.top, 10)
 
-                ScrollView {
+                do {
                     LazyVStack(alignment: .leading, spacing: 4) {
                         sectionHeader("Your apps")
                         if filtered.isEmpty {
@@ -121,27 +96,12 @@ struct PluginsOverlayView: View {
 
                         catalogSection
                     }
-                    .padding(.horizontal, 32)
-                    .padding(.vertical, 24)
+                        .padding(.vertical, 16)
                 }
-                .grizzyScroll()
-                .frame(maxHeight: .infinity)
-            }
-            .frame(width: min(1080, 1080), height: min(760, 760))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.bgPluginsCard)
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .accessibilityIdentifier(OverlayA11y.plugins)
-            .overlay {
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .stroke(Theme.borderListRowsAlt, lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.55), radius: 40, y: 12)
-            .padding(40)
         }
         .accessibilityIdentifier(OverlayA11y.plugins)
         .accessibilityElement(children: .contain)
-        .onAppear { store.openPlugins() }
+        .onAppear { Task { await store.refreshPluginCatalog() } }
         .onChange(of: search) { _, query in
             scheduleBrowse(query)
         }
@@ -343,7 +303,6 @@ struct PluginsOverlayView: View {
                     .foregroundStyle(Theme.textPluginsSub)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button("Settings") {
-                    store.pluginsOpen = false
                     store.openAppSettings(section: .connections)
                 }
                 .buttonStyle(.plain)

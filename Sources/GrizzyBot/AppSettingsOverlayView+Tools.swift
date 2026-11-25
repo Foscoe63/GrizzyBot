@@ -15,7 +15,7 @@ extension AppSettingsOverlayView {
 
         settingsCard(
             title: "MCP servers",
-            subtitle: "Green means the server answered tools/list. Red means it did not. Expand a server to turn individual tools on or off for new bots."
+            subtitle: "Green means the server answered tools/list. Red means it did not. Grey means the server is turned off. Expand a server to turn individual tools on or off for new bots."
         ) {
             McpServersToolsBlock(
                 scope: .appDefaults,

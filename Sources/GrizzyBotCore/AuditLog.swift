@@ -32,6 +32,7 @@ public enum AuditEventType: String, Codable, Sendable {
     case secretLeakBlocked = "secret.leak_blocked"
     case modelFailover = "model.failover"
     case memoryWriteHeld = "memory.write_held"
+    case approvalReviewed = "approval.reviewed"
 }
 
 /// Did anything derived from this event leave the Mac? `local` means no; `remote` means request data
@@ -45,6 +46,7 @@ public enum AuditLocality: String, Codable, Sendable {
     public static func infer(type: AuditEventType, tool: String?, forwarded: Bool?) -> AuditLocality {
         if forwarded == false { return .local }
         switch type {
+        case .approvalReviewed: return .local
         case .channelMessage, .channelPairing, .mcpCallSucceeded, .connectorSyncSucceeded, .connectorSyncFailed, .modelFailover:
             return .remote
         case .secretLeakBlocked, .mcpCallRejected, .computerActionRefused, .botDeclined, .componentRefused, .memoryWriteHeld:

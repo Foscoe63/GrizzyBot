@@ -46,8 +46,10 @@ extension AgentToolCatalog {
                 (enabledIds.contains("spawn_bot") || enabledIds.contains("message_bot"))
                     ? ["check_bot", "list_delegations", "stop_bot"] : []
             )
+            .union(enabledIds.contains("spawn_bot") ? ["get_bot_instructions", "update_bot"] : [])
             .union(CanvasBoardStore.toolIds)
             .union(ArtifactStore.toolIds)
+            .union(TicketBoardStore.toolIds)
             .union(AgentToolCatalog.alwaysOnIds)
         var tools: [ChatTool] = []
 
@@ -450,6 +452,18 @@ extension AgentToolCatalog {
             required: ["action"]
         )
         add(
+            "team_map",
+            description: "Look at or organize the Team map: the departments (teams) and which bot is in each. Use this whenever the person asks what teams exist, who is on a team, or to create, rename or delete a team, move a bot, or set a team's shared instructions. Actions: list (every team with its bots), get (one team with its instructions), create, rename, delete, assign (move a bot into a team; empty department = General), set_instructions. Every change stops on an approval card the person must answer.",
+            properties: [
+                "action": stringProp("list, get, create, rename, delete, assign, or set_instructions"),
+                "department": stringProp("Team name (get, create, rename, delete, set_instructions, assign)"),
+                "new_name": stringProp("New team name (rename)"),
+                "bot": stringProp("Bot name or id (assign; optional bot to place on create)"),
+                "text": stringProp("Shared instructions text (set_instructions); blank clears them"),
+            ],
+            required: ["action"]
+        )
+        add(
             "workflow_run",
             description: "Run a saved workflow: a fixed graph of steps (tool calls, model questions, http requests) with typed inputs. Use action=list to see them, or pass id and input (an object). Steps run unattended and cannot wait for approvals.",
             properties: [
@@ -511,8 +525,12 @@ extension AgentToolCatalog {
         )
         add(
             "clarify",
-            description: "Pause and ask the user a clarifying question before continuing.",
-            properties: ["question": stringProp("Question for the user")],
+            description: "Pause and ask the user a question before continuing. When the answer is one of a few known choices, pass options: they get buttons, which is faster for them than typing.",
+            properties: [
+                "question": stringProp("Question for the user"),
+                "options": stringProp("Optional 2–6 short choices, as a JSON array or separated by |. Omit for an open question."),
+                "detail": stringProp("Optional one line of context under the question"),
+            ],
             required: ["question"]
         )
         add(
@@ -526,6 +544,52 @@ extension AgentToolCatalog {
                 "key": stringProp("Optional stable key, to correct an existing note whose title changed"),
             ],
             required: ["kind", "name", "detail"]
+        )
+        let ticketStatuses = TicketStatus.allCases.map(\.rawValue).joined(separator: ", ")
+        add(
+            "board_tickets",
+            description: "List tickets on the shared board that people and bots both use. Open ones by default, urgent first. Pass mine=true for tickets assigned to you.",
+            properties: [
+                "mine": boolProp("Only tickets assigned to you"),
+                "status": stringProp("Only this status: \(ticketStatuses)"),
+            ],
+            required: []
+        )
+        add(
+            "ticket_get",
+            description: "Read one ticket with its description and comments. ref is its number, such as 12.",
+            properties: ["ref": stringProp("Ticket number")],
+            required: ["ref"]
+        )
+        add(
+            "ticket_create",
+            description: "Add a ticket to the shared board. Assigning it to a bot wakes that bot with the ticket.",
+            properties: [
+                "title": stringProp("Short title"),
+                "detail": stringProp("What needs doing and what done looks like"),
+                "priority": stringProp("low, normal, high or urgent"),
+                "assignee": stringProp("Name of the bot who should do it (optional)"),
+            ],
+            required: ["title"]
+        )
+        add(
+            "ticket_update",
+            description: "Change a ticket's status, priority, title, detail or assignee. Assigning it to a different bot wakes that bot.",
+            properties: [
+                "ref": stringProp("Ticket number"),
+                "status": stringProp(ticketStatuses),
+                "priority": stringProp("low, normal, high or urgent"),
+                "title": stringProp("New title"),
+                "detail": stringProp("New description"),
+                "assignee": stringProp("Bot name to assign to, or none to unassign"),
+            ],
+            required: ["ref"]
+        )
+        add(
+            "ticket_comment",
+            description: "Add a comment to a ticket: progress, a question, a handoff note.",
+            properties: ["ref": stringProp("Ticket number"), "text": stringProp("The comment")],
+            required: ["ref", "text"]
         )
         add(
             "search_team_memory",
@@ -607,6 +671,26 @@ extension AgentToolCatalog {
                 description: "List the jobs you handed to other bots, newest first, with whether each is still running, answered, needs the user, or failed.",
                 properties: [:],
                 required: []
+            )
+            add(
+                "get_bot_instructions",
+                description: "Read the instructions of a bot you manage, with the version stamp update_bot needs. Always read before you edit.",
+                properties: [
+                    "name": stringProp("Name of the bot"),
+                    "bot_id": stringProp("Optional bot id"),
+                ],
+                required: ["name"]
+            )
+            add(
+                "update_bot",
+                description: "Replace a bot's instructions. Pass the expected_version from get_bot_instructions; a stale edit is refused. The owner always approves the exact new text, and this only works in a run the owner started.",
+                properties: [
+                    "name": stringProp("Name of the bot"),
+                    "bot_id": stringProp("Optional bot id"),
+                    "instructions": stringProp("The complete new instructions"),
+                    "expected_version": stringProp("The version stamp from get_bot_instructions"),
+                ],
+                required: ["name", "instructions", "expected_version"]
             )
             add(
                 "delete_bot",

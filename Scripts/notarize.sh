@@ -26,15 +26,24 @@ if [[ -z "$TEAM" || "$TEAM" == "YOURTEAMID" ]]; then
 fi
 
 IDENTITY="${GRIZZYBOT_CODE_SIGN_IDENTITY:-Developer ID Application}"
-ENTITLEMENTS="$ROOT/Sources/GrizzyBot/GrizzyBot.Release.entitlements"
+# The Release entitlements claim iCloud, which needs a provisioning profile; without one the app will not launch.
+# Set GRIZZYBOT_ENTITLEMENTS to GrizzyBot.Release.entitlements only when an iCloud profile is embedded.
+ENTITLEMENTS="${GRIZZYBOT_ENTITLEMENTS:-$ROOT/Sources/GrizzyBot/GrizzyBot.NoiCloud.entitlements}"
 
 if [[ -d "$TARGET" && "$TARGET" == *.app ]]; then
   codesign --force --sign "$IDENTITY" --timestamp --options runtime \
     --entitlements "$ENTITLEMENTS" "$TARGET"
 fi
 
+SUBMIT="$TARGET"
+if [[ -d "$TARGET" && "$TARGET" == *.app ]]; then
+  # notarytool takes a zip, pkg or dmg, not a bare .app
+  SUBMIT="$(mktemp -d)/$(basename "$TARGET" .app).zip"
+  ditto -c -k --keepParent "$TARGET" "$SUBMIT"
+fi
+
 echo "Submitting $TARGET to Apple notary service (team $TEAM, profile $PROFILE)…"
-xcrun notarytool submit "$TARGET" --keychain-profile "$PROFILE" --wait
+xcrun notarytool submit "$SUBMIT" --keychain-profile "$PROFILE" --wait
 xcrun stapler staple "$TARGET"
 echo "Stapled $TARGET"
 echo "Verify with: spctl --assess --type execute -vv ${TARGET%.dmg}"

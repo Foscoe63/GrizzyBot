@@ -36,6 +36,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     /// Whether `shell` commands may use the network. Off for new bots; bots saved
     /// before this field existed keep the old behaviour (on).
     public var shellNetwork: Bool
+    /// Before asking the person about an action, a small model checks it against what they asked for; a clear fit runs.
+    public var reviewApprovals: Bool
     public var speakReplies: Bool
     public var notifications: Bool
     public var chiefOfStaff: Bool
@@ -62,8 +64,17 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var workingFolder: String?
     /// Standing objective set with `/goal`; kept in the prompt on every turn until cleared.
     public var goal: String?
+    /// What the loop around the goal remembers (see `GoalState`). Nil when there is no goal.
+    public var goalState: GoalState?
     /// Ids of `GrantedFolder`s (Settings → Folders) this bot may read and write.
     public var grantedFolderIds: [String]
+    /// Granted folders also shown, read-only, inside this bot's Private desktop. A subset of `grantedFolderIds`: the desktop has
+    /// a network connection, so a folder reaching it is its own decision.
+    public var desktopFolderIds: [String]
+    /// How each shown folder reaches the Private desktop. A folder not listed is read-only.
+    public var desktopFolderModes: [String: DesktopFolderMode] = [:]
+    /// The Private desktop has no network at all, so nothing it can read can be sent out.
+    public var desktopNoNetwork: Bool = false
     /// `BotAvatarShape` raw value; nil is the default circle.
     public var avatarShape: String?
     /// Bumped whenever an uploaded avatar image changes; nil means no image.
@@ -80,6 +91,8 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
     public var dispatchable: Bool = true
     /// Allow/exclude selectors and lean turns for the tools shown to this bot's model. Nil offers every enabled tool.
     public var toolSelection: ToolSelection?
+    /// Sidebar category name; "" is uncategorized. Bots saved before categories existed decode into "Coding".
+    public var category: String = ""
 
     public init(
         id: String,
@@ -100,6 +113,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         unread: Bool = false,
         autoApprove: Bool = false,
         shellNetwork: Bool = false,
+        reviewApprovals: Bool = false,
         speakReplies: Bool = false,
         notifications: Bool = true,
         chiefOfStaff: Bool = false,
@@ -118,6 +132,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         enabledComponents: [String] = AgentComponentCatalog.allIds,
         workingFolder: String? = nil,
         grantedFolderIds: [String] = [],
+        desktopFolderIds: [String] = [],
         avatarShape: String? = nil,
         avatarImageRev: Int? = nil
     ) {
@@ -139,6 +154,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.unread = unread
         self.autoApprove = autoApprove
         self.shellNetwork = shellNetwork
+        self.reviewApprovals = reviewApprovals
         self.speakReplies = speakReplies
         self.notifications = notifications
         self.chiefOfStaff = chiefOfStaff
@@ -157,6 +173,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         self.enabledComponents = enabledComponents
         self.workingFolder = workingFolder
         self.grantedFolderIds = grantedFolderIds
+        self.desktopFolderIds = desktopFolderIds
         self.avatarShape = avatarShape
         self.avatarImageRev = avatarImageRev
     }
@@ -165,10 +182,10 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         case avatarShape, avatarImageRev
         case id, name, title, description, instructions, color, notifyOnFinish, parentBotId
         case threadId, preview, status, updatedAt, createdAt
-        case pinned, hidden, unread, autoApprove, shellNetwork, speakReplies, notifications, chiefOfStaff, managedDepartments
+        case pinned, hidden, unread, autoApprove, shellNetwork, reviewApprovals, speakReplies, notifications, chiefOfStaff, managedDepartments
         case computerMode, modelProvider, modelId, tasks, activeTaskId, alwaysAllowTools
-        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, goal
-        case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable, toolSelection
+        case enabledTools, enabledSkills, visibility, runtime, aguiURL, enabledComponents, workingFolder, grantedFolderIds, desktopFolderIds, desktopFolderModes, desktopNoNetwork, goal, goalState
+        case fallbackModels, lightModel, allowRules, autoDispatch, dispatchable, toolSelection, category
     }
 
     public init(from decoder: Decoder) throws {
@@ -191,6 +208,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         unread = try c.decodeIfPresent(Bool.self, forKey: .unread) ?? false
         autoApprove = try c.decodeIfPresent(Bool.self, forKey: .autoApprove) ?? false
         shellNetwork = try c.decodeIfPresent(Bool.self, forKey: .shellNetwork) ?? true
+        reviewApprovals = try c.decodeIfPresent(Bool.self, forKey: .reviewApprovals) ?? false
         speakReplies = try c.decodeIfPresent(Bool.self, forKey: .speakReplies) ?? false
         notifications = try c.decodeIfPresent(Bool.self, forKey: .notifications) ?? true
         chiefOfStaff = try c.decodeIfPresent(Bool.self, forKey: .chiefOfStaff) ?? false
@@ -209,7 +227,11 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         enabledComponents = try c.decodeIfPresent([String].self, forKey: .enabledComponents) ?? AgentComponentCatalog.allIds
         workingFolder = try c.decodeIfPresent(String.self, forKey: .workingFolder)
         grantedFolderIds = try c.decodeIfPresent([String].self, forKey: .grantedFolderIds) ?? []
+        desktopFolderIds = try c.decodeIfPresent([String].self, forKey: .desktopFolderIds) ?? []
+        desktopFolderModes = try c.decodeIfPresent([String: DesktopFolderMode].self, forKey: .desktopFolderModes) ?? [:]
+        desktopNoNetwork = try c.decodeIfPresent(Bool.self, forKey: .desktopNoNetwork) ?? false
         goal = try c.decodeIfPresent(String.self, forKey: .goal)
+        goalState = try c.decodeIfPresent(GoalState.self, forKey: .goalState)
         avatarShape = try c.decodeIfPresent(String.self, forKey: .avatarShape)
         avatarImageRev = try c.decodeIfPresent(Int.self, forKey: .avatarImageRev)
         fallbackModels = try c.decodeIfPresent([ModelChoice].self, forKey: .fallbackModels) ?? []
@@ -218,6 +240,7 @@ public struct Bot: Codable, Sendable, Hashable, Identifiable {
         autoDispatch = try c.decodeIfPresent(Bool.self, forKey: .autoDispatch) ?? false
         dispatchable = try c.decodeIfPresent(Bool.self, forKey: .dispatchable) ?? true
         toolSelection = try c.decodeIfPresent(ToolSelection.self, forKey: .toolSelection)
+        category = try c.decodeIfPresent(String.self, forKey: .category) ?? (chiefOfStaff ? "" : "Coding")
     }
 }
 
@@ -432,6 +455,8 @@ public struct Run: Codable, Sendable, Hashable, Identifiable {
     public var startedAt: Date?
     public var completedAt: Date?
     public var routineId: String?
+    /// Short hash of the system prompt and tool list this run used.
+    public var promptFingerprint: String?
 
     public init(
         id: String,
@@ -1165,5 +1190,23 @@ public struct PendingAgentTool: Codable, Sendable, Equatable {
 public enum Ids {
     public static func new() -> String {
         UUID().uuidString.lowercased()
+    }
+}
+
+/// How a granted Mac folder is shown inside a Private desktop.
+public enum DesktopFolderMode: String, Codable, Sendable, Hashable, CaseIterable {
+    /// The bot can read the files and not change them.
+    case readOnly = "read_only"
+    /// The bot can create, change and delete files in the real folder.
+    case writable
+    /// The bot works on a copy inside its own workspace; the original is never touched.
+    case copy
+
+    public var label: String {
+        switch self {
+        case .readOnly: return "Read-only"
+        case .writable: return "Writable"
+        case .copy: return "Work on a copy"
+        }
     }
 }

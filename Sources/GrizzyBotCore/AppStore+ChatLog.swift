@@ -300,6 +300,7 @@ extension AppStore {
         case .answered: return "answered"
         case .needsUser: return "needs the user"
         case .failed: return "failed"
+        case .queued: return "queued behind the bot's current work"
         case .sent:
             switch threads[key]?.run?.status {
             case .queued, .leased, .running: return "still running"

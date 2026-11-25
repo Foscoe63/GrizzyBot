@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
@@ -12,7 +12,7 @@ let package = Package(
         // moved out of mlx-swift-examples into this package; it deliberately
         // does not depend on swift-transformers, so the tokenizer bridge below
         // is supplied by the consumer through the MLXHuggingFace macros.
-        .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "3.31.4"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "3.33.0", traits: []),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.0"),
     ],
     targets: [

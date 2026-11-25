@@ -195,7 +195,7 @@ public actor MLXLocalGenerator: MLXTextGenerating {
         let textOnly = input.image == nil && input.video == nil && input.audio == nil
 
         var cache = PromptCache(
-            layers: context.model.newCache(parameters: parameters), promptTokens: tokens)
+            layers: try context.model.newCache(parameters: parameters), promptTokens: tokens)
         var feed = input
 
         if textOnly, let old = box.reusable, old.trimmable {

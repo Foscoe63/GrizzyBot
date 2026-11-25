@@ -70,10 +70,17 @@ public final class AppStore {
     /// Last successful `tools/list` payloads for UI subtitles (not persisted).
     public var mcpListedTools: [String: [McpToolInfo]] = [:]
     var mcpProbeGeneration: [String: UInt64] = [:]
+    @ObservationIgnored var mcpReprobeTask: Task<Void, Never>?
     public var auditEvents: [AuditEvent] = []
     public var appSettingsOpen: Bool = false
     public var appSettingsSection: AppSettingsSection = .general
     public var mainView: ShellMainView = .chat
+    /// Bumped whenever the ticket board changes, so views that read it redraw.
+    public var ticketRevision = 0
+    /// The bot being taught right now, and how many steps have been written down. One recording at a time.
+    public var demoRecordingBotId: String?
+    public var demoStepCount = 0
+    @ObservationIgnored var demoRecorder = DemoRecorder()
     public var activeGroupId: String?
     public var composerDrafts: [String: String] = [:]
     public var runLog: [RunLogLine] = []
@@ -86,7 +93,7 @@ public final class AppStore {
     public var pendingAuthEmail: String = ""
 
     public enum AppSettingsSection: String, Sendable, CaseIterable, Identifiable {
-        case general, connections, computer, voice, tools, themes, privacy, watchers, diagnostics, governance, knowledge, components, folders
+        case general, connections, computer, voice, tools, themes, privacy, watchers, diagnostics, governance, knowledge, components, folders, plugins, skills
         public var id: String { rawValue }
         public var label: String {
             switch self {
@@ -103,6 +110,8 @@ public final class AppStore {
             case .knowledge: return "Knowledge"
             case .components: return "Components"
             case .folders: return "Folders"
+            case .plugins: return "Plugins"
+            case .skills: return "Skills"
             }
         }
     }
@@ -120,8 +129,6 @@ public final class AppStore {
     /// Which saved version the panel is showing; nil means the current one.
     public var artifactVersionIndex: Int?
     public var booting: Bool = false
-    public var pluginsOpen: Bool = false
-    public var skillsOpen: Bool = false
     public var skills: [AgentSkill] = []
     public var showHostPrompt: Bool = false
     /// App layer: speak replies and local notifications.
@@ -213,6 +220,7 @@ public final class AppStore {
     var destinations: DestinationStore
     var canvasBoard: CanvasBoardStore
     var artifactStore: ArtifactStore
+    var ticketBoard: TicketBoardStore
     var runTasks: [String: Task<Void, Never>] = [:]
     /// Mid-run messages the agent loop picks up between steps, keyed by run.
     var runInboxes: [String: RunInbox] = [:]
@@ -271,6 +279,20 @@ public final class AppStore {
     /// told. Waiting on the person for an approval does not count. 0 turns the limit off.
     public var delegateTimeout: TimeInterval = 20 * 60
     public internal(set) var delegateTimers: [String: Task<Void, Never>] = [:]
+    /// Jobs handed to a bot that was busy, by receiving bot, in the order they arrived. Not saved: they wait in memory.
+    /// Goal checks and the turn they are about to start, by bot; and the bot whose turn the loop is sending right now.
+    @ObservationIgnored var goalContinuations: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored var goalSending: String?
+    /// Where a hand-over of the screen stands, by bot, until the next run reads it. Not saved.
+    @ObservationIgnored var takeoverProgress: [String: TakeoverProgress] = [:]
+    /// Turns the loop may start by itself before it stops and asks, and the pause before each.
+    public var goalBudget = GoalJudge.defaultBudget
+    public var goalContinuationDelay: Double = 1.5
+    @ObservationIgnored var delegationQueue: [String: [QueuedDelegation]] = [:]
+    @ObservationIgnored var delegationDrainers: [String: Task<Void, Never>] = [:]
+    /// How long a queued job waits for its bot to be free before it is given up on, and how often that is checked.
+    public var delegateQueueTimeout: TimeInterval = 30 * 60
+    public var delegateQueuePollInterval: TimeInterval = 1
     /// Tools lent to a bot for the one job it was handed (see `DelegateTools`).
     var lentToolRecords: [String: LentTools] = [:]
     /// Watcher runs pin file tools to the watch path until the run goes idle.
@@ -300,11 +322,18 @@ public final class AppStore {
     var providerCredentials: [String: ProviderCredential] = [:]
     public var connectionSecrets: [String: String] = [:]
     public var computerRuntime: (any ComputerRuntime)?
+    /// The Podman side of the Private desktop; set by `installComputerRuntime`.
+    @ObservationIgnored public var privateDesktop: PodmanDesktop?
+    public var privateDesktopStates: [String: PrivateDesktopBotState] = [:]
+    /// Podman, its machine and the image, as last looked at. Nil until Settings or a panel has asked.
+    public var privateDesktopEnvironment: PodmanDesktopStatus?
+    public var privateDesktopImageWorking = false
+    public var privateDesktopImageError: String?
     public var pluginClient: any PluginConnecting = PluginClient.shared
     public var composioClient: (any ComposioConnecting)?
     public var googleOAuthClient: (any GoogleOAuthConnecting)?
     /// App layer opens OAuth / Composio URLs (NSWorkspace). Must not be observed — storing a
-    /// closure on an `@Observable` property crashes PluginsOverlayView body updates (SIGBUS).
+    /// closure on an `@Observable` property crashes PluginsPageView body updates (SIGBUS).
     @ObservationIgnored
     public var openExternalURL: ((URL) -> Void)?
     public var pluginError: String?
@@ -350,9 +379,14 @@ public final class AppStore {
         self.destinations = DestinationStore(root: root)
         self.canvasBoard = CanvasBoardStore(root: root)
         self.artifactStore = ArtifactStore(root: root)
-        self.computerRuntime = FileDesktopRuntime()
+        self.ticketBoard = TicketBoardStore(root: root)
         self.delayScale = delayScale
+        // The app swaps in its own browser and This Mac runtime; everything else (the CLI, a headless tick) still
+        // reaches a bot's Private desktop, rather than a placeholder screen that would report clicks that never happened.
+        McpHealthBook.shared.attach(to: root.appendingPathComponent("mcp-health.json"))
+        installComputerRuntime(primary: FileDesktopRuntime())
         bootstrap()
+        expireQueuedDelegations()
         reloadSkills()
         reloadCanvases()
         seedSeenToolIdsIfNeeded()
@@ -494,7 +528,6 @@ public final class AppStore {
         computerOpen = false
         canvasOpen = false
         booting = false
-        pluginsOpen = false
         showHostPrompt = false
         mainView = .chat
     }
@@ -589,8 +622,6 @@ public final class AppStore {
         computerOpen = false
         canvasOpen = false
         booting = false
-        pluginsOpen = false
-        skillsOpen = false
         mainView = .chat
         hydrateMemoryFiles()
         seedSeenToolIdsIfNeeded()

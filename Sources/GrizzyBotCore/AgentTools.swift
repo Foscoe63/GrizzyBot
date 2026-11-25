@@ -342,6 +342,7 @@ public enum AgentToolCatalog {
         .init(id: "skill_propose", label: "Propose skill", subtitle: "Draft a reusable skill for you to review"),
         .init(id: "routine_manage", label: "Routines", subtitle: "Create, list, pause, or delete this bot's scheduled routines"),
         .init(id: "config_manage", label: "App settings", subtitle: "Change a few safe app settings for you, after you approve each change"),
+        .init(id: "team_map", label: "Team map", subtitle: "See and organize departments and which bot sits in each, after you approve changes"),
         .init(id: "workflow_run", label: "Workflows", subtitle: "Run saved multi-step workflows"),
         .init(id: "generate_image", label: "Make images", subtitle: "Create pictures on this Mac with Apple Image Playground"),
         .init(id: "search_knowledge", label: "Search knowledge", subtitle: "Search granted knowledge sources"),
@@ -374,7 +375,7 @@ public enum AgentToolCatalog {
 
     /// Tools that have no switch in the profile editor.
     public static var unswitchedIds: Set<String> {
-        alwaysOnIds.union(CanvasBoardStore.toolIds).union(ArtifactStore.toolIds)
+        alwaysOnIds.union(CanvasBoardStore.toolIds).union(ArtifactStore.toolIds).union(TicketBoardStore.toolIds)
     }
 
     /// What used to switch on silently when another tool was on. Written out once as real toggles
@@ -471,6 +472,8 @@ extension Bot {
         // toggle: the always-available basics and the two delegation read-outs.
         if CanvasBoardStore.toolIds.contains(toolId) { return true }
         if ArtifactStore.toolIds.contains(toolId) { return true }
+        if TicketBoardStore.toolIds.contains(toolId) { return true }
+        if (toolId == "get_bot_instructions" || toolId == "update_bot"), enabledTools.contains("spawn_bot") { return true }
         if toolId == "check_bot" || toolId == "list_delegations" || toolId == "stop_bot",
            enabledTools.contains("spawn_bot") || enabledTools.contains("message_bot") { return true }
         if AgentToolCatalog.alwaysOnIds.contains(toolId) { return true }

@@ -2,6 +2,67 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## 0.19.6 — Newer MLX engine
+
+- **Local MLX models run on MLX 0.32/0.33** (mlx-swift 0.33.0, mlx-swift-lm 3.33.0). This picks up upstream fixes for crashes inside the GPU engine (a custom Metal kernel use-after-free, the compile cache, and macOS 27 shader support) that had been closing GrizzyBot during local model runs.
+
+## 0.19.5 — MCP servers reconnect on their own
+
+- **Dropped MCP servers recover.** If a server such as Obsidian goes away (Obsidian restarts, a plugin reloads), GrizzyBot re-checks failed servers every 30 seconds and reconnects without a visit to Settings.
+- **Steadier agent runs.** A loop guard stops repeated or failing tool calls after a warning, replies cut off by the token limit are continued, an empty reply after tool use is re-asked, and long chats get a model-written summary before older turns are trimmed.
+- **MCP servers can ask you questions and sign in.** Servers can prompt for input mid-call, sign in with OAuth (tokens kept in the Keychain), and oversized replies are capped.
+- **Prompts and tool definitions** now live in `Prompts/` with an automatic version hash.
+
+## 0.19.4 — Clearer disabled toggles
+
+- **Disabled switches stand out.** Off toggles in Settings → Tools now show red instead of blending in, and a turned-off MCP server's status dot is grey rather than green or red.
+
+## 0.19.3 — No more doubled questions
+
+- **Questions and answers no longer appear twice.** When a bot asks a question with choices, the card shows once, and tapping an option sends a single reply instead of two.
+
+## 0.19.2 — Keep awake
+
+- **Keep computer awake.** A new toggle in *Settings → General → Background* stops your Mac from sleeping while GrizzyBot is open. Turn it off and your system Energy settings apply.
+
+## 0.19.1 — Plugins and Skills in Settings
+
+- **Plugins and Skills moved into Settings.** They are now pages under *Settings → Customize* instead of sidebar buttons that opened pop-out windows. Everything on them works as before.
+
+## 0.19.0 — Update check
+
+- **Check for updates.** *GrizzyBot → Check for Updates…* asks GitHub for the latest release and tells you whether you are up to date. If a newer version exists, *Open Release Page* takes you to it. GrizzyBot also checks quietly once at launch and only speaks up when there is something new. Nothing is downloaded or installed for you.
+
+## 0.18.0 — Bots can run the app
+
+- **Bots operate GrizzyBot itself.** Every bot's prompt now says it can use the app's own tools — routines, tickets, the Team map, settings and other bots — instead of writing a script that only imitates them. Only tools the bot actually has are listed.
+- **Team map tool.** `team_map` lets a bot list teams and who is on each, read a team's instructions, and (after you approve each change) create, rename or delete a team, move a bot, or set a team's shared instructions.
+
+## 0.17.0 — Sidebar categories and notarized builds
+
+- **Sidebar categories.** Bots sit in collapsible categories under the Orchestrator (the Chief of Staff stays on its own). Sidebar **+** → *New category…* adds one; drag a bot onto a category header, or right-click it → *Move to category*, to file it. Right-click a header to rename or delete it (its bots become Uncategorized). New bots start Uncategorized; bots from before this version start in *Coding*. Open or closed state is remembered, and search expands categories that match.
+- **Notarized builds.** `make-app.sh` signs the embedded routine agent with Developer ID, hardened runtime and a timestamp, and `notarize.sh` zips the app before submitting it. Builds without an iCloud profile can use `GrizzyBot.NoiCloud.entitlements`.
+
+## 0.16.0 — Private desktop, tickets, demonstrations and a browser address bar
+
+- **Routines calendar shows every run.** The week, 3-day and day views place a routine on each day its schedule says it will run (future runs only), not only on the day of its next run.
+- **Drag tickets between columns.** On the Tickets board, drag a card onto another column (anywhere in it, even when empty) to change its status. The column highlights while you hold a card over it.
+- **Address bar in the in-app browser.** When you hold a bot's browser, the full-window view has back, forward, reload and an address field. Type a web address or search words (searches go to DuckDuckGo); only http and https are opened, and `javascript:`, `file:` and similar are refused with a red outline. The field follows the page while you are not typing. Not shown for This Mac or the Private desktop.
+- **Teach by demonstration.** In a bot's computer panel (in-app browser), *Teach by demonstration* hands you the browser and writes down what you click, type, choose and navigate to. *Stop and save* turns the steps into a skill proposal you review in Skills before any bot uses it. Typed text is folded into one step per field; query strings and fragments are dropped from addresses; password and code fields, and anything that looks like a secret, are never recorded (the step tells the bot to ask you instead). The recorder runs in its own page world, so a web page cannot see it or fake steps, and it ignores everything while the bot, not you, holds the browser. It does not work on This Mac or in a Private desktop, where GrizzyBot cannot see what you do.
+- **No network for the Private desktop.** A per-bot switch (bot settings → Show in the Private desktop → No network) starts the desktop with no network at all: no internet, no LAN, no route to this Mac, no published port. GrizzyBot drives the desktop with `podman exec`, so screenshots and actions keep working; the desktop's browser cannot load pages. Changing it restarts the desktop, and an existing desktop that does not match the setting is replaced or refused. Recommended whenever a desktop can see private folders.
+- **Writable Mac folders in the Private desktop.** Each shown folder now has a mode (bot settings → Show in the Private desktop): Read-only (the default), Writable (the bot can create, change and delete files in the real folder; audited as such), or Work on a copy (an in-workspace copy, up to 20,000 files / 1 GB, that the bot edits while the original is never touched). Changing a mode restarts the desktop. The container's mounts are re-checked against the chosen modes before it is used.
+- **Routines that stay honest.** A catch-up run is told how late it is ("Started 40m late") and that missed ticks were folded into it; an approval left unanswered on a routine run for 30 minutes is skipped so the bot is not stuck overnight; each bot's prompt lists its own standing routines (bounded, marked information only).
+- **Failures grouped, prompts fingerprinted.** Repeated tool and run failures are clustered by a normalized signature (paths, numbers, ids, URLs and quoted values stripped) in `failure-clusters.json`; raw output is never stored. Each run records a short fingerprint of its system prompt and tool list so outcomes can be compared across edits.
+- **MCP guard rails.** A server reply over 16 MB is dropped instead of filling memory; each server's recent health (consecutive failures, last reason) is kept on disk and shown in Settings when it has failed three times in a row.
+- **Managing other bots safely.** `get_bot_instructions` and `update_bot` (with `spawn_bot`): an edit must quote the version it read (a stale edit is refused), only works in a run you started that read no outside content, is limited to 20,000 characters, and always shows you the exact new text to approve — "Always allow" never covers it.
+- **Takeover hand-back.** After a takeover request the bot's next turn is told what happened: the screen came back (take a fresh screenshot, don't ask again for that step) or the request was skipped.
+- **Ticket board.** One shared board for you and the bots (`tickets.json`): To do / In progress / In review / Blocked / Done / Won't do, priority, owner, comments. Bots get `board_tickets`, `ticket_get`, `ticket_create`, `ticket_update` and `ticket_comment`; assigning a ticket to a bot wakes it. The sidebar's Tickets page shows the board as a column per status; add, assign, re-prioritise, move, comment and delete from there.
+- **Review actions before asking.** A per-bot switch (bot settings) has a small model check each action that would stop for your approval against what you last wrote. It sees only your words and the action, never what the bot read, and holds each kind of action to its own question (commands, file changes, anything sent outside). A clear fit runs once; anything unsure, an error or a slow answer still shows the card. Approvals only you can give are never reviewed, and every review is in the audit log.
+- **Hand-offs to a busy bot are queued.** `message_bot` no longer refuses when the other bot is working or waiting on you, and no longer pushes the job into its current run. The job waits in line (up to five per bot), starts when the bot is free, and its answer is posted back in the sender's thread. A bot that stays busy for 30 minutes fails the job and tells the sender. Lending tools needs the bot free.
+- **A `/goal` that checks itself.** After each finished turn a judge says `done`, `continue` or `wait`. Unfinished goals send the bot back to work on their own (6 turns by default, then it pauses and says so); `wait` parks without spending turns; a message from you cancels what was lined up and starts the count again; a judge that fails three times pauses the goal. `/goal pause`, `/goal resume` and `/goal status` control it.
+- **Questions with buttons.** `clarify` takes `options` (2–6 choices) and shows a card of buttons; the pick comes back as the next message. Without options it is the open question it was.
+- **Private desktop.** A new computer mode runs a bot's browser and desktop in its own hardened Podman container (XFCE + Firefox, rootless, minimal capabilities, loopback-only viewer, per-bot workspace). Settings → Computer builds the image and shows Podman status; the bot's panel has a live preview with Start / Stop / Reset, and leaving the mode stops the container. Granted Mac folders can be shown inside it read-only (bot settings → Show in the Private desktop). A person cannot take over this desktop, so `request_takeover` is refused and audited, and Firefox blocks the Mac's loopback addresses. Terminal and LAN access from inside the container are not blocked. Auto never picks it.
+
 ## 0.15.0 — team map and external coding agents
 
 - **Team map.** A Team screen groups bots into departments on a canvas: drag bots between panels, drag panels to place them, pick a lead per department, and message a department or the whole team from the box under the map. Departments carry shared instructions that go into every member's prompt, shared memory notes you accept, reject, edit, pin or undo (a proposed note shows as a card in the chat), a Chief of Staff whose authority follows departments, and usage by department. Team notes are included in past-chat search.

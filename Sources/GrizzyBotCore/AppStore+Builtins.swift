@@ -38,12 +38,17 @@ extension AppStore {
                 if let goal = bots[idx].goal, !goal.isEmpty { return "Standing goal: \(goal)\n\n`/goal clear` to drop it." }
                 return "No standing goal. Set one with `/goal <what you want done>`."
             }
+            if let control = goalControlReply(botId: botId, text: text) { return control }
+            if text.lowercased() == "resume", bots[idx].goal != nil { return nil }
             if BuiltinCommands.isClearGoal(text) {
                 bots[idx].goal = nil
+                bots[idx].goalState = nil
+                goalContinuations[botId]?.cancel()
                 save()
                 return "Goal cleared."
             }
             bots[idx].goal = String(text.prefix(1_000))
+            bots[idx].goalState = GoalState()
             save()
             return nil
         }

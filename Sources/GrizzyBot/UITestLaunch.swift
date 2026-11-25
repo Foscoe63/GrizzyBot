@@ -40,10 +40,10 @@ enum UITestLaunch {
             store.openAppSettings()
         }
         if args.contains("-uitest-open-plugins") {
-            store.pluginsOpen = true
+            store.openAppSettings(section: .plugins)
         }
         if args.contains("-uitest-open-skills") {
-            store.skillsOpen = true
+            store.openAppSettings(section: .skills)
         }
         if args.contains("-uitest-open-model") {
             store.openModelSettings()

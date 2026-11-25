@@ -31,6 +31,7 @@ extension AppStore {
     public func removeGrantedFolder(_ id: String) {
         grantedFolders.removeAll { $0.id == id }
         for idx in bots.indices { bots[idx].grantedFolderIds.removeAll { $0 == id } }
+        pruneDesktopFolders()
         save()
     }
 
@@ -46,6 +47,7 @@ extension AppStore {
         bots[idx].grantedFolderIds.removeAll { $0 == folderId }
         if granted { bots[idx].grantedFolderIds.append(folderId) }
         bots[idx].updatedAt = .now
+        pruneDesktopFolders()
         save()
     }
 

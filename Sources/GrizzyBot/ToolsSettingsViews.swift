@@ -71,11 +71,12 @@ struct CapsuleSwitch: View {
 
     var body: some View {
         Capsule()
-            .fill(isOn ? Theme.orange : Theme.bgChip)
+            .fill(isOn ? Theme.orange : Theme.trafficRed.opacity(0.25))
+            .overlay(Capsule().strokeBorder(isOn ? Color.clear : Theme.trafficRed.opacity(0.55), lineWidth: 1))
             .frame(width: 40, height: 22)
             .overlay(alignment: isOn ? .trailing : .leading) {
                 Circle()
-                    .fill(Theme.textCream)
+                    .fill(isOn ? Theme.textCream : Theme.trafficRed.opacity(0.85))
                     .frame(width: 16, height: 16)
                     .padding(3)
             }
@@ -133,9 +134,11 @@ struct ToolCapsuleToggle: View {
 struct McpStatusButton: View {
     let status: McpProbeStatus
     let cachedCount: Int
+    var isEnabled: Bool = true
     let action: () -> Void
 
     private var fill: Color {
+        if !isEnabled { return Theme.textMuted }
         switch status {
         case .connected: return Theme.green
         case .failed: return Theme.trafficRed
@@ -145,6 +148,7 @@ struct McpStatusButton: View {
     }
 
     private var label: String {
+        if !isEnabled { return "Server disabled. Click to check connection." }
         switch status {
         case .connected(let count):
             return "Connected, \(count) tools. Click to recheck."
@@ -213,7 +217,7 @@ struct McpServersToolsBlock: View {
         let parentOn = isServerEnabled(server)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 10) {
-                McpStatusButton(status: status, cachedCount: names.count) {
+                McpStatusButton(status: status, cachedCount: names.count, isEnabled: parentOn) {
                     store.probeMcpServer(server.id)
                 }
                 Button {
@@ -245,6 +249,12 @@ struct McpServersToolsBlock: View {
                             Text(expanded ? "▾" : "▸")
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.textMuted)
+                        }
+                        if let health = McpHealthBook.shared.health(for: server.id), health.isDegraded {
+                            Text(health.summary)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(Theme.orange)
+                                .lineLimit(2)
                         }
                         Text(server.summaryLine)
                             .font(.system(size: 12))

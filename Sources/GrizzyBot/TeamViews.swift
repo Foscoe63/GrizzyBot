@@ -251,14 +251,14 @@ struct TeamLibrarySheet: View {
                     }
                     Text("ONLINE").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.textMuted).padding(.top, 6)
                     HStack {
-                        GrizzyField(placeholder: "https://example.com/teams/index.json", text: $libraryURL, onCommit: { loadIndex() })
+                        GrizzyField(placeholder: "https://example.com/teams/index.json or a GitHub repo", text: $libraryURL, onCommit: { loadIndex() })
                         GrizzyButton(title: loading ? "Loading…" : "Load", variant: .cream, size: .sm, disabled: loading) { loadIndex() }
                     }
                     ForEach(online) { entry in
                         entryRow(entry) { fetchAndOpen(entry) }
                     }
                     if let status { Text(status).font(.system(size: 12.5)).foregroundStyle(Theme.textSecondary) }
-                    Text("A library is a JSON file listing team files (format grizzybot-team-index/1). Anyone can host one. You always review a team before it is imported.")
+                    Text("A library is a JSON file listing team files (format grizzybot-team-index/1), or a GitHub repository of OpenMausBot or botteams files. Anyone can host one. You always review a team before it is imported.")
                         .font(.system(size: 12)).foregroundStyle(Theme.textMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -5,11 +5,14 @@ import SwiftUI
 struct SidebarView: View {
     @Environment(AppStore.self) private var store
     @State private var search = ""
+    @AppStorage("sidebar.collapsedCategories") private var collapsedRaw = ""
+    @State private var showNewCategory = false
+    @State private var categoryName = ""
+    @State private var renamingCategory: String?
+    @State private var dropTarget: String?
     @State private var userMenuOpen = false
     @State private var showUsage = false
     @State private var hoverPlus = false
-    @State private var hoverPlugins = false
-    @State private var hoverSkills = false
     @State private var showNewMenu = false
     @State private var showCreateRoom = false
     @State private var roomName = ""
@@ -111,6 +114,19 @@ struct SidebarView: View {
 
                         Button {
                             showNewMenu = false
+                            categoryName = ""
+                            renamingCategory = nil
+                            showNewCategory = true
+                        } label: {
+                            Label("New category…", systemImage: "folder.badge.plus")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            showNewMenu = false
                             DispatchQueue.main.async { pickAgentFolder() }
                         } label: {
                             Label("Import agent folder…", systemImage: "square.and.arrow.down")
@@ -161,9 +177,38 @@ struct SidebarView: View {
                             .padding(.top, 8)
                     }
 
-                    ForEach(filteredBots) { bot in
+                    ForEach(filteredBots.filter(\.chiefOfStaff)) { bot in
                         botRow(bot)
                     }
+
+                    ForEach(store.appConfig.botCategories, id: \.self) { cat in
+                        let members = filteredBots.filter { !$0.chiefOfStaff && $0.category == cat }
+                        if !(searching && members.isEmpty) {
+                            categoryHeader(cat, count: members.count)
+                                .padding(.top, 8)
+                            if !isCollapsed(cat) || searching {
+                                ForEach(members) { bot in
+                                    botRow(bot)
+                                }
+                            }
+                        }
+                    }
+
+                    let loose = filteredBots.filter { !$0.chiefOfStaff && !store.appConfig.botCategories.contains($0.category) }
+                    if !loose.isEmpty {
+                        if !store.appConfig.botCategories.isEmpty {
+                            sectionLabel("Uncategorized").padding(.top, 8)
+                        }
+                        ForEach(loose) { bot in
+                            botRow(bot)
+                        }
+                    }
+                    Color.clear.frame(height: 40)
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+                .dropDestination(for: String.self) { ids, _ in
+                    for id in ids { store.setBotCategory(id, category: "") }
+                    return !ids.isEmpty
                 }
                 .padding(.horizontal, 10)
                 .padding(.bottom, 10)
@@ -175,21 +220,18 @@ struct SidebarView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 2)
 
+            ticketsButton
+                .padding(.horizontal, 12)
+                .padding(.bottom, 2)
+
             botChatButton
                 .padding(.horizontal, 12)
                 .padding(.bottom, 2)
 
             teamMapButton
                 .padding(.horizontal, 12)
-                .padding(.bottom, 2)
-
-            pluginsButton
-                .padding(.horizontal, 12)
-                .padding(.bottom, 2)
-
-            skillsButton
-                .padding(.horizontal, 12)
                 .padding(.bottom, 4)
+
 
             userRow
                 .padding(.horizontal, 18)
@@ -217,9 +259,88 @@ struct SidebarView: View {
         } message: {
             Text(agentImportError ?? "")
         }
+        .alert(
+            renamingCategory == nil ? "New category" : "Rename category",
+            isPresented: Binding(
+                get: { showNewCategory || renamingCategory != nil },
+                set: { if !$0 { showNewCategory = false; renamingCategory = nil } }
+            )
+        ) {
+            TextField("Name", text: $categoryName)
+            Button(renamingCategory == nil ? "Add" : "Rename") {
+                if let old = renamingCategory {
+                    store.renameBotCategory(old, to: categoryName)
+                } else {
+                    store.addBotCategory(categoryName)
+                }
+                showNewCategory = false
+                renamingCategory = nil
+            }
+            Button("Cancel", role: .cancel) {
+                showNewCategory = false
+                renamingCategory = nil
+            }
+        }
         .sheet(isPresented: $showCreateRoom) {
             createRoomSheet
         }
+    }
+
+    private var searching: Bool {
+        !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var collapsedSet: Set<String> {
+        Set(collapsedRaw.split(separator: "\u{1F}").map(String.init))
+    }
+
+    private func isCollapsed(_ cat: String) -> Bool { collapsedSet.contains(cat) }
+
+    private func toggleCollapsed(_ cat: String) {
+        var set = collapsedSet
+        if !set.insert(cat).inserted { set.remove(cat) }
+        collapsedRaw = set.sorted().joined(separator: "\u{1F}")
+    }
+
+    private func categoryHeader(_ cat: String, count: Int) -> some View {
+        let open = !isCollapsed(cat) || searching
+        let targeted = dropTarget == cat
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { toggleCollapsed(cat) }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .rotationEffect(.degrees(open ? 90 : 0))
+                Text(cat.uppercased())
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+                Spacer()
+                Text("\(count)")
+                    .font(.system(size: 11))
+            }
+            .foregroundStyle(targeted ? Theme.orange : Theme.textMuted)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(targeted ? Theme.orange.opacity(0.12) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .dropDestination(for: String.self) { ids, _ in
+            for id in ids { store.setBotCategory(id, category: cat) }
+            return !ids.isEmpty
+        } isTargeted: { dropTarget = $0 ? cat : (dropTarget == cat ? nil : dropTarget) }
+        .contextMenu {
+            Button("Rename category…") {
+                categoryName = cat
+                renamingCategory = cat
+            }
+            Button("Delete category", role: .destructive) {
+                store.deleteBotCategory(cat)
+            }
+        }
+        .accessibilityIdentifier("sidebar.category.\(cat)")
     }
 
     private func sectionLabel(_ title: String) -> some View {
@@ -292,7 +413,16 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .draggable(bot.chiefOfStaff ? "" : bot.id)
         .contextMenu {
+            Menu("Move to category") {
+                ForEach(store.appConfig.botCategories, id: \.self) { cat in
+                    Button(cat) { store.setBotCategory(bot.id, category: cat) }
+                }
+                Button("Uncategorized") { store.setBotCategory(bot.id, category: "") }
+            }
+            .disabled(bot.chiefOfStaff)
+            Divider()
             Button(bot.pinned ? "Unpin" : "Pin") {
                 store.setBotPinned(bot.id, pinned: !bot.pinned)
             }
@@ -403,6 +533,32 @@ struct SidebarView: View {
         .buttonStyle(.plain)
     }
 
+    private var ticketsButton: some View {
+        Button {
+            store.showTicketsPage()
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle().fill(Theme.bgCard).frame(width: 30, height: 30)
+                    Image(systemName: "checklist")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(store.mainView == .tickets ? Theme.orange : Theme.textLetter)
+                }
+                Text("Tickets")
+                    .font(.system(size: 14.5))
+                    .foregroundStyle(Theme.textGhost)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(store.mainView == .tickets ? Theme.bgHoverRow : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("sidebar.tickets")
+    }
+
     private var teamMapButton: some View {
         Button {
             store.showTeamMapPage()
@@ -454,62 +610,6 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private var pluginsButton: some View {
-        Button {
-            store.openPlugins()
-        } label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(Theme.bgCard)
-                        .frame(width: 30, height: 30)
-                    Image(systemName: "puzzlepiece.extension")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.textLetter)
-                }
-                Text("Plugins")
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(Theme.textGhost)
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(hoverPlugins ? Theme.bgHoverRow : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hoverPlugins = $0 }
-    }
-
-    private var skillsButton: some View {
-        Button {
-            store.skillsOpen = true
-        } label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(Theme.bgCard)
-                        .frame(width: 30, height: 30)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.textLetter)
-                }
-                Text("Skills")
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(Theme.textGhost)
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(hoverSkills ? Theme.bgHoverRow : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hoverSkills = $0 }
     }
 
     private var userRow: some View {

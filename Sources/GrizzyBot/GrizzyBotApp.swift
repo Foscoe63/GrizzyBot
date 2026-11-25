@@ -84,7 +84,10 @@ struct GrizzyBotApp: App {
             return AppStore(dataDirectory: dir, delayScale: 0.01)
         }
         let store = AppStore(dataDirectory: UITestLaunch.dataDirectory())
-        store.computerRuntime = AppComputerRuntime.shared
+        store.installComputerRuntime(primary: AppComputerRuntime.shared)
+        AppComputerRuntime.shared.onDemoEvent = { [weak store] botId, event in
+            Task { @MainActor in store?.recordDemoEvent(botId: botId, event) }
+        }
         store.openExternalURL = { url in
             // Always hop async so Connect never opens a browser inside a SwiftUI update.
             DispatchQueue.main.async {
@@ -110,6 +113,8 @@ struct GrizzyBotApp: App {
                 themeManager.load(from: store.appConfig)
                 appDelegate.onRoutineTick = { store.tickDueRoutines() }
                 MacBridge.indexBots(store.bots)
+                if !store.headlessRoutineTick { store.startMcpReprobeLoop() }
+                Task { await UpdateChecker.run(silent: true) }
             }
             .onOpenURL { url in
                 if url.isFileURL {
@@ -214,6 +219,11 @@ struct GrizzyBotApp: App {
             }
             .keyboardShortcut("z", modifiers: [.command, .shift])
         }
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") {
+                Task { await UpdateChecker.run(silent: false) }
+            }
+        }
         CommandGroup(after: .appSettings) {
             Button("Diagnostics") {
                 store.openAppSettings(section: .diagnostics)
@@ -289,6 +299,7 @@ struct GrizzyBotApp: App {
         if store.appConfig.menuBarOnly {
             MainWindowController.applyMenuBarOnly(true)
         }
+        KeepAwakeController.set(store.appConfig.keepAwake)
     }
 
     @MainActor

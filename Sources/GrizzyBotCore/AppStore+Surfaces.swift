@@ -26,8 +26,6 @@ extension AppStore {
         route = .shell
         showHostPrompt = false
         modelSettingsOpen = false
-        pluginsOpen = false
-        skillsOpen = false
         appSettingsOpen = false
         computerOpen = false
         canvasOpen = false
@@ -72,7 +70,9 @@ extension AppStore {
 
     func saveAppConfig(_ config: AppConfig, source: String) {
         recordConfigChange(old: appConfig, new: config, source: source)
+        let leavingPrivateDesktop = appConfig.defaultComputerMode == .privateDesktop && config.defaultComputerMode != .privateDesktop
         appConfig = config
+        defer { if leavingPrivateDesktop { stopUnusedPrivateDesktops() } }
         if var session {
             if !config.profileName.isEmpty { session.name = config.profileName }
             if !config.profileEmail.isEmpty { session.email = config.profileEmail }
@@ -657,6 +657,38 @@ extension AppStore {
         }
     }
 
+    /// Re-probes servers whose last probe failed, so a backend that was down at launch (or
+    /// went away and came back) recovers without opening Settings. Returns the ids probed.
+    @discardableResult
+    public func reprobeFailedMcpServers() -> [String] {
+        var probed: [String] = []
+        for server in mcpServers {
+            guard case .failed = mcpProbeStatus[server.id] else { continue }
+            probeMcpServer(server.id)
+            probed.append(server.id)
+        }
+        return probed
+    }
+
+    /// Starts a background loop that probes every server once, then retries failed ones
+    /// every `interval` seconds. Safe to call repeatedly.
+    public func startMcpReprobeLoop(interval: TimeInterval = 30) {
+        guard mcpReprobeTask == nil else { return }
+        mcpReprobeTask = Task { @MainActor [weak self] in
+            self?.probeAllMcpServers()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(interval))
+                guard let self, !Task.isCancelled else { return }
+                self.reprobeFailedMcpServers()
+            }
+        }
+    }
+
+    public func stopMcpReprobeLoop() {
+        mcpReprobeTask?.cancel()
+        mcpReprobeTask = nil
+    }
+
     @discardableResult
     public func addMcpServer(
         name: String,
@@ -730,6 +762,7 @@ extension AppStore {
         var seen = Set(AgentToolCatalog.builtinIds)
         seen.formUnion(CanvasBoardStore.toolIds)
         seen.formUnion(ArtifactStore.toolIds)
+        seen.formUnion(TicketBoardStore.toolIds)
         seen.formUnion(appConfig.defaultEnabledTools)
         seen.formUnion(customTools.map(\.id))
         seen.formUnion(mcpServers.map(\.toolId))
@@ -792,6 +825,38 @@ extension AppStore {
         save()
     }
 
+    @discardableResult
+    public func addBotCategory(_ name: String) -> Bool {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty, !appConfig.botCategories.contains(where: { $0.caseInsensitiveCompare(n) == .orderedSame }) else { return false }
+        appConfig.botCategories.append(n)
+        save()
+        return true
+    }
+
+    public func renameBotCategory(_ old: String, to name: String) {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty, let idx = appConfig.botCategories.firstIndex(of: old),
+              !appConfig.botCategories.contains(where: { $0 != old && $0.caseInsensitiveCompare(n) == .orderedSame }) else { return }
+        appConfig.botCategories[idx] = n
+        for i in bots.indices where bots[i].category == old { bots[i].category = n }
+        save()
+    }
+
+    /// Bots in the category go back to uncategorized.
+    public func deleteBotCategory(_ name: String) {
+        appConfig.botCategories.removeAll { $0 == name }
+        for i in bots.indices where bots[i].category == name { bots[i].category = "" }
+        save()
+    }
+
+    public func setBotCategory(_ botId: String, category: String) {
+        guard let idx = bots.firstIndex(where: { $0.id == botId }), !bots[idx].chiefOfStaff,
+              category.isEmpty || appConfig.botCategories.contains(category) else { return }
+        bots[idx].category = category
+        save()
+    }
+
     public func setBotHidden(_ botId: String, hidden: Bool) {
         guard let idx = bots.firstIndex(where: { $0.id == botId }) else { return }
         bots[idx].hidden = hidden
@@ -823,6 +888,7 @@ extension AppStore {
         instructions: String? = nil,
         color: String? = nil,
         autoApprove: Bool? = nil,
+        reviewApprovals: Bool? = nil,
         shellNetwork: Bool? = nil,
         speakReplies: Bool? = nil,
         notifications: Bool? = nil,
@@ -841,9 +907,11 @@ extension AppStore {
         if let instructions { bots[idx].instructions = instructions }
         if let color { bots[idx].color = color }
         if let autoApprove { bots[idx].autoApprove = autoApprove }
+        if let reviewApprovals { bots[idx].reviewApprovals = reviewApprovals }
         if let shellNetwork { bots[idx].shellNetwork = shellNetwork }
         if let speakReplies { bots[idx].speakReplies = speakReplies }
         if let notifications { bots[idx].notifications = notifications }
+        let leavingPrivateDesktop = computerMode != nil && bots[idx].computerMode == .privateDesktop && computerMode != .privateDesktop
         if let computerMode { bots[idx].computerMode = computerMode }
         if let modelProvider { bots[idx].modelProvider = modelProvider }
         if let modelId { bots[idx].modelId = modelId }
@@ -856,6 +924,7 @@ extension AppStore {
         if let enabledComponents { bots[idx].enabledComponents = enabledComponents }
         bots[idx].updatedAt = .now
         save()
+        if leavingPrivateDesktop { stopUnusedPrivateDesktops() }
     }
 
     public func setBotModel(_ botId: String, choice: BotModelChoice) {
