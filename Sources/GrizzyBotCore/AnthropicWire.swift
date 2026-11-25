@@ -17,6 +17,7 @@ public enum AnthropicWire {
             model: request.endpoint.model
         )
         var system = ""
+        var stableSystem: String?
         var turns: [(role: String, blocks: [[String: Any]])] = []
         func append(_ role: String, _ blocks: [[String: Any]]) {
             guard !blocks.isEmpty else { return }
@@ -31,7 +32,14 @@ public enum AnthropicWire {
             switch message.role {
             case "system":
                 if let content = message.content, !content.isEmpty {
-                    system += (system.isEmpty ? "" : "\n\n") + content
+                    // The first system message that says where its unchanging part ends: that part
+                    // is cached on its own, the rest goes after the breakpoint.
+                    if stableSystem == nil, system.isEmpty, let cut = message.cacheBoundary, cut > 0, cut < content.count {
+                        stableSystem = String(content.prefix(cut))
+                        system = String(content.dropFirst(cut))
+                    } else {
+                        system += (system.isEmpty ? "" : "\n\n") + content
+                    }
                 }
             case "tool":
                 append("user", [[
@@ -88,7 +96,13 @@ public enum AnthropicWire {
             "messages": messages,
         ]
         if stream { body["stream"] = true }
-        if !system.isEmpty {
+        if let stable = stableSystem {
+            var blocks: [[String: Any]] = [["type": "text", "text": stable, "cache_control": ["type": "ephemeral"]]]
+            if !system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                blocks.append(["type": "text", "text": system])
+            }
+            body["system"] = blocks
+        } else if !system.isEmpty {
             body["system"] = [[
                 "type": "text",
                 "text": system,

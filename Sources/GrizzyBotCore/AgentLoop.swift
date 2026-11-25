@@ -529,10 +529,28 @@ public enum StreamText {
 
 /// OpenAI/Anthropic tool-calling loop. The store supplies tool execution.
 public enum AgentLoop {
+    /// The whole prompt as one string, for everything that is not a cached Anthropic request.
     public static func systemPrompt(for request: AgentLoopRequest, now: Date = .now) -> String {
+        let parts = systemPromptParts(for: request, now: now)
+        return ([parts.stable, parts.volatile].filter { !$0.isEmpty }).joined(separator: "\n\n")
+    }
+
+    /// The system message for a request: the whole prompt, with where the unchanging part ends
+    /// noted so Anthropic can cache just that part.
+    public static func systemMessage(for request: AgentLoopRequest, now: Date = .now) -> ChatMessage {
+        let parts = systemPromptParts(for: request, now: now)
+        var message = ChatMessage.system(([parts.stable, parts.volatile].filter { !$0.isEmpty }).joined(separator: "\n\n"))
+        if !parts.volatile.isEmpty { message.cacheBoundary = parts.stable.count }
+        return message
+    }
+
+    /// The prompt in two parts. `stable` is the same from one message to the next; `volatile` is
+    /// what changes (the date, saved memory, the goal, which tools are deferred), so a change
+    /// there does not rewrite the cached part.
+    public static func systemPromptParts(for request: AgentLoopRequest, now: Date = .now) -> (stable: String, volatile: String) {
+        var volatile: [String] = [utcDateLine(now: now)]
         var lines: [String] = [
             PromptSection.identity(botName: request.botName),
-            utcDateLine(now: now),
             PromptSection.agency(),
             PromptSection.honesty(),
             PromptSection.sandbox(),
@@ -551,7 +569,7 @@ public enum AgentLoop {
             lines.append(builtinNote)
         }
         if let deferredNote = ToolSelection.deferredNote(request.deferredTools) {
-            lines.append(deferredNote)
+            volatile.append(deferredNote)
         }
         if !request.homePath.isEmpty {
             lines.append("Home path: \(request.homePath)")
@@ -572,7 +590,7 @@ public enum AgentLoop {
         }
         let teamMemory = request.departmentMemory.trimmingCharacters(in: .whitespacesAndNewlines)
         if !teamMemory.isEmpty {
-            lines.append(teamMemory)
+            volatile.append(teamMemory)
         }
         let instructions = request.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         if !instructions.isEmpty {
@@ -582,7 +600,7 @@ public enum AgentLoop {
             lines.append(secrets)
         }
         if let goal = BuiltinCommands.goalSection(request.goal) {
-            lines.append(goal)
+            volatile.append(goal)
         }
         if let roster = PromptSection.roster(
             request.roster,
@@ -597,11 +615,11 @@ public enum AgentLoop {
         }
         let memory = request.memory.trimmingCharacters(in: .whitespacesAndNewlines)
         if !memory.isEmpty {
-            lines.append("Durable memory:\n\(memory)")
+            volatile.append("Durable memory:\n\(memory)")
         }
         let shared = request.sharedMemory.trimmingCharacters(in: .whitespacesAndNewlines)
         if !shared.isEmpty {
-            lines.append("Shared workspace memory (every bot on this Mac):\n\(shared)")
+            volatile.append("Shared workspace memory (every bot on this Mac):\n\(shared)")
         }
         let skills = request.skillCatalog.trimmingCharacters(in: .whitespacesAndNewlines)
         if !skills.isEmpty {
@@ -610,7 +628,7 @@ public enum AgentLoop {
         if request.depth > 0 {
             lines.append("You are a short-lived helper for one task. Do not spawn bots.")
         }
-        return lines.joined(separator: "\n\n")
+        return (lines.joined(separator: "\n\n"), volatile.joined(separator: "\n\n"))
     }
 
     public static func utcDateLine(now: Date = .now) -> String {
@@ -713,7 +731,7 @@ public enum AgentLoop {
                 return await appExecute(name, arguments)
             }
         }
-        var messages: [ChatMessage] = [.system(systemPrompt(for: request))]
+        var messages: [ChatMessage] = [systemMessage(for: request)]
         if !request.priorMessages.isEmpty {
             messages.append(contentsOf: request.priorMessages.filter { $0.role != "system" })
         } else {
