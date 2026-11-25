@@ -2,6 +2,10 @@
 
 User-visible changes, newest first. The current version lives in `project.yml`.
 
+## 0.19.7 — Steadier prompt caching
+
+- **Only the unchanging part of the system prompt is cached.** The date, memory, goal and other per-turn details now sit after the cache boundary, so a changing memory or a new day no longer invalidates the cached prompt prefix on Anthropic models.
+
 ## 0.19.6 — Newer MLX engine
 
 - **Local MLX models run on MLX 0.32/0.33** (mlx-swift 0.33.0, mlx-swift-lm 3.33.0). This picks up upstream fixes for crashes inside the GPU engine (a custom Metal kernel use-after-free, the compile cache, and macOS 27 shader support) that had been closing GrizzyBot during local model runs.
